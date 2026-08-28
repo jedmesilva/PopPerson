@@ -119,7 +119,7 @@ components:
           type: string
     PopPerson:
       type: object
-      required: [name, category, categoryPath, cidade, estado, estadoCodigo, pais, paisCodigo, status, value, color]
+      required: [name, category, categoryPath, gender, cidade, estado, estadoCodigo, pais, paisCodigo, status, value, color]
       properties:
         name:
           type: string
@@ -129,6 +129,9 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PopPersonCategory"
+        gender:
+          type: ["string", "null"]
+          description: Gender recorded for the person, when known.
         cidade:
           type: string
         estado:

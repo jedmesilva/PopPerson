@@ -48,6 +48,11 @@ export interface PopPerson {
   name: string;
   category: PopPersonCategory;
   categoryPath: PopPersonCategory[];
+  /**
+     * Gender recorded for the person, when known.
+     * @nullable
+     */
+  gender: string | null;
   cidade: string;
   estado: string;
   estadoCodigo: string;

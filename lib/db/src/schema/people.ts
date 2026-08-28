@@ -26,6 +26,7 @@ export const peopleTable = pgTable(
         onDelete: "restrict",
         onUpdate: "cascade",
       }),
+    gender: varchar("gender", { length: 1 }),
     color: varchar("color", { length: 32 }).notNull(),
     status: varchar("status", { length: 32 }).notNull().default("titular"),
     imageUrl: text("image_url"),

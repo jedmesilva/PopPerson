@@ -125,6 +125,7 @@ export const GetPopPersonResponse = zod.object({
   "slug": zod.string(),
   "parentId": zod.string().nullable()
 })),
+  "gender": zod.string().nullable().describe('Gender recorded for the person, when known.'),
   "cidade": zod.string(),
   "estado": zod.string(),
   "estadoCodigo": zod.string(),
@@ -194,6 +195,7 @@ export const GetPopPersonStateResponse = zod.object({
   "slug": zod.string(),
   "parentId": zod.string().nullable()
 })),
+  "gender": zod.string().nullable().describe('Gender recorded for the person, when known.'),
   "cidade": zod.string(),
   "estado": zod.string(),
   "estadoCodigo": zod.string(),
