@@ -163,14 +163,20 @@ components:
           type: ["string", "null"]
     PopPersonElement:
       type: object
-      required: [id, emoji, label, force, price, gender]
+      required: [id, emoji, imageUrl, label, description, force, price, gender]
       properties:
         id:
           type: string
         emoji:
           type: string
+        imageUrl:
+          type: ["string", "null"]
+          description: Optional item image URL. The client can fall back to emoji when absent.
         label:
           type: string
+        description:
+          type: ["string", "null"]
+          description: Optional item description.
         force:
           type: number
         price:

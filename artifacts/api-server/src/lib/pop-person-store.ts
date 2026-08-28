@@ -221,6 +221,8 @@ function toPopPersonElement(item: {
   code: string;
   name: string;
   emoji: string | null;
+  imageUrl: string | null;
+  description: string | null;
   gender: string | null;
   impactPower: string;
   price: string;
@@ -232,7 +234,9 @@ function toPopPersonElement(item: {
   return {
     id: item.code,
     emoji: item.emoji,
+    imageUrl: item.imageUrl,
     label: item.name,
+    description: item.description,
     force: toNumber(item.impactPower),
     price: toNumber(item.price),
     gender: item.gender,
@@ -250,6 +254,8 @@ async function getActions(
       elementId: itemsTable.code,
       elementName: itemsTable.name,
       elementEmoji: itemsTable.emoji,
+      elementImageUrl: itemsTable.imageUrl,
+      elementDescription: itemsTable.description,
       elementGender: itemsTable.gender,
       elementForce: itemsTable.impactPower,
       elementPrice: itemsTable.price,
@@ -287,6 +293,8 @@ async function getActions(
       code: action.elementId,
       name: action.elementName,
       emoji: action.elementEmoji,
+      imageUrl: action.elementImageUrl,
+      description: action.elementDescription,
       gender: action.elementGender,
       impactPower: action.elementForce,
       price: action.elementPrice,
@@ -357,6 +365,8 @@ async function getPopPersonConfig(): Promise<PopPersonConfig> {
         mode: itemsTable.mode,
         name: itemsTable.name,
         emoji: itemsTable.emoji,
+        imageUrl: itemsTable.imageUrl,
+        description: itemsTable.description,
         gender: itemsTable.gender,
         impactPower: itemsTable.impactPower,
         price: itemsTable.price,

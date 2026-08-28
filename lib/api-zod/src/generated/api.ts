@@ -70,7 +70,9 @@ export const GetPopPersonResponse = zod.object({
   "atacar": zod.array(zod.object({
   "id": zod.string(),
   "emoji": zod.string(),
+  "imageUrl": zod.string().nullable().describe('Optional item image URL. The client can fall back to emoji when absent.'),
   "label": zod.string(),
+  "description": zod.string().nullable().describe('Optional item description.'),
   "force": zod.number(),
   "price": zod.number(),
   "gender": zod.enum(['m', 'f'])
@@ -78,7 +80,9 @@ export const GetPopPersonResponse = zod.object({
   "defender": zod.array(zod.object({
   "id": zod.string(),
   "emoji": zod.string(),
+  "imageUrl": zod.string().nullable().describe('Optional item image URL. The client can fall back to emoji when absent.'),
   "label": zod.string(),
+  "description": zod.string().nullable().describe('Optional item description.'),
   "force": zod.number(),
   "price": zod.number(),
   "gender": zod.enum(['m', 'f'])
@@ -154,7 +158,9 @@ export const GetPopPersonResponse = zod.object({
   "element": zod.object({
   "id": zod.string(),
   "emoji": zod.string(),
+  "imageUrl": zod.string().nullable().describe('Optional item image URL. The client can fall back to emoji when absent.'),
   "label": zod.string(),
+  "description": zod.string().nullable().describe('Optional item description.'),
   "force": zod.number(),
   "price": zod.number(),
   "gender": zod.enum(['m', 'f'])
@@ -224,7 +230,9 @@ export const GetPopPersonStateResponse = zod.object({
   "element": zod.object({
   "id": zod.string(),
   "emoji": zod.string(),
+  "imageUrl": zod.string().nullable().describe('Optional item image URL. The client can fall back to emoji when absent.'),
   "label": zod.string(),
+  "description": zod.string().nullable().describe('Optional item description.'),
   "force": zod.number(),
   "price": zod.number(),
   "gender": zod.enum(['m', 'f'])
@@ -281,7 +289,9 @@ export const CreatePopPersonActionResponse = zod.object({
   "element": zod.object({
   "id": zod.string(),
   "emoji": zod.string(),
+  "imageUrl": zod.string().nullable().describe('Optional item image URL. The client can fall back to emoji when absent.'),
   "label": zod.string(),
+  "description": zod.string().nullable().describe('Optional item description.'),
   "force": zod.number(),
   "price": zod.number(),
   "gender": zod.enum(['m', 'f'])

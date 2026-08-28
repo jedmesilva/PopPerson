@@ -10,7 +10,17 @@ import type { PopPersonElementGender } from './popPersonElementGender';
 export interface PopPersonElement {
   id: string;
   emoji: string;
+  /**
+     * Optional item image URL. The client can fall back to emoji when absent.
+     * @nullable
+     */
+  imageUrl: string | null;
   label: string;
+  /**
+     * Optional item description.
+     * @nullable
+     */
+  description: string | null;
   force: number;
   price: number;
   gender: PopPersonElementGender;
