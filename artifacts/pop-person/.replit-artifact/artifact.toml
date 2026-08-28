@@ -9,7 +9,7 @@ router = "path"
 [[services]]
 name = "web"
 paths = [ "/" ]
-localPort = 22808
+localPort = 3000
 
 [services.development]
 run = "pnpm --filter @workspace/pop-person run dev"
