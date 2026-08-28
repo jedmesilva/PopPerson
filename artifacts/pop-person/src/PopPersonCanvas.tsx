@@ -1,8 +1,9 @@
 // @ts-nocheck
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { SlidersHorizontal, ArrowLeft, X, ChevronDown, Locate } from "lucide-react";
+import { SlidersHorizontal, ArrowLeft, X, ChevronDown, Locate, MapPin } from "lucide-react";
 import {
   useCreatePopPersonAction,
+  useGetAccessLocation,
   useGetPopPerson,
   useGetPopPersonState,
 } from "@workspace/api-client-react";
@@ -196,6 +197,7 @@ function FilterSection({ label, options, selected, onSelect, disabled, disabledH
 }
 
 export default function PopPersonCanvas() {
+  const accessLocationQuery = useGetAccessLocation();
   const bootstrapQuery = useGetPopPerson();
   const stateQuery = useGetPopPersonState({
     query: {
@@ -684,6 +686,14 @@ export default function PopPersonCanvas() {
 
   const closeButtonStyle = { width: "26px", height: "26px", borderRadius: "9999px", backgroundColor: "#262626", color: "#a3a3a3", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" };
   const selectedInitials = selectedCellData ? selectedCellData.name.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase() : "";
+  const accessLocation = accessLocationQuery.data;
+  const accessLocationLabel = accessLocation
+    ? accessLocation.source === "local"
+      ? "Local"
+      : accessLocation.source === "unavailable"
+        ? "Indisponível"
+        : [accessLocation.city, accessLocation.countryCode].filter(Boolean).join(", ")
+    : "Detectando…";
 
   return (
     <div style={{ width: "100%", minHeight: "100vh", backgroundColor: "#0a0a0a", position: "relative" }}>
@@ -708,6 +718,14 @@ export default function PopPersonCanvas() {
               </button>
             );
           })()}
+        </div>
+        <div
+          data-testid="access-location"
+          title="Localização aproximada baseada no IP da conexão"
+          style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: "5px", padding: "7px 10px", borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.55)", backdropFilter: "blur(6px)", border: "1px solid rgba(255, 255, 255, 0.08)", color: "#a3a3a3", fontSize: "11px", fontWeight: 600, maxWidth: "150px" }}
+        >
+          <MapPin size={12} color="#a78bfa" />
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Acesso: {accessLocationLabel}</span>
         </div>
         <button data-testid="button-open-filters" onClick={() => setShowFiltersModal(true)} style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: "5px", padding: "7px 12px", borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.55)", backdropFilter: "blur(6px)", border: activeFilterCount > 0 ? "1px solid rgba(99, 102, 241, 0.6)" : "1px solid rgba(255, 255, 255, 0.08)", color: "#f5f5f5", fontSize: "12px", fontWeight: 600, cursor: "pointer" }}>
           <SlidersHorizontal size={13} /> Filtros

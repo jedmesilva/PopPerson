@@ -20,6 +20,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AccessLocation,
   ErrorResponse,
   HealthStatus,
   PopPersonAction,
@@ -121,6 +122,84 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getHealthCheckQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetAccessLocationUrl = () => {
+
+
+
+
+  return `/api/access/location`
+}
+
+/**
+ * Returns an approximate city, region, and country based on the request IP.
+ * @summary Resolve the approximate origin of the current access
+ */
+export const getAccessLocation = async ( options?: Parameters<typeof customFetch>[1]): Promise<AccessLocation> => {
+
+  return customFetch<AccessLocation>(getGetAccessLocationUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAccessLocationQueryKey = () => {
+    return [
+    `/api/access/location`
+    ] as const;
+    }
+
+
+export const getGetAccessLocationQueryOptions = <TData = Awaited<ReturnType<typeof getAccessLocation>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAccessLocation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAccessLocationQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAccessLocation>>> = ({ signal }) => getAccessLocation({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAccessLocation>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAccessLocationQueryResult = NonNullable<Awaited<ReturnType<typeof getAccessLocation>>>
+export type GetAccessLocationQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Resolve the approximate origin of the current access
+ */
+
+export function useGetAccessLocation<TData = Awaited<ReturnType<typeof getAccessLocation>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAccessLocation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAccessLocationQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

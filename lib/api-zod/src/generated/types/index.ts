@@ -6,6 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './accessLocation';
+export * from './accessLocationSource';
 export * from './errorResponse';
 export * from './healthStatus';
 export * from './popPerson';

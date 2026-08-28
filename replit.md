@@ -10,6 +10,7 @@ Aplicativo interativo para visualizar pessoas públicas em círculos e executar 
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-server run dev` — run the API service at `/api`
+- `GET /api/access/location` — returns the approximate city, region, and country for the current access using the request IP; local development is labeled as `Local`
 
 ## Stack
 
@@ -48,6 +49,7 @@ _Nenhuma preferência registrada._
 - The main Vite app requires `PORT` and `BASE_PATH` from its workflow environment.
 - Run the main web artifact rather than starting a root-level `pnpm dev`; the workspace root has no dev script.
 - The PopPerson API is the source of truth for the people dataset, action catalog, validation, scheduling, and value changes. Restarting the API resets its in-memory state.
+- Access location is approximate IP geolocation, not GPS. The server does not return the raw IP to the frontend, and the external lookup can return `Indisponível` when unavailable.
 
 ## Pointers
 

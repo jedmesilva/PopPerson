@@ -18,6 +18,20 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
+ * Returns an approximate city, region, and country based on the request IP.
+ * @summary Resolve the approximate origin of the current access
+ */
+export const GetAccessLocationResponse = zod.object({
+  "source": zod.enum(['ip', 'local', 'unavailable']),
+  "city": zod.string(),
+  "region": zod.string(),
+  "country": zod.string(),
+  "countryCode": zod.string(),
+  "timezone": zod.string()
+})
+
+
+/**
  * @summary Get PopPerson configuration and state
  */
 

@@ -12,6 +12,8 @@ tags:
     description: Health operations
   - name: pop-person
     description: PopPerson domain operations
+  - name: access
+    description: Access origin operations
 paths:
   /healthz:
     get:
@@ -26,6 +28,19 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /access/location:
+    get:
+      operationId: getAccessLocation
+      tags: [access]
+      summary: Resolve the approximate origin of the current access
+      description: Returns an approximate city, region, and country based on the request IP.
+      responses:
+        "200":
+          description: Approximate access location
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessLocation"
   /pop-person:
     get:
       operationId: getPopPerson
@@ -83,6 +98,23 @@ components:
           type: string
       required:
         - status
+    AccessLocation:
+      type: object
+      required: [source, city, region, country, countryCode, timezone]
+      properties:
+        source:
+          type: string
+          enum: [ip, local, unavailable]
+        city:
+          type: string
+        region:
+          type: string
+        country:
+          type: string
+        countryCode:
+          type: string
+        timezone:
+          type: string
     PopPerson:
       type: object
       required: [name, cargo, cidade, estado, pais, status, value, color]

@@ -9,6 +9,24 @@ export interface HealthStatus {
   status: string;
 }
 
+export type AccessLocationSource = typeof AccessLocationSource[keyof typeof AccessLocationSource];
+
+
+export const AccessLocationSource = {
+  ip: 'ip',
+  local: 'local',
+  unavailable: 'unavailable',
+} as const;
+
+export interface AccessLocation {
+  source: AccessLocationSource;
+  city: string;
+  region: string;
+  country: string;
+  countryCode: string;
+  timezone: string;
+}
+
 export type PopPersonStatus = typeof PopPersonStatus[keyof typeof PopPersonStatus];
 
 
