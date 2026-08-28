@@ -36,6 +36,8 @@ const COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#ec4899", "#06b6d4", "#a855f7"
 const MIN_VALUE = 2;
 const MAX_CONCURRENT_PROJECTILES = 24;
 const ACTION_DELAY_MS = 10000;
+const LAYOUT_PADDING = 2;
+const CIRCLE_GAP = 2.5;
 
 function formatBRL(value) {
   return `R$ ${value.toFixed(2).replace(".", ",")}`;
@@ -74,35 +76,133 @@ function makeDataset() {
   return POLITICIANS.map((p) => ({ ...p, value: 10 + Math.random() * 90 }));
 }
 
+function tryPackCircles(ordered, baseRadii, scale) {
+  const placed = [];
+  for (let index = 0; index < ordered.length; index += 1) {
+    const r = baseRadii[index] * scale;
+    const candidates = [{ x: 50, y: 50 }];
+
+    // Candidate points tangent to already placed circles are much more reliable
+    // than increasing one spiral radius until it happens to find a gap.
+    placed.forEach((other, otherIndex) => {
+      for (let step = 0; step < 32; step += 1) {
+        const angle = otherIndex * 0.73 + (step / 32) * Math.PI * 2;
+        const distance = other.r + r + CIRCLE_GAP;
+        candidates.push({
+          x: other.x + Math.cos(angle) * distance,
+          y: other.y + Math.sin(angle) * distance,
+        });
+      }
+    });
+
+    // Include a dense center-out search so the pack can use corners and edges
+    // when the tangent candidates for a greedy step are all blocked.
+    for (let attempt = 0; attempt < 900; attempt += 1) {
+      const angle = attempt * 2.3999632297;
+      const distance = Math.sqrt(attempt) * 2.4;
+      candidates.push({
+        x: 50 + Math.cos(angle) * distance,
+        y: 50 + Math.sin(angle) * distance,
+      });
+    }
+
+    let best = null;
+    let bestScore = Number.POSITIVE_INFINITY;
+    for (const candidate of candidates) {
+      const inside =
+        candidate.x - r >= LAYOUT_PADDING &&
+        candidate.x + r <= 100 - LAYOUT_PADDING &&
+        candidate.y - r >= LAYOUT_PADDING &&
+        candidate.y + r <= 100 - LAYOUT_PADDING;
+      const clear =
+        inside &&
+        placed.every(
+          (other) =>
+            Math.hypot(candidate.x - other.x, candidate.y - other.y) >=
+            r + other.r + CIRCLE_GAP,
+        );
+      if (!clear) continue;
+
+      const score = Math.hypot(candidate.x - 50, candidate.y - 50);
+      if (score < bestScore) {
+        best = candidate;
+        bestScore = score;
+      }
+    }
+
+    // Never clamp an invalid candidate into the board: that is what caused
+    // cells to land on top of their neighbors in the previous layout.
+    if (!best) return null;
+    placed.push({
+      ...ordered[index],
+      x: best.x,
+      y: best.y,
+      r,
+      color: POLITICIAN_COLORS[ordered[index].name] || COLORS[index % COLORS.length],
+    });
+  }
+  return placed;
+}
+
 // A small local circle pack keeps the original self-contained behavior without an API
 // or runtime dependency. Circles remain proportional and are normalized to the canvas world.
 function computeLeaves(data) {
   if (data.length === 0) return [];
   const total = data.reduce((sum, item) => sum + item.value, 0);
   const ordered = [...data].sort((a, b) => b.value - a.value);
-  const placed = [];
-  ordered.forEach((item, index) => {
-    const r = Math.max(7.2, Math.sqrt(item.value / total) * 47);
-    let x = 50;
-    let y = 50;
-    if (index > 0) {
-      let angle = index * 2.3999632297;
-      let distance = 5;
-      for (let attempt = 0; attempt < 260; attempt += 1) {
-        x = 50 + Math.cos(angle) * distance;
-        y = 50 + Math.sin(angle) * distance;
-        const inside = x - r >= 2 && x + r <= 98 && y - r >= 2 && y + r <= 98;
-        const clear = inside && placed.every((other) => Math.hypot(x - other.x, y - other.y) >= r + other.r + 2.5);
-        if (clear) break;
-        angle += 0.44;
-        distance += 0.72;
+  const baseRadii = ordered.map((item) => Math.max(7.2, Math.sqrt(item.value / total) * 47));
+
+  // A layout can become temporarily impossible after a value grows or a filter
+  // changes. Reduce all radii together until there is a valid, separated pack.
+  for (let scale = 1; scale >= 0.5; scale -= 0.025) {
+    const packed = tryPackCircles(ordered, baseRadii, scale);
+    if (packed) return packed;
+  }
+
+  // This is only a last-resort safety net for unusually large datasets. It still
+  // preserves the non-overlap invariant by using a conservative minimum radius.
+  return tryPackCircles(ordered, baseRadii, 0.5) || [];
+}
+
+function keepCirclesSeparated(circles) {
+  for (let iteration = 0; iteration < 12; iteration += 1) {
+    let moved = false;
+
+    circles.forEach((circle) => {
+      circle.x = Math.min(100 - LAYOUT_PADDING - circle.r, Math.max(LAYOUT_PADDING + circle.r, circle.x));
+      circle.y = Math.min(100 - LAYOUT_PADDING - circle.r, Math.max(LAYOUT_PADDING + circle.r, circle.y));
+    });
+
+    for (let first = 0; first < circles.length; first += 1) {
+      for (let second = first + 1; second < circles.length; second += 1) {
+        const a = circles[first];
+        const b = circles[second];
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        let distance = Math.hypot(dx, dy);
+        const minimumDistance = a.r + b.r + CIRCLE_GAP;
+        if (distance >= minimumDistance) continue;
+
+        if (distance < 0.001) {
+          const angle = (first + 1) * 2.3999632297;
+          dx = Math.cos(angle);
+          dy = Math.sin(angle);
+          distance = 1;
+        }
+
+        const push = (minimumDistance - distance) / 2;
+        const nx = dx / distance;
+        const ny = dy / distance;
+        a.x -= nx * push;
+        a.y -= ny * push;
+        b.x += nx * push;
+        b.y += ny * push;
+        moved = true;
       }
-      x = Math.min(98 - r, Math.max(2 + r, x));
-      y = Math.min(98 - r, Math.max(2 + r, y));
     }
-    placed.push({ ...item, x, y, r, color: POLITICIAN_COLORS[item.name] || COLORS[index % COLORS.length] });
-  });
-  return placed;
+
+    if (!moved) break;
+  }
 }
 
 function FilterSection({ label, options, selected, onSelect, disabled, disabledHint }) {
@@ -441,6 +541,11 @@ export default function PopPersonCanvas() {
           a.r += (target.r - a.r) * lerpFactor;
         }
       });
+      keepCirclesSeparated(
+        leavesRef.current
+          .map((target) => animatedCirclesRef.current.get(target.name))
+          .filter(Boolean),
+      );
       draw();
       raf = requestAnimationFrame(tick);
     }
