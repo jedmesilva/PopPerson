@@ -57,6 +57,14 @@ _Nenhuma preferência registrada._
 - Access location is approximate IP geolocation, not GPS. The server does not return the raw IP to the frontend, and the external lookup can return `Indisponível` when unavailable.
 - The API has in-memory rate limits of 180 requests/minute per IP or anonymous identity, and 20 action requests/minute. Limits reset when the API restarts and should move to shared storage before running multiple instances.
 
+## External hosting
+
+- Vercel uses the root `vercel.json`: install with `pnpm install --frozen-lockfile`, build with the PopPerson filter, and serve `artifacts/pop-person/dist/public`.
+- Railway uses the root `railway.json`: build the API bundle and start `artifacts/api-server/dist/index.mjs`. Railway supplies `PORT`; the API health check is `/api/healthz`.
+- Set `VITE_API_URL` in Vercel to the public Railway URL without `/api`. Optionally set `VITE_WS_URL` to its `wss://` URL; otherwise the front derives it from `VITE_API_URL`.
+- Set `NODE_ENV=production`, `DATABASE_URL`, `SESSION_SECRET`, and `CORS_ORIGIN` in Railway. `CORS_ORIGIN` accepts comma-separated exact Vercel origins.
+- Cross-origin sessions require HTTPS on both services. The API uses `SameSite=None; Secure` cookies in production and CORS credentials.
+
 ## Pointers
 
 - See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details

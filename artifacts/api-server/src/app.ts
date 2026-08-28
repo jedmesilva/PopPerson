@@ -11,6 +11,14 @@ const app: Express = express();
 
 app.set("trust proxy", 1);
 
+const corsOrigins = new Set(
+  (process.env.CORS_ORIGIN ?? "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+);
+const isProduction = process.env.NODE_ENV === "production";
+
 app.use(
   pinoHttp({
     logger,
@@ -30,7 +38,18 @@ app.use(
     },
   }),
 );
-app.use(cors());
+app.use(
+  cors({
+    credentials: true,
+    origin(origin, callback) {
+      if (!origin || corsOrigins.has(origin) || (!isProduction && corsOrigins.size === 0)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error("Origin is not allowed by CORS."));
+    },
+  }),
+);
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

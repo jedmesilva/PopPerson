@@ -83,8 +83,9 @@ export function verifyAnonymousToken(token: unknown): string | null {
 
 export function setAnonymousCookie(res: Response, token: string): void {
   const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  const sameSite = process.env.NODE_ENV === "production" ? "None" : "Lax";
   res.setHeader(
     "Set-Cookie",
-    `${ANONYMOUS_COOKIE_NAME}=${token}; Max-Age=${ANONYMOUS_TOKEN_TTL_SECONDS}; Path=/; HttpOnly; SameSite=Lax${secure}`,
+    `${ANONYMOUS_COOKIE_NAME}=${token}; Max-Age=${ANONYMOUS_TOKEN_TTL_SECONDS}; Path=/; HttpOnly; SameSite=${sameSite}${secure}`,
   );
 }

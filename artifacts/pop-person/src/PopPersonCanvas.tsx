@@ -26,6 +26,16 @@ const MAX_CONCURRENT_PROJECTILES = 24;
 const LAYOUT_PADDING = 2;
 const CIRCLE_GAP = 2.5;
 
+function getWebSocketUrl() {
+  const configuredUrl = import.meta.env.VITE_WS_URL?.trim() || import.meta.env.VITE_API_URL?.trim();
+  if (configuredUrl) {
+    const protocolUrl = configuredUrl.replace(/^http:/, "ws:").replace(/^https:/, "wss:");
+    return `${protocolUrl.replace(/\/+$/, "")}/ws`;
+  }
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${window.location.host}/ws`;
+}
+
 function normalizeLocationValue(value) {
   return String(value ?? "")
     .normalize("NFD")
@@ -483,8 +493,7 @@ export default function PopPersonCanvas() {
     let stopped = false;
 
     function connect() {
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      socket = new WebSocket(`${protocol}//${window.location.host}/ws`);
+      socket = new WebSocket(getWebSocketUrl());
 
       socket.onmessage = (event) => {
         try {
