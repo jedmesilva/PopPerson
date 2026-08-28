@@ -5,13 +5,11 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { PopPersonLevelKey } from './popPersonLevelKey';
+import type { PopPersonActionRuleLevel } from './popPersonActionRuleLevel';
 
-export interface PopPersonLevel {
-  key: PopPersonLevelKey;
-  label: string;
-  powerLabel: string;
-  emoji: string;
+export interface PopPersonActionRule {
+  elementId: string;
+  level: PopPersonActionRuleLevel;
   /** @minimum 1 */
   count: number;
   /** @minimum 0 */
@@ -20,5 +18,7 @@ export interface PopPersonLevel {
   duration: number;
   growthPerHit: number;
   impactMultiplier: number;
+  /** @minimum 0 */
+  price: number;
   shake: boolean;
 }

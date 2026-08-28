@@ -32,6 +32,8 @@ import type {
 const DEFAULT_ROOM_SLUG = "pop-person-default";
 const DEFAULT_ROOM_NAME = "PopPerson";
 const PROCESS_INTERVAL_MS = 500;
+// This is a fixed product rule. It is exposed to the client for display only;
+// scheduling always uses this server-side value.
 const ACTION_DELAY_MS = 10_000;
 const MIN_VALUE = 2;
 const COLORS = [
@@ -45,7 +47,9 @@ const COLORS = [
   "#14b8a6",
 ] as const;
 
-const PEOPLE = [
+// Initial seed only. Existing people and cells are database-owned after the
+// first insert and are never overwritten or reactivated on startup.
+const SEED_PEOPLE = [
   { name: "Marcos Rocha", slug: "marcos-rocha", cargo: "Deputado Federal", cidade: "Belo Horizonte", estado: "MG", pais: "Brasil", status: "titular", value: 68 },
   { name: "Beatriz Alves", slug: "beatriz-alves", cargo: "Senadora", cidade: "Porto Alegre", estado: "RS", pais: "Brasil", status: "titular", value: 52 },
   { name: "Ricardo Aguiar", slug: "ricardo-aguiar", cargo: "Prefeito", cidade: "Recife", estado: "PE", pais: "Brasil", status: "candidato", value: 84 },
@@ -65,7 +69,7 @@ type ActionLevelCode =
   | "apocaliptico";
 
 function isActionLevelCode(value: string): value is ActionLevelCode {
-  return LEVELS.some((level) => level.code === value);
+  return ACTION_LEVEL_SEED.some((level) => level.code === value);
 }
 
 const ELEMENTS: Record<ActionMode, Array<{
@@ -92,7 +96,7 @@ const ELEMENTS: Record<ActionMode, Array<{
   ],
 };
 
-const LEVELS: Array<{
+const ACTION_LEVEL_SEED: Array<{
   code: ActionLevelCode;
   label: string;
   powerLabel: string;
@@ -129,6 +133,12 @@ function snapshotNumber(snapshot: unknown, key: string, fallback: number): numbe
   return toNumber((snapshot as Snapshot)[key], fallback);
 }
 
+function snapshotBoolean(snapshot: unknown, key: string, fallback: boolean): boolean {
+  if (!snapshot || typeof snapshot !== "object") return fallback;
+  const value = (snapshot as Snapshot)[key];
+  return typeof value === "boolean" ? value : fallback;
+}
+
 function toActionStatus(status: string): "queued" | "running" | "completed" {
   return status === "running" || status === "completed" ? status : "queued";
 }
@@ -152,7 +162,7 @@ async function ensureSeedData(): Promise<void> {
     defaultRoomId = room.id;
 
     const locationIds = new Map<string, string>();
-    for (const person of PEOPLE) {
+    for (const person of SEED_PEOPLE) {
       const [location] = await tx
         .insert(locationsTable)
         .values({
@@ -208,7 +218,7 @@ async function ensureSeedData(): Promise<void> {
         .values({
           roomId: room.id,
           personId: dbPerson.id,
-          backgroundColor: COLORS[PEOPLE.indexOf(person) % COLORS.length],
+           backgroundColor: COLORS[SEED_PEOPLE.indexOf(person) % COLORS.length],
           currentValue: String(person.value),
           minimumValue: String(MIN_VALUE),
           maximumValue: "100",
@@ -235,8 +245,8 @@ async function ensureSeedData(): Promise<void> {
       }
     }
 
-    for (let index = 0; index < LEVELS.length; index += 1) {
-      const level = LEVELS[index];
+    for (let index = 0; index < ACTION_LEVEL_SEED.length; index += 1) {
+      const level = ACTION_LEVEL_SEED[index];
       await tx
         .insert(actionLevelsTable)
         .values({
@@ -253,15 +263,18 @@ async function ensureSeedData(): Promise<void> {
           shake: level.shake,
           active: true,
         })
-        .onConflictDoUpdate({
-          target: actionLevelsTable.code,
-          set: {
-            // Existing level settings are owned by the database. This only
-            // backfills the visual icon for rows created before this column
-            // existed.
-            emoji: level.emoji,
-          },
-        });
+        .onConflictDoNothing({ target: actionLevelsTable.code });
+      // Older databases may have the column but no icon yet. Backfill only
+      // null values so an administrator's existing database value wins.
+      await tx
+        .update(actionLevelsTable)
+        .set({ emoji: level.emoji })
+        .where(
+          and(
+            eq(actionLevelsTable.code, level.code),
+            sql`${actionLevelsTable.emoji} IS NULL`,
+          ),
+        );
     }
 
     const dbItems = await tx
@@ -408,6 +421,8 @@ async function getActions(
       levelCount: actionLevelsTable.projectileCount,
       levelStaggerMs: actionLevelsTable.staggerMs,
       levelDurationMs: actionLevelsTable.durationMs,
+      levelGrowthPerHit: actionLevelsTable.growthPerHit,
+      levelImpactMultiplier: actionLevelsTable.impactMultiplier,
       levelShake: actionLevelsTable.shake,
       ruleSnapshot: actionsTable.ruleSnapshot,
     })
@@ -446,6 +461,18 @@ async function getActions(
       "durationMs",
       action.levelDurationMs,
     );
+    const impactMultiplier = snapshotNumber(
+      action.ruleSnapshot,
+      "impactMultiplier",
+      toNumber(action.levelImpactMultiplier, 1),
+    );
+    const growthPerHit = snapshotNumber(
+      action.ruleSnapshot,
+      "growthPerHit",
+      toNumber(action.levelGrowthPerHit) *
+        (toNumber(action.elementForce) / 5) *
+        impactMultiplier,
+    );
 
     return {
       id: action.id,
@@ -457,14 +484,11 @@ async function getActions(
       executeAt: action.executeAt.getTime(),
       completedAt: action.completedAt?.getTime() ?? null,
       count,
-      growthPerHit: snapshotNumber(
-        action.ruleSnapshot,
-        "growthPerHit",
-        0,
-      ),
+      growthPerHit,
+      impactMultiplier,
       staggerMs,
       duration,
-      shake: action.levelShake,
+      shake: snapshotBoolean(action.ruleSnapshot, "shake", action.levelShake),
       element,
     };
   });
@@ -479,7 +503,7 @@ async function currentState(roomId: string): Promise<PopPersonState> {
 }
 
 async function getPopPersonConfig(): Promise<PopPersonConfig> {
-  const [dbItems, dbLevels] = await Promise.all([
+  const [dbItems, dbLevels, dbRules] = await Promise.all([
     db
       .select({
         code: itemsTable.code,
@@ -503,11 +527,25 @@ async function getPopPersonConfig(): Promise<PopPersonConfig> {
         staggerMs: actionLevelsTable.staggerMs,
         durationMs: actionLevelsTable.durationMs,
         growthPerHit: actionLevelsTable.growthPerHit,
+        impactMultiplier: actionLevelsTable.impactMultiplier,
         shake: actionLevelsTable.shake,
       })
       .from(actionLevelsTable)
       .where(eq(actionLevelsTable.active, true))
       .orderBy(asc(actionLevelsTable.sortOrder)),
+    db
+      .select({
+        itemId: itemActionRulesTable.itemId,
+        actionLevelId: itemActionRulesTable.actionLevelId,
+        impactMultiplier: itemActionRulesTable.impactMultiplier,
+        growthPerHit: itemActionRulesTable.growthPerHit,
+        projectileCount: itemActionRulesTable.projectileCount,
+        staggerMs: itemActionRulesTable.staggerMs,
+        durationMs: itemActionRulesTable.durationMs,
+        priceOverride: itemActionRulesTable.priceOverride,
+      })
+      .from(itemActionRulesTable)
+      .where(eq(itemActionRulesTable.active, true)),
   ]);
 
   const elements: PopPersonConfig["elements"] = {
@@ -518,6 +556,10 @@ async function getPopPersonConfig(): Promise<PopPersonConfig> {
   for (const item of dbItems) {
     elements[item.mode].push(toPopPersonElement(item));
   }
+
+  const rulesByPair = new Map(
+    dbRules.map((rule) => [`${rule.itemId}:${rule.actionLevelId}`, rule]),
+  );
 
   return {
     elements,
@@ -539,9 +581,30 @@ async function getPopPersonConfig(): Promise<PopPersonConfig> {
         staggerMs: level.staggerMs,
         duration: level.durationMs,
         growthPerHit: toNumber(level.growthPerHit),
+        impactMultiplier: toNumber(level.impactMultiplier, 1),
         shake: level.shake,
       };
     }),
+    actionRules: dbItems.flatMap((item) =>
+      dbLevels.map((level) => {
+        const values = calculateActionValues(
+          item,
+          level,
+          rulesByPair.get(`${item.code}:${level.code}`),
+        );
+        return {
+          elementId: item.code,
+          level: level.code as ActionLevelCode,
+          count: values.count,
+          staggerMs: values.staggerMs,
+          duration: values.durationMs,
+          growthPerHit: values.growthPerHit,
+          impactMultiplier: values.impactMultiplier,
+          price: values.price,
+          shake: values.shake,
+        };
+      }),
+    ),
     actionDelayMs: ACTION_DELAY_MS,
     minValue: MIN_VALUE,
   };
@@ -585,6 +648,7 @@ function calculateActionValues(
     durationMs: number;
     growthPerHit: string;
     impactMultiplier: string;
+    shake: boolean;
   },
   rule: {
     projectileCount: number | null;
@@ -602,12 +666,18 @@ function calculateActionValues(
     toNumber(rule?.growthPerHit ?? level.growthPerHit) *
     (toNumber(item.impactPower) / 5) *
     toNumber(rule?.impactMultiplier ?? level.impactMultiplier, 1);
+  const impactMultiplier = toNumber(
+    rule?.impactMultiplier ?? level.impactMultiplier,
+    1,
+  );
   const price = toNumber(rule?.priceOverride ?? item.price);
   return {
     count,
     staggerMs,
     durationMs,
     growthPerHit,
+    impactMultiplier,
+    shake: level.shake,
     price,
     totalImpact: growthPerHit * count,
   };
@@ -649,6 +719,7 @@ export async function createPopPersonAction(
         and(
           eq(cellsTable.roomId, roomId),
           eq(cellsTable.active, true),
+          eq(peopleTable.active, true),
           eq(peopleTable.name, input.targetName),
         ),
       )
@@ -699,6 +770,8 @@ export async function createPopPersonAction(
       staggerMs: values.staggerMs,
       durationMs: values.durationMs,
       growthPerHit: values.growthPerHit,
+      impactMultiplier: values.impactMultiplier,
+      shake: values.shake,
       totalImpact: values.totalImpact,
       price: values.price,
       itemCode: item.code,

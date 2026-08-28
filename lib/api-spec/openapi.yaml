@@ -161,7 +161,7 @@ components:
           enum: [m, f]
     PopPersonLevel:
       type: object
-      required: [key, label, powerLabel, emoji, count, staggerMs, duration, growthPerHit, shake]
+      required: [key, label, powerLabel, emoji, count, staggerMs, duration, growthPerHit, impactMultiplier, shake]
       properties:
         key:
           type: string
@@ -183,11 +183,40 @@ components:
           minimum: 0
         growthPerHit:
           type: number
+        impactMultiplier:
+          type: number
+        shake:
+          type: boolean
+    PopPersonActionRule:
+      type: object
+      required: [elementId, level, count, staggerMs, duration, growthPerHit, impactMultiplier, price, shake]
+      properties:
+        elementId:
+          type: string
+        level:
+          type: string
+          enum: [moderado, forte, extremo, devastador, apocaliptico]
+        count:
+          type: number
+          minimum: 1
+        staggerMs:
+          type: number
+          minimum: 0
+        duration:
+          type: number
+          minimum: 0
+        growthPerHit:
+          type: number
+        impactMultiplier:
+          type: number
+        price:
+          type: number
+          minimum: 0
         shake:
           type: boolean
     PopPersonConfig:
       type: object
-      required: [elements, levels, actionDelayMs, minValue]
+      required: [elements, levels, actionRules, actionDelayMs, minValue]
       properties:
         elements:
           type: object
@@ -205,6 +234,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PopPersonLevel"
+        actionRules:
+          type: array
+          items:
+            $ref: "#/components/schemas/PopPersonActionRule"
         actionDelayMs:
           type: number
           minimum: 0
@@ -212,7 +245,7 @@ components:
           type: number
     PopPersonAction:
       type: object
-      required: [id, mode, elementId, level, targetName, status, executeAt, count, growthPerHit, staggerMs, duration, shake, element]
+      required: [id, mode, elementId, level, targetName, status, executeAt, count, growthPerHit, impactMultiplier, staggerMs, duration, shake, element]
       properties:
         id:
           type: string
@@ -239,6 +272,8 @@ components:
           type: number
           minimum: 1
         growthPerHit:
+          type: number
+        impactMultiplier:
           type: number
         staggerMs:
           type: number

@@ -40,6 +40,13 @@ export const getPopPersonResponseConfigLevelsItemStaggerMsMin = 0;
 
 export const getPopPersonResponseConfigLevelsItemDurationMin = 0;
 
+
+export const getPopPersonResponseConfigActionRulesItemStaggerMsMin = 0;
+
+export const getPopPersonResponseConfigActionRulesItemDurationMin = 0;
+
+export const getPopPersonResponseConfigActionRulesItemPriceMin = 0;
+
 export const getPopPersonResponseConfigActionDelayMsMin = 0;
 
 export const getPopPersonResponseStateActionsItemExecuteAtMin = 0;
@@ -82,6 +89,18 @@ export const GetPopPersonResponse = zod.object({
   "staggerMs": zod.number().min(getPopPersonResponseConfigLevelsItemStaggerMsMin),
   "duration": zod.number().min(getPopPersonResponseConfigLevelsItemDurationMin),
   "growthPerHit": zod.number(),
+  "impactMultiplier": zod.number(),
+  "shake": zod.boolean()
+})),
+  "actionRules": zod.array(zod.object({
+  "elementId": zod.string(),
+  "level": zod.enum(['moderado', 'forte', 'extremo', 'devastador', 'apocaliptico']),
+  "count": zod.number().min(1),
+  "staggerMs": zod.number().min(getPopPersonResponseConfigActionRulesItemStaggerMsMin),
+  "duration": zod.number().min(getPopPersonResponseConfigActionRulesItemDurationMin),
+  "growthPerHit": zod.number(),
+  "impactMultiplier": zod.number(),
+  "price": zod.number().min(getPopPersonResponseConfigActionRulesItemPriceMin),
   "shake": zod.boolean()
 })),
   "actionDelayMs": zod.number().min(getPopPersonResponseConfigActionDelayMsMin),
@@ -111,6 +130,7 @@ export const GetPopPersonResponse = zod.object({
   "completedAt": zod.number().min(getPopPersonResponseStateActionsItemCompletedAtMin).nullish(),
   "count": zod.number().min(1),
   "growthPerHit": zod.number(),
+  "impactMultiplier": zod.number(),
   "staggerMs": zod.number().min(getPopPersonResponseStateActionsItemStaggerMsMin),
   "duration": zod.number().min(getPopPersonResponseStateActionsItemDurationMin),
   "shake": zod.boolean(),
@@ -165,6 +185,7 @@ export const GetPopPersonStateResponse = zod.object({
   "completedAt": zod.number().min(getPopPersonStateResponseActionsItemCompletedAtMin).nullish(),
   "count": zod.number().min(1),
   "growthPerHit": zod.number(),
+  "impactMultiplier": zod.number(),
   "staggerMs": zod.number().min(getPopPersonStateResponseActionsItemStaggerMsMin),
   "duration": zod.number().min(getPopPersonStateResponseActionsItemDurationMin),
   "shake": zod.boolean(),
@@ -217,6 +238,7 @@ export const CreatePopPersonActionResponse = zod.object({
   "completedAt": zod.number().min(createPopPersonActionResponseCompletedAtMin).nullish(),
   "count": zod.number().min(1),
   "growthPerHit": zod.number(),
+  "impactMultiplier": zod.number(),
   "staggerMs": zod.number().min(createPopPersonActionResponseStaggerMsMin),
   "duration": zod.number().min(createPopPersonActionResponseDurationMin),
   "shake": zod.boolean(),

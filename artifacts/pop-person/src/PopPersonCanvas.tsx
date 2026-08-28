@@ -233,6 +233,13 @@ export default function PopPersonCanvas() {
   const levels = config?.levels ?? [];
   const levelByKey = useMemo(() => Object.fromEntries(levels.map((level) => [level.key, level])), [levels]);
   const levelKeys = useMemo(() => levels.map((level) => level.key), [levels]);
+  const actionRuleByKey = useMemo(
+    () => Object.fromEntries((config?.actionRules ?? []).map((rule) => [`${rule.elementId}:${rule.level}`, rule])),
+    [config?.actionRules],
+  );
+  const selectedActionRule = modalElement
+    ? actionRuleByKey[`${modalElement.id}:${modalLevel}`]
+    : null;
 
   const viewerCountry = accessLocationQuery.data?.source === "ip" && accessLocationQuery.data.country !== "—"
     ? accessLocationQuery.data.country
@@ -321,6 +328,7 @@ export default function PopPersonCanvas() {
       staggerMs: serverAction.staggerMs,
       duration: serverAction.duration,
       growthPerHit: serverAction.growthPerHit,
+      impactMultiplier: serverAction.impactMultiplier,
       direction,
       emoji: actionElement.emoji,
       level: serverAction.level,
@@ -888,7 +896,8 @@ export default function PopPersonCanvas() {
             <div style={{ display: "flex", flexDirection: "column", gap: "8px", overflowY: "auto" }}>
               {[...activeActions].sort((a, b) => getRemainingUnits(a) - getRemainingUnits(b)).map((a) => ({ kind: "firing", ...a })).concat([...queue].sort((a, b) => a.executeAt - b.executeAt).map((a) => ({ kind: "queued", ...a }))).map((item) => {
                 const color = item.mode === "defender" ? "#22c55e" : "#ef4444";
-                const elementIntensityLabel = `${item.element.label} ${LEVEL_LABEL_BY_GENDER[item.element.gender][item.level]}`;
+                const levelLabel = levelByKey[item.level]?.label ?? item.level;
+                const elementIntensityLabel = `${item.element.label} ${levelLabel}`;
                 const { timeLabel, progress } = getActionTiming(item, performance.now());
                 return (
                   <div key={item.id} data-testid={`queue-item-${item.id}`} style={{ display: "flex", flexDirection: "column", gap: "6px", padding: "10px 12px", borderRadius: "10px", backgroundColor: "#262626" }}>
@@ -959,16 +968,16 @@ export default function PopPersonCanvas() {
                   </div>
                   <div style={{ height: "1px", backgroundColor: "#333" }} />
                   <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: "8px" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}><span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Intensidade</span><span style={{ color: "#f5f5f5", fontSize: "13px", fontWeight: 700 }}>{levelByKey[modalLevel].emoji} {LEVEL_LABEL_BY_MODE[pendingMode][modalLevel]}</span></div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}><span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Intensidade</span><span style={{ color: "#f5f5f5", fontSize: "13px", fontWeight: 700 }}>{levelByKey[modalLevel]?.emoji} {levelByKey[modalLevel]?.label ?? modalLevel}</span></div>
                     <div>
                       <input data-testid="input-intensity" type="range" min={0} max={levelKeys.length - 1} step={1} value={levelKeys.indexOf(modalLevel)} onChange={(e) => setModalLevel(levelKeys[Number(e.target.value)])} style={{ width: "100%", height: "6px", accentColor: pendingMode === "defender" ? "#22c55e" : "#ef4444", cursor: "pointer" }} />
-                      <div style={{ position: "relative", height: "14px", marginTop: "4px" }}>{levelKeys.map((key, i) => { const isSelected = modalLevel === key; const percent = (i / (levelKeys.length - 1)) * 100; return <button data-testid={`button-level-${key}`} key={key} type="button" onClick={() => setModalLevel(key)} aria-label={LEVEL_LABEL_BY_MODE[pendingMode][key]} style={{ position: "absolute", left: `${percent}%`, transform: i === 0 ? "translateX(0)" : i === levelKeys.length - 1 ? "translateX(-100%)" : "translateX(-50%)", background: "none", border: "none", padding: 0, cursor: "pointer", whiteSpace: "nowrap", fontSize: "9px", fontFamily: "monospace", fontWeight: isSelected ? 700 : 400, color: isSelected ? pendingMode === "defender" ? "#4ade80" : "#f87171" : "#525252" }}>{levelByKey[key].powerLabel}</button>; })}</div>
+                      <div style={{ position: "relative", height: "14px", marginTop: "4px" }}>{levelKeys.map((key, i) => { const isSelected = modalLevel === key; const percent = levelKeys.length > 1 ? (i / (levelKeys.length - 1)) * 100 : 0; return <button data-testid={`button-level-${key}`} key={key} type="button" onClick={() => setModalLevel(key)} aria-label={levelByKey[key]?.label ?? key} style={{ position: "absolute", left: `${percent}%`, transform: i === 0 ? "translateX(0)" : i === levelKeys.length - 1 ? "translateX(-100%)" : "translateX(-50%)", background: "none", border: "none", padding: 0, cursor: "pointer", whiteSpace: "nowrap", fontSize: "9px", fontFamily: "monospace", fontWeight: isSelected ? 700 : 400, color: isSelected ? pendingMode === "defender" ? "#4ade80" : "#f87171" : "#525252" }}>{levelByKey[key]?.powerLabel}</button>; })}</div>
                     </div>
                   </div>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderRadius: "10px", backgroundColor: "#262626", border: "1px solid #333" }}><div style={{ display: "flex", flexDirection: "column", gap: "3px", minWidth: 0 }}><span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Custo da ação</span><span style={{ color: "#f5f5f5", fontSize: "13px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{modalElement.label} {LEVEL_LABEL_BY_GENDER[modalElement.gender][modalLevel]}</span></div><span style={{ color: "#4ade80", fontSize: "17px", fontWeight: 700, fontFamily: "monospace", flexShrink: 0 }}>{formatBRL(levelByKey[modalLevel].count * modalElement.price)}</span></div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderRadius: "10px", backgroundColor: "#262626", border: "1px solid #333" }}><div style={{ display: "flex", flexDirection: "column", gap: "3px", minWidth: 0 }}><span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Custo da ação</span><span style={{ color: "#f5f5f5", fontSize: "13px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{modalElement.label} {levelByKey[modalLevel]?.label ?? modalLevel}</span></div><span style={{ color: "#4ade80", fontSize: "17px", fontWeight: 700, fontFamily: "monospace", flexShrink: 0 }}>{selectedActionRule ? formatBRL(selectedActionRule.price) : "—"}</span></div>
                 {createActionMutation.error && <span style={{ color: "#fca5a5", fontSize: "11px" }}>{actionWasRateLimited ? "Muitas ações em pouco tempo. Aguarde um instante e tente novamente." : "Não foi possível enviar esta ação. Tente novamente."}</span>}
-                <button data-testid="button-send-action" onClick={confirmAction} disabled={createActionMutation.isPending} style={{ padding: "10px", borderRadius: "9999px", backgroundColor: createActionMutation.isPending ? "#525252" : "#f5f5f5", color: "#0a0a0a", fontWeight: 700, border: "none", cursor: createActionMutation.isPending ? "wait" : "pointer" }}>{createActionMutation.isPending ? "Enviando…" : `Enviar (${config.actionDelayMs / 1000}s)`}</button>
+                 <button data-testid="button-send-action" onClick={confirmAction} disabled={createActionMutation.isPending || !selectedActionRule} style={{ padding: "10px", borderRadius: "9999px", backgroundColor: createActionMutation.isPending || !selectedActionRule ? "#525252" : "#f5f5f5", color: "#0a0a0a", fontWeight: 700, border: "none", cursor: createActionMutation.isPending ? "wait" : "pointer" }}>{createActionMutation.isPending ? "Enviando…" : `Enviar (${config.actionDelayMs / 1000}s)`}</button>
               </>
             )}
           </div>

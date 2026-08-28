@@ -27,6 +27,7 @@ export interface PopPersonAction {
   /** @minimum 1 */
   count: number;
   growthPerHit: number;
+  impactMultiplier: number;
   /** @minimum 0 */
   staggerMs: number;
   /** @minimum 0 */

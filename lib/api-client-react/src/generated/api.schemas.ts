@@ -89,6 +89,34 @@ export interface PopPersonLevel {
   /** @minimum 0 */
   duration: number;
   growthPerHit: number;
+  impactMultiplier: number;
+  shake: boolean;
+}
+
+export type PopPersonActionRuleLevel = typeof PopPersonActionRuleLevel[keyof typeof PopPersonActionRuleLevel];
+
+
+export const PopPersonActionRuleLevel = {
+  moderado: 'moderado',
+  forte: 'forte',
+  extremo: 'extremo',
+  devastador: 'devastador',
+  apocaliptico: 'apocaliptico',
+} as const;
+
+export interface PopPersonActionRule {
+  elementId: string;
+  level: PopPersonActionRuleLevel;
+  /** @minimum 1 */
+  count: number;
+  /** @minimum 0 */
+  staggerMs: number;
+  /** @minimum 0 */
+  duration: number;
+  growthPerHit: number;
+  impactMultiplier: number;
+  /** @minimum 0 */
+  price: number;
   shake: boolean;
 }
 
@@ -100,6 +128,7 @@ export type PopPersonConfigElements = {
 export interface PopPersonConfig {
   elements: PopPersonConfigElements;
   levels: PopPersonLevel[];
+  actionRules: PopPersonActionRule[];
   /** @minimum 0 */
   actionDelayMs: number;
   minValue: number;
@@ -150,6 +179,7 @@ export interface PopPersonAction {
   /** @minimum 1 */
   count: number;
   growthPerHit: number;
+  impactMultiplier: number;
   /** @minimum 0 */
   staggerMs: number;
   /** @minimum 0 */

@@ -17,6 +17,8 @@ export * from './popPersonActionInputLevel';
 export * from './popPersonActionInputMode';
 export * from './popPersonActionLevel';
 export * from './popPersonActionMode';
+export * from './popPersonActionRule';
+export * from './popPersonActionRuleLevel';
 export * from './popPersonActionStatus';
 export * from './popPersonBootstrap';
 export * from './popPersonConfig';
