@@ -534,8 +534,9 @@ export default function PopPersonCanvas() {
       },
       {
         onSuccess: (action) => {
+          const alreadySeen = seenServerActionIdsRef.current.has(action.id);
           seenServerActionIdsRef.current.add(action.id);
-          queueAction(action);
+          if (!alreadySeen) queueAction(action);
           closeModal();
           setSelectedCell(null);
         },
