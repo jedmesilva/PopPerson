@@ -100,7 +100,7 @@ components:
         - status
     AccessLocation:
       type: object
-      required: [source, city, region, country, countryCode, timezone]
+      required: [source, city, region, regionCode, country, countryCode, timezone]
       properties:
         source:
           type: string
@@ -108,6 +108,8 @@ components:
         city:
           type: string
         region:
+          type: string
+        regionCode:
           type: string
         country:
           type: string
@@ -117,7 +119,7 @@ components:
           type: string
     PopPerson:
       type: object
-      required: [name, cargo, cidade, estado, pais, status, value, color]
+      required: [name, cargo, cidade, estado, estadoCodigo, pais, paisCodigo, status, value, color]
       properties:
         name:
           type: string
@@ -127,7 +129,11 @@ components:
           type: string
         estado:
           type: string
+        estadoCodigo:
+          type: string
         pais:
+          type: string
+        paisCodigo:
           type: string
         status:
           type: string

@@ -22,6 +22,7 @@ export interface AccessLocation {
   source: AccessLocationSource;
   city: string;
   region: string;
+  regionCode: string;
   country: string;
   countryCode: string;
   timezone: string;
@@ -40,7 +41,9 @@ export interface PopPerson {
   cargo: string;
   cidade: string;
   estado: string;
+  estadoCodigo: string;
   pais: string;
+  paisCodigo: string;
   status: PopPersonStatus;
   value: number;
   color: string;

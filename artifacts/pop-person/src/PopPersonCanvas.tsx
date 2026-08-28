@@ -34,6 +34,14 @@ const MAX_CONCURRENT_PROJECTILES = 24;
 const LAYOUT_PADDING = 2;
 const CIRCLE_GAP = 2.5;
 
+function normalizeLocationValue(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLocaleLowerCase();
+}
+
 function formatBRL(value) {
   return `R$ ${value.toFixed(2).replace(".", ",")}`;
 }
@@ -197,8 +205,14 @@ function FilterSection({ label, options, selected, onSelect, disabled, disabledH
 }
 
 export default function PopPersonCanvas() {
-  useGetAccessLocation();
-  const bootstrapQuery = useGetPopPerson();
+  const accessLocationQuery = useGetAccessLocation();
+  const bootstrapQuery = useGetPopPerson({
+    query: {
+      // Resolve location first so the first page request and the location
+      // event share the same anonymous session cookie.
+      enabled: accessLocationQuery.isFetched,
+    },
+  });
   const stateQuery = useGetPopPersonState({
     query: {
       enabled: Boolean(bootstrapQuery.data),
@@ -221,13 +235,21 @@ export default function PopPersonCanvas() {
   const [activeActions, setActiveActions] = useState([]);
   const [showRecenter, setShowRecenter] = useState(false);
   const [, forceTick] = useState(0);
+  const locationDefaultsAppliedRef = useRef(false);
   const config = bootstrapQuery.data?.config;
   const elements = config?.elements ?? { atacar: [], defender: [] };
   const levels = config?.levels ?? [];
   const levelByKey = useMemo(() => Object.fromEntries(levels.map((level) => [level.key, level])), [levels]);
   const levelKeys = useMemo(() => levels.map((level) => level.key), [levels]);
 
-  const paisOptions = useMemo(() => ["Todos", ...Array.from(new Set(dataset.map((d) => d.pais))).sort()], [dataset]);
+  const viewerCountry = accessLocationQuery.data?.source === "ip" && accessLocationQuery.data.country !== "—"
+    ? accessLocationQuery.data.country
+    : null;
+  const paisOptions = useMemo(() => {
+    const options = new Set(dataset.map((d) => d.pais));
+    if (viewerCountry) options.add(viewerCountry);
+    return ["Todos", ...Array.from(options).sort()];
+  }, [dataset, viewerCountry]);
   const estadoOptions = useMemo(() => {
     const scoped = filters.pais === "Todos" ? dataset : dataset.filter((d) => d.pais === filters.pais);
     return ["Todos", ...Array.from(new Set(scoped.map((d) => d.estado))).sort()];
@@ -243,6 +265,41 @@ export default function PopPersonCanvas() {
   const activeFilterCount = (filters.pais !== "Todos" ? 1 : 0) + (filters.estado !== "Todos" ? 1 : 0) + (filters.cidade !== "Todos" ? 1 : 0);
   const filteredDataset = useMemo(() => dataset.filter((d) => (filters.pais === "Todos" || d.pais === filters.pais) && (filters.estado === "Todos" || d.estado === filters.estado) && (filters.cidade === "Todos" || d.cidade === filters.cidade)), [dataset, filters]);
   const leaves = useMemo(() => computeLeaves(filteredDataset), [filteredDataset]);
+
+  useEffect(() => {
+    const location = accessLocationQuery.data;
+    if (locationDefaultsAppliedRef.current || !location || dataset.length === 0) return;
+    locationDefaultsAppliedRef.current = true;
+    if (location.source !== "ip") return;
+
+    const countryMatch = dataset.find(
+      (person) => normalizeLocationValue(person.paisCodigo) === normalizeLocationValue(location.countryCode),
+    );
+    const selectedCountry = countryMatch?.pais ?? location.country;
+    const countryDataset = countryMatch
+      ? dataset.filter((person) => person.pais === selectedCountry)
+      : [];
+    const stateMatch = countryMatch && location.regionCode !== "—"
+      ? countryDataset.find(
+          (person) => normalizeLocationValue(person.estadoCodigo) === normalizeLocationValue(location.regionCode),
+        )
+      : null;
+    const selectedState = stateMatch?.estado ?? "Todos";
+    const stateDataset = stateMatch
+      ? countryDataset.filter((person) => person.estado === selectedState)
+      : [];
+    const cityMatch = stateMatch && location.city !== "—"
+      ? stateDataset.find(
+          (person) => normalizeLocationValue(person.cidade) === normalizeLocationValue(location.city),
+        )
+      : null;
+
+    setFilters({
+      pais: selectedCountry,
+      estado: selectedState,
+      cidade: cityMatch?.cidade ?? "Todos",
+    });
+  }, [accessLocationQuery.data, dataset]);
 
   const leavesRef = useRef([]);
   const selectedCellRef = useRef(null);

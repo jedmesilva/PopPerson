@@ -25,6 +25,7 @@ export const GetAccessLocationResponse = zod.object({
   "source": zod.enum(['ip', 'local', 'unavailable']),
   "city": zod.string(),
   "region": zod.string(),
+  "regionCode": zod.string(),
   "country": zod.string(),
   "countryCode": zod.string(),
   "timezone": zod.string()
@@ -88,7 +89,9 @@ export const GetPopPersonResponse = zod.object({
   "cargo": zod.string(),
   "cidade": zod.string(),
   "estado": zod.string(),
+  "estadoCodigo": zod.string(),
   "pais": zod.string(),
+  "paisCodigo": zod.string(),
   "status": zod.enum(['titular', 'candidato']),
   "value": zod.number(),
   "color": zod.string()
@@ -125,7 +128,9 @@ export const GetPopPersonStateResponse = zod.object({
   "cargo": zod.string(),
   "cidade": zod.string(),
   "estado": zod.string(),
+  "estadoCodigo": zod.string(),
   "pais": zod.string(),
+  "paisCodigo": zod.string(),
   "status": zod.enum(['titular', 'candidato']),
   "value": zod.number(),
   "color": zod.string()

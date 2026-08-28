@@ -5,14 +5,16 @@ Aplicativo interativo para visualizar pessoas públicas em círculos e executar 
 ## Run & Operate
 
 - `pnpm install --frozen-lockfile` — install all workspace dependencies
-- Use the Replit Run button (`Project`) to start `PopPerson Web` (frontend) and `PopPerson API` (backend) in parallel
+- Use the `PopPerson Web` and `PopPerson API` workflows to start the frontend and backend in parallel
 - `PopPerson Web` listens on port 3000 and `PopPerson API` listens on port 8080
 - `pnpm --filter @workspace/pop-person run dev` — run the main Vite app locally when `PORT` and `BASE_PATH` are set
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-server run dev` — run the API service at `/api`
 - `GET /api/access/location` — returns the approximate city, region, and country for the current access using the request IP; local development is labeled as `Local`
+- `GET /api/access/location` also records the resolved location, anonymous session, approximate IP, user agent, request path, and access time in `access_events`
 - API requests receive an anonymous `HttpOnly` cookie signed with `SESSION_SECRET`; it is an opaque identifier and is intentionally not bound to IP, network, or location
+- The web app resolves the access location before bootstrapping the canvas, then applies country → state → city defaults when the catalog has a matching location
 
 ## Stack
 

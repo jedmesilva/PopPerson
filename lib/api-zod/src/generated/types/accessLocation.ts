@@ -11,6 +11,7 @@ export interface AccessLocation {
   source: AccessLocationSource;
   city: string;
   region: string;
+  regionCode: string;
   country: string;
   countryCode: string;
   timezone: string;

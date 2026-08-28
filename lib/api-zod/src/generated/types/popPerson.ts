@@ -12,7 +12,9 @@ export interface PopPerson {
   cargo: string;
   cidade: string;
   estado: string;
+  estadoCodigo: string;
   pais: string;
+  paisCodigo: string;
   status: PopPersonStatus;
   value: number;
   color: string;

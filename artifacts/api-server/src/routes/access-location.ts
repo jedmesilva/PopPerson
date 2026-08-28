@@ -1,10 +1,12 @@
 import { Router, type IRouter, type Request } from "express";
 import { GetAccessLocationResponse } from "@workspace/api-zod";
+import { accessEventsTable, db } from "@workspace/db";
 
 type IpWhoResponse = {
   success?: boolean;
   city?: string;
   region?: string;
+  region_code?: string;
   country?: string;
   country_code?: string;
   timezone?: { id?: string } | string;
@@ -41,18 +43,30 @@ function localLocation() {
     source: "local" as const,
     city: "Local",
     region: "Ambiente de desenvolvimento",
+    regionCode: "LOCAL",
     country: "Local",
     countryCode: "LOCAL",
     timezone: "—",
   };
 }
 
-router.get("/access/location", async (req, res): Promise<void> => {
+function unavailableLocation() {
+  return {
+    source: "unavailable" as const,
+    city: "Indisponível",
+    region: "—",
+    regionCode: "—",
+    country: "—",
+    countryCode: "—",
+    timezone: "—",
+  };
+}
+
+async function resolveAccessLocation(req: Request) {
   const ip = getClientIp(req);
 
   if (ip === "unknown" || isLocalIp(ip)) {
-    res.json(GetAccessLocationResponse.parse(localLocation()));
-    return;
+    return localLocation();
   }
 
   try {
@@ -66,17 +80,7 @@ router.get("/access/location", async (req, res): Promise<void> => {
 
     if (!response.ok) {
       req.log.warn({ statusCode: response.status }, "IP geolocation service returned an error");
-      res.json(
-        GetAccessLocationResponse.parse({
-          source: "unavailable",
-          city: "Indisponível",
-          region: "—",
-          country: "—",
-          countryCode: "—",
-          timezone: "—",
-        }),
-      );
-      return;
+      return unavailableLocation();
     }
 
     const data = (await response.json()) as IpWhoResponse;
@@ -85,42 +89,52 @@ router.get("/access/location", async (req, res): Promise<void> => {
 
     if (!data.success || !data.country) {
       req.log.warn("IP geolocation service could not resolve this address");
-      res.json(
-        GetAccessLocationResponse.parse({
-          source: "unavailable",
-          city: "Indisponível",
-          region: "—",
-          country: "—",
-          countryCode: "—",
-          timezone: "—",
-        }),
-      );
-      return;
+      return unavailableLocation();
     }
 
-    res.json(
-      GetAccessLocationResponse.parse({
-        source: "ip",
-        city: data.city || "—",
-        region: data.region || "—",
-        country: data.country,
-        countryCode: data.country_code || "—",
-        timezone: timezone || "—",
-      }),
-    );
+    return {
+      source: "ip" as const,
+      city: data.city || "—",
+      region: data.region || "—",
+      regionCode: data.region_code || "—",
+      country: data.country,
+      countryCode: data.country_code || "—",
+      timezone: timezone || "—",
+    };
   } catch (error) {
     req.log.warn({ err: error }, "IP geolocation lookup failed");
-    res.json(
-      GetAccessLocationResponse.parse({
-        source: "unavailable",
-        city: "Indisponível",
-        region: "—",
-        country: "—",
-        countryCode: "—",
-        timezone: "—",
-      }),
-    );
+    return unavailableLocation();
   }
+}
+
+async function recordAccessEvent(req: Request, location: Awaited<ReturnType<typeof resolveAccessLocation>>) {
+  const ip = getClientIp(req);
+  await db.insert(accessEventsTable).values({
+    sessionId: req.res?.locals?.anonymousSessionId ?? null,
+    ipAddress: ip === "unknown" ? null : ip,
+    userAgent: req.get("user-agent") ?? null,
+    city: location.city,
+    region: location.region,
+    country: location.country,
+    countryCode: location.countryCode,
+    timezone: location.timezone,
+    locationSource: location.source,
+    requestPath: req.originalUrl?.split("?")[0] ?? req.path,
+  });
+}
+
+router.get("/access/location", async (req, res): Promise<void> => {
+  const location = await resolveAccessLocation(req);
+
+  try {
+    await recordAccessEvent(req, location);
+  } catch (error) {
+    req.log.error({ err: error }, "Could not record access location");
+    res.status(500).json({ error: "Não foi possível registrar a origem do acesso." });
+    return;
+  }
+
+  res.json(GetAccessLocationResponse.parse(location));
 });
 
 export default router;
