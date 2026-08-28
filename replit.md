@@ -5,7 +5,8 @@ Aplicativo interativo para visualizar pessoas públicas em círculos e executar 
 ## Run & Operate
 
 - `pnpm install --frozen-lockfile` — install all workspace dependencies
-- Use the Replit Run button to start `PopPerson Web` (frontend) and `PopPerson API` (backend)
+- Use the Replit Run button (`Project`) to start `PopPerson Web` (frontend) and `PopPerson API` (backend) in parallel
+- `PopPerson Web` listens on port 3000 and `PopPerson API` listens on port 8080
 - `pnpm --filter @workspace/pop-person run dev` — run the main Vite app locally when `PORT` and `BASE_PATH` are set
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
