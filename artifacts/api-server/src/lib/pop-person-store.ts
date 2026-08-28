@@ -124,7 +124,7 @@ async function getDataset(roomId: string): Promise<PopPerson[]> {
         categoryParentId: categoriesTable.parentId,
         status: peopleTable.status,
         cidade: locationsTable.city,
-        estado: locationsTable.stateCode,
+        estado: locationsTable.state,
         estadoCodigo: locationsTable.stateCode,
         pais: locationsTable.country,
         paisCodigo: locationsTable.countryCode,
