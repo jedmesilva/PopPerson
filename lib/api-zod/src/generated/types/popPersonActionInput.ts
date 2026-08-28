@@ -13,4 +13,9 @@ export interface PopPersonActionInput {
   elementId: string;
   level: PopPersonActionInputLevel;
   targetName: string;
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
+  idempotencyKey?: string;
 }

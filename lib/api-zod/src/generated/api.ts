@@ -148,11 +148,16 @@ export const GetPopPersonStateResponse = zod.object({
 /**
  * @summary Queue an attack or defense action
  */
+export const createPopPersonActionBodyIdempotencyKeyMax = 160;
+
+
+
 export const CreatePopPersonActionBody = zod.object({
   "mode": zod.enum(['atacar', 'defender']),
   "elementId": zod.string(),
   "level": zod.enum(['moderado', 'forte', 'extremo', 'devastador', 'apocaliptico']),
-  "targetName": zod.string()
+  "targetName": zod.string(),
+  "idempotencyKey": zod.string().min(1).max(createPopPersonActionBodyIdempotencyKeyMax).optional()
 })
 
 export const createPopPersonActionResponseExecuteAtMin = 0;

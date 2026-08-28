@@ -5,20 +5,31 @@ import {
   setAnonymousCookie,
   verifyAnonymousToken,
 } from "../lib/anonymous-token";
+import { ensureAnonymousSession } from "../lib/anonymous-session";
 
-export const anonymousIdentity: RequestHandler = (req, res, next): void => {
+export const anonymousIdentity: RequestHandler = async (req, res, next): Promise<void> => {
+  let token = req.cookies?.[ANONYMOUS_COOKIE_NAME];
   const existingId = verifyAnonymousToken(
-    req.cookies?.[ANONYMOUS_COOKIE_NAME],
+    token,
   );
 
   if (existingId) {
     res.locals.anonymousId = existingId;
-    next();
-    return;
+  } else {
+    const created = createAnonymousToken();
+    token = created.token;
+    res.locals.anonymousId = created.anonymousId;
+    setAnonymousCookie(res, created.token);
   }
 
-  const created = createAnonymousToken();
-  res.locals.anonymousId = created.anonymousId;
-  setAnonymousCookie(res, created.token);
-  next();
+  try {
+    res.locals.anonymousSessionId = await ensureAnonymousSession(
+      res.locals.anonymousId,
+      token,
+      req.get("user-agent") ?? undefined,
+    );
+    next();
+  } catch (error) {
+    next(error);
+  }
 };

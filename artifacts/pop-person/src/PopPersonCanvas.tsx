@@ -227,13 +227,6 @@ export default function PopPersonCanvas() {
   const levelByKey = useMemo(() => Object.fromEntries(levels.map((level) => [level.key, level])), [levels]);
   const levelKeys = useMemo(() => levels.map((level) => level.key), [levels]);
 
-  useEffect(() => {
-    if (bootstrapQuery.data?.state.dataset) setDataset(bootstrapQuery.data.state.dataset);
-  }, [bootstrapQuery.data]);
-  useEffect(() => {
-    if (stateQuery.data?.dataset) setDataset(stateQuery.data.dataset);
-  }, [stateQuery.data]);
-
   const paisOptions = useMemo(() => ["Todos", ...Array.from(new Set(dataset.map((d) => d.pais))).sort()], [dataset]);
   const estadoOptions = useMemo(() => {
     const scoped = filters.pais === "Todos" ? dataset : dataset.filter((d) => d.pais === filters.pais);
@@ -284,6 +277,30 @@ export default function PopPersonCanvas() {
     const localExecuteAt = performance.now() + Math.max(0, serverAction.executeAt - Date.now());
     setQueue((prev) => [...prev, { id: serverAction.id, mode: serverAction.mode, element: actionElement, level: serverAction.level, targetName: serverAction.targetName, executeAt: localExecuteAt }]);
   }, []);
+  const reconcileServerState = useCallback((serverState) => {
+    if (serverState?.dataset) setDataset(serverState.dataset);
+    if (!Array.isArray(serverState?.actions)) return;
+
+    serverState.actions.forEach((serverAction) => {
+      if (seenServerActionIdsRef.current.has(serverAction.id)) return;
+      const actionElement = (config?.elements?.[serverAction.mode] ?? []).find(
+        (element) => element.id === serverAction.elementId,
+      );
+      if (!actionElement || serverAction.status === "completed") return;
+      seenServerActionIdsRef.current.add(serverAction.id);
+      queueAction(serverAction, actionElement);
+    });
+  }, [config, queueAction]);
+  useEffect(() => {
+    if (bootstrapQuery.data?.state) {
+      reconcileServerState(bootstrapQuery.data.state);
+    }
+  }, [bootstrapQuery.data, reconcileServerState]);
+  useEffect(() => {
+    if (stateQuery.data) {
+      reconcileServerState(stateQuery.data);
+    }
+  }, [stateQuery.data, reconcileServerState]);
 
   useEffect(() => {
     if (!config) return undefined;
@@ -301,16 +318,7 @@ export default function PopPersonCanvas() {
           const message = JSON.parse(event.data);
           if (!message?.state?.dataset || !Array.isArray(message.state.actions)) return;
 
-          setDataset(message.state.dataset);
-          message.state.actions.forEach((serverAction) => {
-            if (seenServerActionIdsRef.current.has(serverAction.id)) return;
-            const actionElement = (config.elements?.[serverAction.mode] ?? []).find(
-              (element) => element.id === serverAction.elementId,
-            );
-            if (!actionElement || serverAction.status === "completed") return;
-            seenServerActionIdsRef.current.add(serverAction.id);
-            queueAction(serverAction, actionElement);
-          });
+           reconcileServerState(message.state);
         } catch {
           // Ignore malformed messages and let the polling fallback reconcile state.
         }
@@ -328,7 +336,7 @@ export default function PopPersonCanvas() {
       window.clearTimeout(retryTimer);
       socket?.close();
     };
-  }, [config, queueAction]);
+  }, [config, reconcileServerState]);
   const getRemainingUnits = useCallback((item) => {
     const emitter = emittersRef.current.find((e) => e.id === item.id);
     return (emitter ? emitter.remaining : 0) + projectilesRef.current.filter((p) => p.firingId === item.id).length;
@@ -379,6 +387,7 @@ export default function PopPersonCanvas() {
           elementId: modalElement.id,
           level: modalLevel,
           targetName: selectedCell,
+          idempotencyKey: crypto.randomUUID(),
         },
       },
       {

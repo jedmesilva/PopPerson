@@ -18,8 +18,8 @@ function sendState(socket: WebSocket, type: PopPersonRealtimeMessage["type"], st
 export function registerPopPersonRealtime(
   webSocketServer: WebSocketServer,
 ): void {
-  webSocketServer.on("connection", (socket) => {
-    sendState(socket, "snapshot", getPopPersonState());
+  webSocketServer.on("connection", async (socket) => {
+    sendState(socket, "snapshot", await getPopPersonState());
   });
 
   subscribePopPersonState((state) => {

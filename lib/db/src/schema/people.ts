@@ -20,6 +20,7 @@ export const peopleTable = pgTable(
     name: text("name").notNull(),
     slug: varchar("slug", { length: 160 }).notNull().unique(),
     roleTitle: text("role_title"),
+    status: varchar("status", { length: 32 }).notNull().default("titular"),
     imageUrl: text("image_url"),
     locationId: uuid("location_id").references(() => locationsTable.id, {
       onDelete: "restrict",

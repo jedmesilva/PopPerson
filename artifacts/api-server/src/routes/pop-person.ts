@@ -14,15 +14,17 @@ import { actionRateLimit } from "../middlewares/rate-limit";
 
 const router: IRouter = Router();
 
-router.get("/pop-person", (_req, res) => {
-  res.json(GetPopPersonResponse.parse(getPopPersonBootstrap()));
+router.get("/pop-person", async (req, res): Promise<void> => {
+  const data = await getPopPersonBootstrap(res.locals.anonymousSessionId);
+  res.json(GetPopPersonResponse.parse(data));
 });
 
-router.get("/pop-person/state", (_req, res) => {
-  res.json(GetPopPersonStateResponse.parse(getPopPersonState()));
+router.get("/pop-person/state", async (req, res): Promise<void> => {
+  const data = await getPopPersonState(res.locals.anonymousSessionId);
+  res.json(GetPopPersonStateResponse.parse(data));
 });
 
-router.post("/pop-person/actions", actionRateLimit, (req, res) => {
+router.post("/pop-person/actions", actionRateLimit, async (req, res): Promise<void> => {
   const parsed = CreatePopPersonActionBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -30,7 +32,10 @@ router.post("/pop-person/actions", actionRateLimit, (req, res) => {
   }
 
   try {
-    const action = createPopPersonAction(parsed.data);
+    const action = await createPopPersonAction(
+      parsed.data,
+      res.locals.anonymousSessionId,
+    );
     res.status(201).json(CreatePopPersonActionResponse.parse(action));
   } catch (error) {
     res.status(400).json({

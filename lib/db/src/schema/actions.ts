@@ -54,6 +54,7 @@ export const actionsTable = pgTable(
     status: actionStatusEnum("status").notNull().default("queued"),
     requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
     scheduledFor: timestamp("scheduled_for", { withTimezone: true }).notNull(),
+    completesAt: timestamp("completes_at", { withTimezone: true }).notNull(),
     activatedAt: timestamp("activated_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
