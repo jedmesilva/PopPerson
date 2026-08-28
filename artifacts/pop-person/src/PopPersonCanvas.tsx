@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { SlidersHorizontal, ArrowLeft, X, ChevronDown, Locate } from "lucide-react";
+import { SlidersHorizontal, ArrowLeft, X, ChevronDown, Locate, Search } from "lucide-react";
 import {
   useCreatePopPersonAction,
   useGetAccessLocation,
@@ -835,7 +835,7 @@ export default function PopPersonCanvas() {
         <canvas data-testid="canvas-politicians" ref={canvasRef} style={{ display: "block", width: "100%", height: "100%", touchAction: "none", cursor: "grab" }} />
         {leaves.length === 0 && (
           <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "10px", padding: "24px", textAlign: "center" }}>
-            <span style={{ fontSize: "28px" }}>🔍</span>
+            <Search size={28} strokeWidth={1.8} aria-hidden="true" style={{ color: "#737373" }} />
             <span data-testid="text-empty-state" style={{ color: "#f5f5f5", fontSize: "14px", fontWeight: 700 }}>Nenhum político encontrado</span>
             <span style={{ color: "#737373", fontSize: "12px" }}>Tente ajustar ou limpar os filtros aplicados</span>
             <button data-testid="button-adjust-filters" onClick={() => setShowFiltersModal(true)} style={{ marginTop: "6px", padding: "8px 16px", borderRadius: "9999px", backgroundColor: "#262626", color: "#f5f5f5", fontSize: "12px", fontWeight: 700, border: "1px solid #333", cursor: "pointer" }}>Ajustar filtros</button>
