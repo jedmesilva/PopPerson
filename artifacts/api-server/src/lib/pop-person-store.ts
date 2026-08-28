@@ -32,6 +32,8 @@ import type {
 const DEFAULT_ROOM_SLUG = "pop-person-default";
 const DEFAULT_ROOM_NAME = "PopPerson";
 const PROCESS_INTERVAL_MS = 500;
+const ACTION_DELAY_MS = 10_000;
+const MIN_VALUE = 2;
 const COLORS = [
   "#6366f1",
   "#22c55e",
@@ -103,21 +105,6 @@ const LEVELS: Array<{
   { code: "devastador", label: "Devastador", powerLabel: "500x", emoji: "🌋", projectileCount: 500, staggerMs: 25, durationMs: 260, growthPerHit: 1.2, shake: true },
   { code: "apocaliptico", label: "Apocalíptico", powerLabel: "1.000x", emoji: "☄️", projectileCount: 1000, staggerMs: 15, durationMs: 220, growthPerHit: 1.2, shake: true },
 ];
-
-const CONFIG: PopPersonConfig = {
-  elements: {
-    atacar: ELEMENTS.atacar.map(({ code, ...element }) => ({ id: code, ...element })),
-    defender: ELEMENTS.defender.map(({ code, ...element }) => ({ id: code, ...element })),
-  },
-  levels: LEVELS.map(({ code, projectileCount, durationMs, ...level }) => ({
-    key: code,
-    count: projectileCount,
-    duration: durationMs,
-    ...level,
-  })),
-  actionDelayMs: 10_000,
-  minValue: 2,
-};
 
 type StateListener = (state: PopPersonState) => void | Promise<void>;
 type Snapshot = Record<string, unknown>;
@@ -222,7 +209,7 @@ async function ensureSeedData(): Promise<void> {
           personId: dbPerson.id,
           backgroundColor: COLORS[PEOPLE.indexOf(person) % COLORS.length],
           currentValue: String(person.value),
-          minimumValue: String(CONFIG.minValue),
+          minimumValue: String(MIN_VALUE),
           maximumValue: "100",
           active: true,
         })
@@ -243,19 +230,7 @@ async function ensureSeedData(): Promise<void> {
             price: String(element.price),
             active: true,
           })
-          .onConflictDoUpdate({
-            target: itemsTable.code,
-            set: {
-              mode,
-              name: element.label,
-              emoji: element.emoji,
-              gender: element.gender,
-              impactPower: String(element.force),
-              price: String(element.price),
-              active: true,
-              updatedAt: now,
-            },
-          });
+          .onConflictDoNothing({ target: itemsTable.code });
       }
     }
 
@@ -434,6 +409,54 @@ async function currentState(roomId: string): Promise<PopPersonState> {
   return { dataset, actions };
 }
 
+async function getPopPersonConfig(): Promise<PopPersonConfig> {
+  const dbItems = await db
+    .select({
+      code: itemsTable.code,
+      mode: itemsTable.mode,
+      name: itemsTable.name,
+      emoji: itemsTable.emoji,
+      gender: itemsTable.gender,
+      impactPower: itemsTable.impactPower,
+      price: itemsTable.price,
+    })
+    .from(itemsTable)
+    .where(eq(itemsTable.active, true))
+    .orderBy(asc(itemsTable.createdAt));
+
+  const elements: PopPersonConfig["elements"] = {
+    atacar: [],
+    defender: [],
+  };
+
+  for (const item of dbItems) {
+    if (!item.emoji || (item.gender !== "m" && item.gender !== "f")) {
+      throw new Error(`Item "${item.code}" está sem emoji ou gênero válido.`);
+    }
+
+    elements[item.mode].push({
+      id: item.code,
+      emoji: item.emoji,
+      label: item.name,
+      force: toNumber(item.impactPower),
+      price: toNumber(item.price),
+      gender: item.gender,
+    });
+  }
+
+  return {
+    elements,
+    levels: LEVELS.map(({ code, projectileCount, durationMs, ...level }) => ({
+      key: code,
+      count: projectileCount,
+      duration: durationMs,
+      ...level,
+    })),
+    actionDelayMs: ACTION_DELAY_MS,
+    minValue: MIN_VALUE,
+  };
+}
+
 async function notifyStateChange(): Promise<void> {
   const state = await currentState(await getRoomId());
   await Promise.all([...stateListeners].map((listener) => listener(state)));
@@ -449,7 +472,11 @@ export async function getPopPersonBootstrap(
 ): Promise<PopPersonBootstrap> {
   const roomId = await getRoomId();
   await ensureRoomMembership(roomId, sessionId);
-  return { config: CONFIG, state: await currentState(roomId) };
+  const [config, state] = await Promise.all([
+    getPopPersonConfig(),
+    currentState(roomId),
+  ]);
+  return { config, state };
 }
 
 export async function getPopPersonState(
@@ -571,7 +598,7 @@ export async function createPopPersonAction(
       )
       .limit(1);
     const values = calculateActionValues(item, level, rule);
-    const scheduledFor = new Date(now.getTime() + CONFIG.actionDelayMs);
+    const scheduledFor = new Date(now.getTime() + ACTION_DELAY_MS);
     const completesAt = new Date(
       scheduledFor.getTime() +
         (values.count - 1) * values.staggerMs +
