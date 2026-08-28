@@ -11,6 +11,7 @@ Aplicativo interativo para visualizar pessoas públicas em círculos e executar 
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-server run dev` — run the API service at `/api`
+- `GET /api/healthz` — verifies the API process and the Supabase-backed PostgreSQL connection with a lightweight `SELECT 1`; returns `503` if the database is unavailable
 - `GET /api/access/location` — returns the approximate city, region, and country for the current access using the request IP; local development is labeled as `Local`
 - `GET /api/access/location` also records the resolved location, anonymous session, approximate IP, user agent, request path, and access time in `access_events`
 - API requests receive an anonymous `HttpOnly` cookie signed with `SESSION_SECRET`; it is an opaque identifier and is intentionally not bound to IP, network, or location
