@@ -1,2 +1,3 @@
 - [Imported artifact workflows](imported-workflow-registration.md) — imported artifact files may exist without being registered as managed workflows; verify runtime workflow state before restarting by artifact name.
 - [PopPerson schema history](pop-person-schema-history.md) — the live DB/schema can be ahead of the checked-in Drizzle journal; reconcile historical renames interactively, never force them blindly.
+- [Supabase data path verification](supabase-data-path.md) — healthy API status alone is insufficient; compare sanitized REST, SQL, and API data before claiming Supabase is active.
