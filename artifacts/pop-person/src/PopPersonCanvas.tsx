@@ -245,21 +245,48 @@ export default function PopPersonCanvas() {
     ? actionRuleByKey[`${modalElement.id}:${modalLevel}`]
     : null;
 
-  const viewerCountry = accessLocationQuery.data?.source === "ip" && accessLocationQuery.data.country !== "—"
-    ? accessLocationQuery.data.country
-    : null;
   const paisOptions = useMemo(() => {
-    const options = new Set(dataset.map((d) => d.pais));
-    if (viewerCountry) options.add(viewerCountry);
-    return ["Todos", ...Array.from(options).sort()];
-  }, [dataset, viewerCountry]);
+    const options = new Map(
+      dataset
+        .filter((person) => person.pais)
+        .map((person) => [person.pais, { value: person.pais, label: person.pais }]),
+    );
+    return [
+      { value: "Todos", label: "Todos" },
+      ...Array.from(options.values()).sort((a, b) => a.label.localeCompare(b.label, "pt-BR")),
+    ];
+  }, [dataset]);
   const estadoOptions = useMemo(() => {
     const scoped = filters.pais === "Todos" ? dataset : dataset.filter((d) => d.pais === filters.pais);
-    return ["Todos", ...Array.from(new Set(scoped.map((d) => d.estado))).sort()];
+    const options = new Map(
+      scoped
+        .filter((person) => person.estado)
+        .map((person) => [
+          person.estado,
+          {
+            value: person.estado,
+            label: person.estadoCodigo && person.estadoCodigo !== person.estado
+              ? `${person.estado} (${person.estadoCodigo})`
+              : person.estado,
+          },
+        ]),
+    );
+    return [
+      { value: "Todos", label: "Todos" },
+      ...Array.from(options.values()).sort((a, b) => a.label.localeCompare(b.label, "pt-BR")),
+    ];
   }, [dataset, filters.pais]);
   const cidadeOptions = useMemo(() => {
     const scoped = dataset.filter((d) => (filters.pais === "Todos" || d.pais === filters.pais) && (filters.estado === "Todos" || d.estado === filters.estado));
-    return ["Todos", ...Array.from(new Set(scoped.map((d) => d.cidade))).sort()];
+    const options = new Map(
+      scoped
+        .filter((person) => person.cidade)
+        .map((person) => [person.cidade, { value: person.cidade, label: person.cidade }]),
+    );
+    return [
+      { value: "Todos", label: "Todos" },
+      ...Array.from(options.values()).sort((a, b) => a.label.localeCompare(b.label, "pt-BR")),
+    ];
   }, [dataset, filters.pais, filters.estado]);
   const categoriaOptions = useMemo(() => {
     const categories = new Map();
@@ -301,7 +328,7 @@ export default function PopPersonCanvas() {
     const countryMatch = dataset.find(
       (person) => normalizeLocationValue(person.paisCodigo) === normalizeLocationValue(location.countryCode),
     );
-    const selectedCountry = countryMatch?.pais ?? location.country;
+    const selectedCountry = countryMatch?.pais ?? "Todos";
     const countryDataset = countryMatch
       ? dataset.filter((person) => person.pais === selectedCountry)
       : [];
