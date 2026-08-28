@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "PopPerson"
+description = "Aplicativo interativo de visualização e ações sobre pessoas públicas, com filtros, mapa de círculos, animações de ataque e defesa, seleção e fila de ações."
+version = "1.0.0"
+id = "artifacts/pop-person"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22808
+
+[services.development]
+run = "pnpm --filter @workspace/pop-person run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/pop-person", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/pop-person/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22808"
+BASE_PATH = "/"
