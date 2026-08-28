@@ -1,6 +1,11 @@
 // @ts-nocheck
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { SlidersHorizontal, ArrowLeft, X, ChevronDown, Locate } from "lucide-react";
+import {
+  useCreatePopPersonAction,
+  useGetPopPerson,
+  useGetPopPersonState,
+} from "@workspace/api-client-react";
 
 function easeOutQuad(t) {
   return 1 - (1 - t) * (1 - t);
@@ -15,14 +20,6 @@ function quadBezierTangent(p0, p1, p2, t) {
   return 2 * (1 - t) * (p1 - p0) + 2 * t * (p2 - p1);
 }
 
-const LEVELS = {
-  moderado: { label: "Moderado", powerLabel: "10x", emoji: "🔥", count: 10, staggerMs: 45, duration: 400, growthPerHit: 1.2, shake: false },
-  forte: { label: "Forte", powerLabel: "50x", emoji: "⚡", count: 50, staggerMs: 40, duration: 350, growthPerHit: 1.2, shake: false },
-  extremo: { label: "Extremo", powerLabel: "100x", emoji: "💥", count: 100, staggerMs: 35, duration: 300, growthPerHit: 1.2, shake: false },
-  devastador: { label: "Devastador", powerLabel: "500x", emoji: "🌋", count: 500, staggerMs: 25, duration: 260, growthPerHit: 1.2, shake: true },
-  apocaliptico: { label: "Apocalíptico", powerLabel: "1.000x", emoji: "☄️", count: 1000, staggerMs: 15, duration: 220, growthPerHit: 1.2, shake: true },
-};
-const LEVEL_KEYS = ["moderado", "forte", "extremo", "devastador", "apocaliptico"];
 const MODE_LABEL = { atacar: "Ataque", defender: "Defesa" };
 const LEVEL_LABEL_BY_MODE = {
   atacar: { moderado: "Moderado", forte: "Forte", extremo: "Extremo", devastador: "Devastador", apocaliptico: "Apocalíptico" },
@@ -32,48 +29,12 @@ const LEVEL_LABEL_BY_GENDER = {
   m: { moderado: "Moderado", forte: "Forte", extremo: "Extremo", devastador: "Devastador", apocaliptico: "Apocalíptico" },
   f: { moderado: "Moderada", forte: "Forte", extremo: "Extrema", devastador: "Devastadora", apocaliptico: "Apocalíptica" },
 };
-const COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#ec4899", "#06b6d4", "#a855f7", "#ef4444", "#14b8a6"];
-const MIN_VALUE = 2;
 const MAX_CONCURRENT_PROJECTILES = 24;
-const ACTION_DELAY_MS = 10000;
 const LAYOUT_PADDING = 2;
 const CIRCLE_GAP = 2.5;
 
 function formatBRL(value) {
   return `R$ ${value.toFixed(2).replace(".", ",")}`;
-}
-
-const ELEMENTS = {
-  atacar: [
-    { id: "flecha", emoji: "🏹", label: "Flecha", force: 1, price: 0.1, gender: "f" },
-    { id: "espada", emoji: "⚔️", label: "Espada", force: 3, price: 0.3, gender: "f" },
-    { id: "fogo", emoji: "🔥", label: "Bola de Fogo", force: 5, price: 0.5, gender: "f" },
-    { id: "foguete", emoji: "🚀", label: "Míssil", force: 10, price: 0.9, gender: "m" },
-    { id: "meteoro", emoji: "☄️", label: "Meteoro", force: 20, price: 1.9, gender: "m" },
-  ],
-  defender: [
-    { id: "pocao", emoji: "🧪", label: "Poção", force: 1, price: 0.1, gender: "f" },
-    { id: "escudo", emoji: "🛡️", label: "Escudo", force: 3, price: 0.3, gender: "m" },
-    { id: "aura", emoji: "💠", label: "Aura", force: 5, price: 0.5, gender: "f" },
-    { id: "muralha", emoji: "🧱", label: "Muralha", force: 10, price: 0.9, gender: "f" },
-    { id: "fortaleza", emoji: "🏰", label: "Fortaleza", force: 20, price: 1.9, gender: "f" },
-  ],
-};
-
-const POLITICIANS = [
-  { name: "Marcos Rocha", cargo: "Deputado Federal", cidade: "Belo Horizonte", estado: "MG", pais: "Brasil", status: "titular" },
-  { name: "Beatriz Alves", cargo: "Senadora", cidade: "Porto Alegre", estado: "RS", pais: "Brasil", status: "titular" },
-  { name: "Ricardo Aguiar", cargo: "Prefeito", cidade: "Recife", estado: "PE", pais: "Brasil", status: "candidato" },
-  { name: "Fernanda Nunes", cargo: "Vereadora", cidade: "Curitiba", estado: "PR", pais: "Brasil", status: "titular" },
-  { name: "Eduardo Vaz", cargo: "Governador", cidade: "Salvador", estado: "BA", pais: "Brasil", status: "candidato" },
-  { name: "Camila Costa", cargo: "Ministra", cidade: "Brasília", estado: "DF", pais: "Brasil", status: "titular" },
-  { name: "Roberto Farias", cargo: "Senador", cidade: "Manaus", estado: "AM", pais: "Brasil", status: "candidato" },
-  { name: "Juliana Lemos", cargo: "Deputada Federal", cidade: "Fortaleza", estado: "CE", pais: "Brasil", status: "titular" },
-];
-const POLITICIAN_COLORS = Object.fromEntries(POLITICIANS.map((p, i) => [p.name, COLORS[i % COLORS.length]]));
-
-function makeDataset() {
-  return POLITICIANS.map((p) => ({ ...p, value: 10 + Math.random() * 90 }));
 }
 
 function tryPackCircles(ordered, baseRadii, scale) {
@@ -138,7 +99,7 @@ function tryPackCircles(ordered, baseRadii, scale) {
       x: best.x,
       y: best.y,
       r,
-      color: POLITICIAN_COLORS[ordered[index].name] || COLORS[index % COLORS.length],
+      color: ordered[index].color,
     });
   }
   return placed;
@@ -235,9 +196,17 @@ function FilterSection({ label, options, selected, onSelect, disabled, disabledH
 }
 
 export default function PopPersonCanvas() {
+  const bootstrapQuery = useGetPopPerson();
+  const stateQuery = useGetPopPersonState({
+    query: {
+      enabled: Boolean(bootstrapQuery.data),
+      refetchInterval: 1000,
+    },
+  });
+  const createActionMutation = useCreatePopPersonAction();
   const canvasRef = useRef(null);
   const boardWrapRef = useRef(null);
-  const [dataset, setDataset] = useState(makeDataset);
+  const [dataset, setDataset] = useState([]);
   const [filters, setFilters] = useState({ pais: "Todos", estado: "Todos", cidade: "Todos" });
   const [showFiltersModal, setShowFiltersModal] = useState(false);
   const [selectedCell, setSelectedCell] = useState(null);
@@ -250,6 +219,18 @@ export default function PopPersonCanvas() {
   const [activeActions, setActiveActions] = useState([]);
   const [showRecenter, setShowRecenter] = useState(false);
   const [, forceTick] = useState(0);
+  const config = bootstrapQuery.data?.config;
+  const elements = config?.elements ?? { atacar: [], defender: [] };
+  const levels = config?.levels ?? [];
+  const levelByKey = useMemo(() => Object.fromEntries(levels.map((level) => [level.key, level])), [levels]);
+  const levelKeys = useMemo(() => levels.map((level) => level.key), [levels]);
+
+  useEffect(() => {
+    if (bootstrapQuery.data?.state.dataset) setDataset(bootstrapQuery.data.state.dataset);
+  }, [bootstrapQuery.data]);
+  useEffect(() => {
+    if (stateQuery.data?.dataset) setDataset(stateQuery.data.dataset);
+  }, [stateQuery.data]);
 
   const paisOptions = useMemo(() => ["Todos", ...Array.from(new Set(dataset.map((d) => d.pais))).sort()], [dataset]);
   const estadoOptions = useMemo(() => {
@@ -284,22 +265,21 @@ export default function PopPersonCanvas() {
   useEffect(() => { selectedCellRef.current = selectedCell; }, [selectedCell]);
   useEffect(() => { activeActionIdsRef.current = activeActions.map((a) => a.id); }, [activeActions]);
 
-  const registerHit = useCallback((targetName, growthAmount, direction) => {
-    setDataset((prev) => prev.map((d) => d.name === targetName ? { ...d, value: Math.max(d.value + growthAmount * direction, MIN_VALUE) } : d));
-  }, []);
   const executeAction = useCallback((actionMode, actionLevel, actionElement, targetName) => {
-    const config = LEVELS[actionLevel];
+    const levelConfig = levelByKey[actionLevel];
+    if (!levelConfig) return;
     const direction = actionMode === "defender" ? 1 : -1;
-    const growthPerUnit = config.growthPerHit * ((actionElement.force ?? 5) / 5);
+    const growthPerUnit = levelConfig.growthPerHit * ((actionElement.force ?? 5) / 5);
     const firingId = Date.now() + Math.random();
-    emittersRef.current.push({ id: firingId, targetName, remaining: config.count, staggerMs: config.staggerMs, duration: config.duration, growthPerHit: growthPerUnit, direction, emoji: actionElement.emoji, level: actionLevel, nextSpawnTime: performance.now() });
+    emittersRef.current.push({ id: firingId, targetName, remaining: levelConfig.count, staggerMs: levelConfig.staggerMs, duration: levelConfig.duration, growthPerHit: growthPerUnit, direction, emoji: actionElement.emoji, level: actionLevel, nextSpawnTime: performance.now() });
     setActiveActions((prev) => [...prev, { id: firingId, mode: actionMode, level: actionLevel, element: actionElement, targetName, firedAt: performance.now() }]);
-    if (config.shake) shakeActionIdsRef.current.add(firingId);
-  }, []);
+    if (levelConfig.shake) shakeActionIdsRef.current.add(firingId);
+  }, [levelByKey]);
   const executeActionRef = useRef(executeAction);
   useEffect(() => { executeActionRef.current = executeAction; }, [executeAction]);
-  const queueAction = useCallback((actionMode, actionElement, actionLevel, targetName) => {
-    setQueue((prev) => [...prev, { id: Date.now() + Math.random(), mode: actionMode, element: actionElement, level: actionLevel, targetName, executeAt: performance.now() + ACTION_DELAY_MS }]);
+  const queueAction = useCallback((serverAction, actionElement) => {
+    const localExecuteAt = performance.now() + Math.max(0, serverAction.executeAt - Date.now());
+    setQueue((prev) => [...prev, { id: serverAction.id, mode: serverAction.mode, element: actionElement, level: serverAction.level, targetName: serverAction.targetName, executeAt: localExecuteAt }]);
   }, []);
   const getRemainingUnits = useCallback((item) => {
     const emitter = emittersRef.current.find((e) => e.id === item.id);
@@ -308,14 +288,15 @@ export default function PopPersonCanvas() {
   const getActionTiming = useCallback((item, now) => {
     if (item.kind === "queued") {
       const secondsLeft = Math.max(0, (item.executeAt - now) / 1000);
-      return { timeLabel: `Inicia em ${secondsLeft.toFixed(1)}s`, progress: 1 - (secondsLeft * 1000) / ACTION_DELAY_MS };
+      return { timeLabel: `Inicia em ${secondsLeft.toFixed(1)}s`, progress: 1 - (secondsLeft * 1000) / (config?.actionDelayMs || 1) };
     }
-    const levelCfg = LEVELS[item.level];
+    const levelCfg = levelByKey[item.level];
+    if (!levelCfg) return { timeLabel: "—", progress: 0 };
     const emitter = emittersRef.current.find((e) => e.id === item.id);
     const inFlight = projectilesRef.current.filter((p) => p.firingId === item.id).length;
     const landed = Math.max(0, levelCfg.count - (emitter ? emitter.remaining : 0) - inFlight);
     return { timeLabel: `${Math.round(Math.min(1, landed / levelCfg.count) * 100)}%`, progress: Math.min(1, landed / levelCfg.count) };
-  }, []);
+  }, [config?.actionDelayMs, levelByKey]);
 
   useEffect(() => {
     if (queue.length === 0 && activeActions.length === 0) return undefined;
@@ -342,12 +323,42 @@ export default function PopPersonCanvas() {
   const closeModal = useCallback(() => setPendingMode(null), []);
   const pickElement = useCallback((element) => { setModalElement(element); setModalStep("intensidade"); }, []);
   const confirmAction = useCallback(() => {
-    if (!modalElement || !selectedCell) return;
-    queueAction(pendingMode, modalElement, modalLevel, selectedCell);
-    closeModal();
-    setSelectedCell(null);
-  }, [pendingMode, modalElement, modalLevel, selectedCell, queueAction, closeModal]);
+    if (!pendingMode || !modalElement || !selectedCell) return;
+    createActionMutation.mutate(
+      {
+        data: {
+          mode: pendingMode,
+          elementId: modalElement.id,
+          level: modalLevel,
+          targetName: selectedCell,
+        },
+      },
+      {
+        onSuccess: (action) => {
+          queueAction(action, modalElement);
+          closeModal();
+          setSelectedCell(null);
+        },
+      },
+    );
+  }, [pendingMode, modalElement, modalLevel, selectedCell, queueAction, closeModal, createActionMutation]);
   const selectedCellData = useMemo(() => leaves.find((l) => l.name === selectedCell) || null, [leaves, selectedCell]);
+
+  if (bootstrapQuery.isError) {
+    return (
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", backgroundColor: "#0a0a0a", color: "#fca5a5", fontSize: "13px", padding: "24px", textAlign: "center" }}>
+        Não foi possível carregar o servidor do PopPerson. Tente atualizar a página.
+      </div>
+    );
+  }
+
+  if (bootstrapQuery.isLoading || !config) {
+    return (
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", backgroundColor: "#0a0a0a", color: "#a3a3a3", fontSize: "13px" }}>
+        Carregando PopPerson…
+      </div>
+    );
+  }
 
   function cssSize() {
     const r = boardWrapRef.current.getBoundingClientRect();
@@ -516,7 +527,6 @@ export default function PopPersonCanvas() {
         return !complete;
       });
       finished.forEach((f) => {
-        registerHit(f.targetName, f.growthPerHit, f.direction);
         const target = leavesRef.current.find((l) => l.name === f.targetName);
         if (target) impactsRef.current.push({ x: target.x, y: target.y, r: target.r, color: f.direction === 1 ? "#22c55e" : "#ef4444", startTime: now, duration: 350 });
       });
@@ -551,7 +561,7 @@ export default function PopPersonCanvas() {
     }
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [draw, registerHit, seedMissingRects]);
+  }, [draw, seedMissingRects]);
 
   useEffect(() => {
     function resize() {
@@ -806,7 +816,7 @@ export default function PopPersonCanvas() {
             </div>
             {modalStep === "elemento" ? (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(84px, 1fr))", gap: "8px" }}>
-                {ELEMENTS[pendingMode].map((el) => <button data-testid={`button-element-${el.id}`} key={el.id} onClick={() => pickElement(el)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px", padding: "10px 6px", borderRadius: "10px", border: modalElement?.id === el.id ? "2px solid #f5f5f5" : "2px solid transparent", backgroundColor: "#262626", cursor: "pointer" }}><span style={{ fontSize: "22px" }}>{el.emoji}</span><span style={{ fontSize: "11px", color: "#a3a3a3" }}>{el.label}</span><span style={{ fontSize: "10px", color: "#525252", fontFamily: "monospace" }}>{pendingMode === "atacar" ? "ATK" : "DEF"} {el.force}</span><span style={{ fontSize: "11px", color: "#4ade80", fontWeight: 700, fontFamily: "monospace" }}>{formatBRL(el.price)}</span></button>)}
+                {elements[pendingMode].map((el) => <button data-testid={`button-element-${el.id}`} key={el.id} onClick={() => pickElement(el)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px", padding: "10px 6px", borderRadius: "10px", border: modalElement?.id === el.id ? "2px solid #f5f5f5" : "2px solid transparent", backgroundColor: "#262626", cursor: "pointer" }}><span style={{ fontSize: "22px" }}>{el.emoji}</span><span style={{ fontSize: "11px", color: "#a3a3a3" }}>{el.label}</span><span style={{ fontSize: "10px", color: "#525252", fontFamily: "monospace" }}>{pendingMode === "atacar" ? "ATK" : "DEF"} {el.force}</span><span style={{ fontSize: "11px", color: "#4ade80", fontWeight: 700, fontFamily: "monospace" }}>{formatBRL(el.price)}</span></button>)}
               </div>
             ) : (
               <>
@@ -817,15 +827,16 @@ export default function PopPersonCanvas() {
                   </div>
                   <div style={{ height: "1px", backgroundColor: "#333" }} />
                   <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: "8px" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}><span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Intensidade</span><span style={{ color: "#f5f5f5", fontSize: "13px", fontWeight: 700 }}>{LEVELS[modalLevel].emoji} {LEVEL_LABEL_BY_MODE[pendingMode][modalLevel]}</span></div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}><span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Intensidade</span><span style={{ color: "#f5f5f5", fontSize: "13px", fontWeight: 700 }}>{levelByKey[modalLevel].emoji} {LEVEL_LABEL_BY_MODE[pendingMode][modalLevel]}</span></div>
                     <div>
-                      <input data-testid="input-intensity" type="range" min={0} max={LEVEL_KEYS.length - 1} step={1} value={LEVEL_KEYS.indexOf(modalLevel)} onChange={(e) => setModalLevel(LEVEL_KEYS[Number(e.target.value)])} style={{ width: "100%", height: "6px", accentColor: pendingMode === "defender" ? "#22c55e" : "#ef4444", cursor: "pointer" }} />
-                      <div style={{ position: "relative", height: "14px", marginTop: "4px" }}>{LEVEL_KEYS.map((key, i) => { const isSelected = modalLevel === key; const percent = (i / (LEVEL_KEYS.length - 1)) * 100; return <button data-testid={`button-level-${key}`} key={key} type="button" onClick={() => setModalLevel(key)} aria-label={LEVEL_LABEL_BY_MODE[pendingMode][key]} style={{ position: "absolute", left: `${percent}%`, transform: i === 0 ? "translateX(0)" : i === LEVEL_KEYS.length - 1 ? "translateX(-100%)" : "translateX(-50%)", background: "none", border: "none", padding: 0, cursor: "pointer", whiteSpace: "nowrap", fontSize: "9px", fontFamily: "monospace", fontWeight: isSelected ? 700 : 400, color: isSelected ? pendingMode === "defender" ? "#4ade80" : "#f87171" : "#525252" }}>{LEVELS[key].powerLabel}</button>; })}</div>
+                      <input data-testid="input-intensity" type="range" min={0} max={levelKeys.length - 1} step={1} value={levelKeys.indexOf(modalLevel)} onChange={(e) => setModalLevel(levelKeys[Number(e.target.value)])} style={{ width: "100%", height: "6px", accentColor: pendingMode === "defender" ? "#22c55e" : "#ef4444", cursor: "pointer" }} />
+                      <div style={{ position: "relative", height: "14px", marginTop: "4px" }}>{levelKeys.map((key, i) => { const isSelected = modalLevel === key; const percent = (i / (levelKeys.length - 1)) * 100; return <button data-testid={`button-level-${key}`} key={key} type="button" onClick={() => setModalLevel(key)} aria-label={LEVEL_LABEL_BY_MODE[pendingMode][key]} style={{ position: "absolute", left: `${percent}%`, transform: i === 0 ? "translateX(0)" : i === levelKeys.length - 1 ? "translateX(-100%)" : "translateX(-50%)", background: "none", border: "none", padding: 0, cursor: "pointer", whiteSpace: "nowrap", fontSize: "9px", fontFamily: "monospace", fontWeight: isSelected ? 700 : 400, color: isSelected ? pendingMode === "defender" ? "#4ade80" : "#f87171" : "#525252" }}>{levelByKey[key].powerLabel}</button>; })}</div>
                     </div>
                   </div>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderRadius: "10px", backgroundColor: "#262626", border: "1px solid #333" }}><div style={{ display: "flex", flexDirection: "column", gap: "3px", minWidth: 0 }}><span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Custo da ação</span><span style={{ color: "#f5f5f5", fontSize: "13px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{modalElement.label} {LEVEL_LABEL_BY_GENDER[modalElement.gender][modalLevel]}</span></div><span style={{ color: "#4ade80", fontSize: "17px", fontWeight: 700, fontFamily: "monospace", flexShrink: 0 }}>{formatBRL(LEVELS[modalLevel].count * modalElement.price)}</span></div>
-                <button data-testid="button-send-action" onClick={confirmAction} style={{ padding: "10px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", fontWeight: 700, border: "none", cursor: "pointer" }}>Enviar ({ACTION_DELAY_MS / 1000}s)</button>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderRadius: "10px", backgroundColor: "#262626", border: "1px solid #333" }}><div style={{ display: "flex", flexDirection: "column", gap: "3px", minWidth: 0 }}><span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Custo da ação</span><span style={{ color: "#f5f5f5", fontSize: "13px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{modalElement.label} {LEVEL_LABEL_BY_GENDER[modalElement.gender][modalLevel]}</span></div><span style={{ color: "#4ade80", fontSize: "17px", fontWeight: 700, fontFamily: "monospace", flexShrink: 0 }}>{formatBRL(levelByKey[modalLevel].count * modalElement.price)}</span></div>
+                {createActionMutation.error && <span style={{ color: "#fca5a5", fontSize: "11px" }}>Não foi possível enviar esta ação. Tente novamente.</span>}
+                <button data-testid="button-send-action" onClick={confirmAction} disabled={createActionMutation.isPending} style={{ padding: "10px", borderRadius: "9999px", backgroundColor: createActionMutation.isPending ? "#525252" : "#f5f5f5", color: "#0a0a0a", fontWeight: 700, border: "none", cursor: createActionMutation.isPending ? "wait" : "pointer" }}>{createActionMutation.isPending ? "Enviando…" : `Enviar (${config.actionDelayMs / 1000}s)`}</button>
               </>
             )}
           </div>
