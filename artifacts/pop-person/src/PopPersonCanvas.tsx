@@ -687,6 +687,7 @@ export default function PopPersonCanvas() {
   const closeButtonStyle = { width: "26px", height: "26px", borderRadius: "9999px", backgroundColor: "#262626", color: "#a3a3a3", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" };
   const selectedInitials = selectedCellData ? selectedCellData.name.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase() : "";
   const accessLocation = accessLocationQuery.data;
+  const actionWasRateLimited = createActionMutation.error?.status === 429;
   const accessLocationLabel = accessLocation
     ? accessLocation.source === "local"
       ? "Local"
@@ -855,7 +856,7 @@ export default function PopPersonCanvas() {
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderRadius: "10px", backgroundColor: "#262626", border: "1px solid #333" }}><div style={{ display: "flex", flexDirection: "column", gap: "3px", minWidth: 0 }}><span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Custo da ação</span><span style={{ color: "#f5f5f5", fontSize: "13px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{modalElement.label} {LEVEL_LABEL_BY_GENDER[modalElement.gender][modalLevel]}</span></div><span style={{ color: "#4ade80", fontSize: "17px", fontWeight: 700, fontFamily: "monospace", flexShrink: 0 }}>{formatBRL(levelByKey[modalLevel].count * modalElement.price)}</span></div>
-                {createActionMutation.error && <span style={{ color: "#fca5a5", fontSize: "11px" }}>Não foi possível enviar esta ação. Tente novamente.</span>}
+                {createActionMutation.error && <span style={{ color: "#fca5a5", fontSize: "11px" }}>{actionWasRateLimited ? "Muitas ações em pouco tempo. Aguarde um instante e tente novamente." : "Não foi possível enviar esta ação. Tente novamente."}</span>}
                 <button data-testid="button-send-action" onClick={confirmAction} disabled={createActionMutation.isPending} style={{ padding: "10px", borderRadius: "9999px", backgroundColor: createActionMutation.isPending ? "#525252" : "#f5f5f5", color: "#0a0a0a", fontWeight: 700, border: "none", cursor: createActionMutation.isPending ? "wait" : "pointer" }}>{createActionMutation.isPending ? "Enviando…" : `Enviar (${config.actionDelayMs / 1000}s)`}</button>
               </>
             )}

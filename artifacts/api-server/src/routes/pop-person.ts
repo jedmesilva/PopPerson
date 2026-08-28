@@ -10,6 +10,7 @@ import {
   getPopPersonBootstrap,
   getPopPersonState,
 } from "../lib/pop-person";
+import { actionRateLimit } from "../middlewares/rate-limit";
 
 const router: IRouter = Router();
 
@@ -21,7 +22,7 @@ router.get("/pop-person/state", (_req, res) => {
   res.json(GetPopPersonStateResponse.parse(getPopPersonState()));
 });
 
-router.post("/pop-person/actions", (req, res) => {
+router.post("/pop-person/actions", actionRateLimit, (req, res) => {
   const parsed = CreatePopPersonActionBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });

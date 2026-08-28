@@ -11,6 +11,7 @@ Aplicativo interativo para visualizar pessoas públicas em círculos e executar 
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-server run dev` — run the API service at `/api`
 - `GET /api/access/location` — returns the approximate city, region, and country for the current access using the request IP; local development is labeled as `Local`
+- API requests receive an anonymous `HttpOnly` cookie signed with `SESSION_SECRET`; it is an opaque identifier and is intentionally not bound to IP, network, or location
 
 ## Stack
 
@@ -50,6 +51,7 @@ _Nenhuma preferência registrada._
 - Run the main web artifact rather than starting a root-level `pnpm dev`; the workspace root has no dev script.
 - The PopPerson API is the source of truth for the people dataset, action catalog, validation, scheduling, and value changes. Restarting the API resets its in-memory state.
 - Access location is approximate IP geolocation, not GPS. The server does not return the raw IP to the frontend, and the external lookup can return `Indisponível` when unavailable.
+- The API has in-memory rate limits of 180 requests/minute per IP or anonymous identity, and 20 action requests/minute. Limits reset when the API restarts and should move to shared storage before running multiple instances.
 
 ## Pointers
 
