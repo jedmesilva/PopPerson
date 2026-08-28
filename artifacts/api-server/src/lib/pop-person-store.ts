@@ -124,6 +124,7 @@ async function getDataset(roomId: string): Promise<PopPerson[]> {
         categoryParentId: categoriesTable.parentId,
          gender: peopleTable.gender,
         status: peopleTable.status,
+         imageUrl: peopleTable.imageUrl,
         cidade: locationsTable.city,
         estado: locationsTable.state,
         estadoCodigo: locationsTable.stateCode,
@@ -211,6 +212,7 @@ async function getDataset(roomId: string): Promise<PopPerson[]> {
       status: person.status,
       value: toNumber(person.value),
       color: person.color,
+       imageUrl: person.imageUrl ?? null,
     };
   });
 }

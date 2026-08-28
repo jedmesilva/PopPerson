@@ -61,6 +61,11 @@ export interface PopPerson {
   status: PopPersonStatus;
   value: number;
   color: string;
+  /**
+     * Optional person image URL. The client keeps the cell color as the fallback background.
+     * @nullable
+     */
+  imageUrl: string | null;
 }
 
 export type PopPersonElementGender = typeof PopPersonElementGender[keyof typeof PopPersonElementGender];

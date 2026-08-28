@@ -207,6 +207,22 @@ function ItemVisual({ element, size = 22 }) {
   return <span style={{ fontSize: `${size}px`, lineHeight: 1, flexShrink: 0 }}>{element?.emoji}</span>;
 }
 
+function PersonVisual({ person, alt = "", style = {} }) {
+  if (!person) return null;
+  return (
+    <div style={{ position: "relative", overflow: "hidden", backgroundColor: person.color, ...style }}>
+      {person.imageUrl && (
+        <img
+          src={person.imageUrl}
+          alt={alt}
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+          onError={(event) => { event.currentTarget.style.display = "none"; }}
+        />
+      )}
+    </div>
+  );
+}
+
 export default function PopPersonCanvas() {
   const accessLocationQuery = useGetAccessLocation();
   const bootstrapQuery = useGetPopPerson({
@@ -368,6 +384,7 @@ export default function PopPersonCanvas() {
   const emittersRef = useRef([]);
   const projectilesRef = useRef([]);
   const impactsRef = useRef([]);
+  const personImagesRef = useRef(new Map());
   const shakeActionIdsRef = useRef(new Set());
   const activeActionIdsRef = useRef([]);
   const seenServerActionIdsRef = useRef(new Set());
@@ -378,6 +395,26 @@ export default function PopPersonCanvas() {
   useEffect(() => { leavesRef.current = leaves; }, [leaves]);
   useEffect(() => { selectedCellRef.current = selectedCell; }, [selectedCell]);
   useEffect(() => { activeActionIdsRef.current = activeActions.map((a) => a.id); }, [activeActions]);
+  useEffect(() => {
+    const currentNames = new Set(dataset.map((person) => person.name));
+    for (const name of personImagesRef.current.keys()) {
+      if (!currentNames.has(name)) personImagesRef.current.delete(name);
+    }
+    dataset.forEach((person) => {
+      const existing = personImagesRef.current.get(person.name);
+      if (!person.imageUrl || existing?.src === person.imageUrl || existing === null) return;
+      const image = new Image();
+      image.onload = () => {
+        // The canvas animation loop continuously redraws, so the loaded image
+        // becomes visible without triggering a React render.
+      };
+      image.onerror = () => {
+        personImagesRef.current.set(person.name, null);
+      };
+      image.src = person.imageUrl;
+      personImagesRef.current.set(person.name, image);
+    });
+  }, [dataset]);
 
   const executeAction = useCallback((serverAction) => {
     const direction = serverAction.mode === "defender" ? 1 : -1;
@@ -592,6 +629,15 @@ export default function PopPersonCanvas() {
       ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
       ctx.fillStyle = node.color;
       ctx.fill();
+      const personImage = personImagesRef.current.get(node.name);
+      if (personImage?.complete && personImage.naturalWidth > 0) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.drawImage(personImage, c.x - c.r, c.y - c.r, c.r * 2, c.r * 2);
+        ctx.restore();
+      }
       if (selName === node.name) {
         ctx.lineWidth = 2.4 / t.scale;
         ctx.strokeStyle = "#ffffff";
@@ -993,8 +1039,8 @@ export default function PopPersonCanvas() {
               <button data-testid="button-close-selection" onClick={() => setSelectedCell(null)} style={{ ...closeButtonStyle, flexShrink: 0 }}><X size={13} /></button>
             </div>
             {selectedCellData && (
-              <div style={{ position: "relative", width: "100%", aspectRatio: "1 / 1", borderRadius: "10px", overflow: "hidden" }}>
-                <div style={{ position: "absolute", inset: 0, backgroundColor: selectedCellData.color, display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,0.5)", fontSize: "56px", fontWeight: 700 }}>{selectedInitials}</div>
+                 <div style={{ position: "relative", width: "100%", aspectRatio: "1 / 1", borderRadius: "10px", overflow: "hidden", backgroundColor: selectedCellData.color }}>
+                 <PersonVisual person={selectedCellData} alt={`Imagem de ${selectedCellData.name}`} style={{ position: "absolute", inset: 0 }} />
                 <span style={{ position: "absolute", top: "10px", left: "10px", fontSize: "10px", fontWeight: 700, padding: "3px 9px", borderRadius: "9999px", color: selectedCellData.status === "titular" ? "#93c5fd" : "#fde68a", backgroundColor: selectedCellData.status === "titular" ? "rgba(30,58,95,0.9)" : "rgba(77,58,18,0.9)", backdropFilter: "blur(4px)" }}>{selectedCellData.status === "titular" ? "Em exercício" : "Candidato(a)"}</span>
                 <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "16px 12px 12px", background: "linear-gradient(to top, rgba(0,0,0,0.88), rgba(0,0,0,0.5) 65%, transparent)", display: "flex", flexDirection: "column", gap: "6px" }}>
                    <div style={{ display: "flex", flexDirection: "column", gap: "1px", minWidth: 0 }}><span style={{ color: "rgba(255,255,255,0.65)", fontSize: "11px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedCellData.categoryPath.map((category) => category.name).join(" / ")}</span><span style={{ color: "#fff", fontSize: "16px", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedCellData.name}</span></div>
@@ -1020,6 +1066,15 @@ export default function PopPersonCanvas() {
               </div>
               <button data-testid="button-close-action" onClick={closeModal} style={{ ...closeButtonStyle, flexShrink: 0 }}><X size={13} /></button>
             </div>
+             {selectedCellData && (
+               <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px 10px", borderRadius: "10px", backgroundColor: "#262626", border: "1px solid #333" }}>
+                 <PersonVisual person={selectedCellData} alt={`Imagem de ${selectedCellData.name}`} style={{ width: "46px", height: "46px", borderRadius: "8px", flexShrink: 0 }} />
+                 <div style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 }}>
+                   <span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Pessoa selecionada</span>
+                   <span style={{ color: "#fff", fontSize: "14px", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedCellData.name}</span>
+                 </div>
+               </div>
+             )}
             {modalStep === "elemento" ? (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(84px, 1fr))", gap: "8px" }}>
                  {elements[pendingMode].map((el) => <button data-testid={`button-element-${el.id}`} key={el.id} onClick={() => pickElement(el)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px", padding: "10px 6px", borderRadius: "10px", border: modalElement?.id === el.id ? "2px solid #f5f5f5" : "2px solid transparent", backgroundColor: "#262626", cursor: "pointer" }}><ItemVisual element={el} size={22} /><span style={{ fontSize: "11px", color: "#a3a3a3" }}>{el.label}</span><span style={{ fontSize: "10px", color: "#525252", fontFamily: "monospace" }}>{pendingMode === "atacar" ? "ATK" : "DEF"} {el.force}</span><span style={{ fontSize: "11px", color: "#4ade80", fontWeight: 700, fontFamily: "monospace" }}>{formatBRL(el.price)}</span></button>)}

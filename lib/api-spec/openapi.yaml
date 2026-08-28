@@ -119,7 +119,7 @@ components:
           type: string
     PopPerson:
       type: object
-      required: [name, category, categoryPath, gender, cidade, estado, estadoCodigo, pais, paisCodigo, status, value, color]
+      required: [name, category, categoryPath, gender, cidade, estado, estadoCodigo, pais, paisCodigo, status, value, color, imageUrl]
       properties:
         name:
           type: string
@@ -149,6 +149,9 @@ components:
           type: number
         color:
           type: string
+        imageUrl:
+          type: ["string", "null"]
+          description: Optional person image URL. The client keeps the cell color as the fallback background.
     PopPersonCategory:
       type: object
       required: [id, name, slug, parentId]

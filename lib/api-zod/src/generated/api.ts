@@ -137,7 +137,8 @@ export const GetPopPersonResponse = zod.object({
   "paisCodigo": zod.string(),
   "status": zod.enum(['titular', 'candidato']),
   "value": zod.number(),
-  "color": zod.string()
+  "color": zod.string(),
+  "imageUrl": zod.string().nullable().describe('Optional person image URL. The client keeps the cell color as the fallback background.')
 })),
   "actions": zod.array(zod.object({
   "id": zod.string(),
@@ -209,7 +210,8 @@ export const GetPopPersonStateResponse = zod.object({
   "paisCodigo": zod.string(),
   "status": zod.enum(['titular', 'candidato']),
   "value": zod.number(),
-  "color": zod.string()
+  "color": zod.string(),
+  "imageUrl": zod.string().nullable().describe('Optional person image URL. The client keeps the cell color as the fallback background.')
 })),
   "actions": zod.array(zod.object({
   "id": zod.string(),
