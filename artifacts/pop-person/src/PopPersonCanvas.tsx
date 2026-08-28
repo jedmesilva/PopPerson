@@ -562,7 +562,7 @@ export default function PopPersonCanvas() {
     resize();
     window.addEventListener("resize", resize);
     return () => window.removeEventListener("resize", resize);
-  }, [fitToView]);
+  }, [fitToView, Boolean(config)]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -664,7 +664,7 @@ export default function PopPersonCanvas() {
       canvas.removeEventListener("pointerup", onPointerUp);
       canvas.removeEventListener("pointercancel", onPointerUp);
     };
-  }, [selectCell]);
+  }, [selectCell, Boolean(config)]);
 
   if (bootstrapQuery.isError) {
     return (
