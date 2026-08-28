@@ -13,6 +13,7 @@ import {
   actionLevelsTable,
   actionsTable,
   cellsTable,
+  categoriesTable,
   itemActionRulesTable,
   itemsTable,
   locationsTable,
@@ -25,95 +26,12 @@ import type {
   PopPersonAction,
   PopPersonActionInput,
   PopPersonBootstrap,
+  PopPersonCategory,
   PopPersonConfig,
   PopPersonState,
 } from "@workspace/api-zod";
 
-const DEFAULT_ROOM_SLUG = "pop-person-default";
-const DEFAULT_ROOM_NAME = "PopPerson";
 const PROCESS_INTERVAL_MS = 500;
-// This is a fixed product rule. It is exposed to the client for display only;
-// scheduling always uses this server-side value.
-const ACTION_DELAY_MS = 10_000;
-const MIN_VALUE = 2;
-const COLORS = [
-  "#6366f1",
-  "#22c55e",
-  "#f59e0b",
-  "#ec4899",
-  "#06b6d4",
-  "#a855f7",
-  "#ef4444",
-  "#14b8a6",
-] as const;
-
-// Initial seed only. Existing people and cells are database-owned after the
-// first insert and are never overwritten or reactivated on startup.
-const SEED_PEOPLE = [
-  { name: "Marcos Rocha", slug: "marcos-rocha", cargo: "Deputado Federal", cidade: "Belo Horizonte", estado: "MG", pais: "Brasil", status: "titular", value: 68 },
-  { name: "Beatriz Alves", slug: "beatriz-alves", cargo: "Senadora", cidade: "Porto Alegre", estado: "RS", pais: "Brasil", status: "titular", value: 52 },
-  { name: "Ricardo Aguiar", slug: "ricardo-aguiar", cargo: "Prefeito", cidade: "Recife", estado: "PE", pais: "Brasil", status: "candidato", value: 84 },
-  { name: "Fernanda Nunes", slug: "fernanda-nunes", cargo: "Vereadora", cidade: "Curitiba", estado: "PR", pais: "Brasil", status: "titular", value: 34 },
-  { name: "Eduardo Vaz", slug: "eduardo-vaz", cargo: "Governador", cidade: "Salvador", estado: "BA", pais: "Brasil", status: "candidato", value: 62 },
-  { name: "Camila Costa", slug: "camila-costa", cargo: "Ministra", cidade: "Brasília", estado: "DF", pais: "Brasil", status: "titular", value: 45 },
-  { name: "Roberto Farias", slug: "roberto-farias", cargo: "Senador", cidade: "Manaus", estado: "AM", pais: "Brasil", status: "candidato", value: 76 },
-  { name: "Juliana Lemos", slug: "juliana-lemos", cargo: "Deputada Federal", cidade: "Fortaleza", estado: "CE", pais: "Brasil", status: "titular", value: 57 },
-] as const;
-
-type ActionMode = "atacar" | "defender";
-type ActionLevelCode =
-  | "moderado"
-  | "forte"
-  | "extremo"
-  | "devastador"
-  | "apocaliptico";
-
-function isActionLevelCode(value: string): value is ActionLevelCode {
-  return ACTION_LEVEL_SEED.some((level) => level.code === value);
-}
-
-const ELEMENTS: Record<ActionMode, Array<{
-  code: string;
-  emoji: string;
-  label: string;
-  force: number;
-  price: number;
-  gender: "m" | "f";
-}>> = {
-  atacar: [
-    { code: "flecha", emoji: "🏹", label: "Flecha", force: 1, price: 0.1, gender: "f" },
-    { code: "espada", emoji: "⚔️", label: "Espada", force: 3, price: 0.3, gender: "f" },
-    { code: "fogo", emoji: "🔥", label: "Bola de Fogo", force: 5, price: 0.5, gender: "f" },
-    { code: "foguete", emoji: "🚀", label: "Míssil", force: 10, price: 0.9, gender: "m" },
-    { code: "meteoro", emoji: "☄️", label: "Meteoro", force: 20, price: 1.9, gender: "m" },
-  ],
-  defender: [
-    { code: "pocao", emoji: "🧪", label: "Poção", force: 1, price: 0.1, gender: "f" },
-    { code: "escudo", emoji: "🛡️", label: "Escudo", force: 3, price: 0.3, gender: "m" },
-    { code: "aura", emoji: "💠", label: "Aura", force: 5, price: 0.5, gender: "f" },
-    { code: "muralha", emoji: "🧱", label: "Muralha", force: 10, price: 0.9, gender: "f" },
-    { code: "fortaleza", emoji: "🏰", label: "Fortaleza", force: 20, price: 1.9, gender: "f" },
-  ],
-};
-
-const ACTION_LEVEL_SEED: Array<{
-  code: ActionLevelCode;
-  label: string;
-  powerLabel: string;
-  emoji: string;
-  projectileCount: number;
-  staggerMs: number;
-  durationMs: number;
-  growthPerHit: number;
-  shake: boolean;
-}> = [
-  { code: "moderado", label: "Moderado", powerLabel: "10x", emoji: "🔥", projectileCount: 10, staggerMs: 45, durationMs: 400, growthPerHit: 1.2, shake: false },
-  { code: "forte", label: "Forte", powerLabel: "50x", emoji: "⚡", projectileCount: 50, staggerMs: 40, durationMs: 350, growthPerHit: 1.2, shake: false },
-  { code: "extremo", label: "Extremo", powerLabel: "100x", emoji: "💥", projectileCount: 100, staggerMs: 35, durationMs: 300, growthPerHit: 1.2, shake: false },
-  { code: "devastador", label: "Devastador", powerLabel: "500x", emoji: "🌋", projectileCount: 500, staggerMs: 25, durationMs: 260, growthPerHit: 1.2, shake: true },
-  { code: "apocaliptico", label: "Apocalíptico", powerLabel: "1.000x", emoji: "☄️", projectileCount: 1000, staggerMs: 15, durationMs: 220, growthPerHit: 1.2, shake: true },
-];
-
 type StateListener = (state: PopPersonState) => void | Promise<void>;
 type Snapshot = Record<string, unknown>;
 
@@ -143,164 +61,24 @@ function toActionStatus(status: string): "queued" | "running" | "completed" {
   return status === "running" || status === "completed" ? status : "queued";
 }
 
-async function ensureSeedData(): Promise<void> {
-  const now = new Date();
+async function loadConfiguredRoom(): Promise<void> {
+  const [room] = await db
+    .select({ id: roomsTable.id })
+    .from(roomsTable)
+    .where(eq(roomsTable.active, true))
+    .orderBy(asc(roomsTable.createdAt))
+    .limit(1);
 
-  await db.transaction(async (tx) => {
-    const [room] = await tx
-      .insert(roomsTable)
-      .values({
-        slug: DEFAULT_ROOM_SLUG,
-        name: DEFAULT_ROOM_NAME,
-        active: true,
-      })
-      .onConflictDoUpdate({
-        target: roomsTable.slug,
-        set: { name: DEFAULT_ROOM_NAME, active: true, updatedAt: now },
-      })
-      .returning({ id: roomsTable.id });
-    defaultRoomId = room.id;
+  if (!room) {
+    throw new Error("Nenhuma sala ativa foi configurada no banco de dados.");
+  }
 
-    const locationIds = new Map<string, string>();
-    for (const person of SEED_PEOPLE) {
-      const [location] = await tx
-        .insert(locationsTable)
-        .values({
-          city: person.cidade,
-          state: person.estado,
-          stateCode: person.estado,
-          country: person.pais,
-          countryCode: "BR",
-        })
-        .onConflictDoNothing()
-        .returning({ id: locationsTable.id });
-      if (location) {
-        locationIds.set(person.slug, location.id);
-      } else {
-        const [existingLocation] = await tx
-          .select({ id: locationsTable.id })
-          .from(locationsTable)
-          .where(
-            and(
-              eq(locationsTable.countryCode, "BR"),
-              eq(locationsTable.stateCode, person.estado),
-              eq(locationsTable.city, person.cidade),
-            ),
-          )
-          .limit(1);
-        if (!existingLocation) throw new Error(`Location seed failed for ${person.slug}`);
-        locationIds.set(person.slug, existingLocation.id);
-      }
-
-      let [dbPerson] = await tx
-        .insert(peopleTable)
-        .values({
-          name: person.name,
-          slug: person.slug,
-          roleTitle: person.cargo,
-          status: person.status,
-          locationId: locationIds.get(person.slug),
-          active: true,
-        })
-        .onConflictDoNothing({ target: peopleTable.slug })
-        .returning({ id: peopleTable.id });
-      if (!dbPerson) {
-        [dbPerson] = await tx
-          .select({ id: peopleTable.id })
-          .from(peopleTable)
-          .where(eq(peopleTable.slug, person.slug))
-          .limit(1);
-      }
-      if (!dbPerson) throw new Error(`Person seed failed for ${person.slug}`);
-
-      await tx
-        .insert(cellsTable)
-        .values({
-          roomId: room.id,
-          personId: dbPerson.id,
-           backgroundColor: COLORS[SEED_PEOPLE.indexOf(person) % COLORS.length],
-          currentValue: String(person.value),
-          minimumValue: String(MIN_VALUE),
-          maximumValue: "100",
-          active: true,
-        })
-        .onConflictDoNothing();
-    }
-
-    for (const mode of ["atacar", "defender"] as const) {
-      for (const element of ELEMENTS[mode]) {
-        await tx
-          .insert(itemsTable)
-          .values({
-            code: element.code,
-            mode,
-            name: element.label,
-            emoji: element.emoji,
-            gender: element.gender,
-            impactPower: String(element.force),
-            price: String(element.price),
-            active: true,
-          })
-          .onConflictDoNothing({ target: itemsTable.code });
-      }
-    }
-
-    for (let index = 0; index < ACTION_LEVEL_SEED.length; index += 1) {
-      const level = ACTION_LEVEL_SEED[index];
-      await tx
-        .insert(actionLevelsTable)
-        .values({
-          code: level.code,
-          label: level.label,
-          powerLabel: level.powerLabel,
-          emoji: level.emoji,
-          sortOrder: index,
-          projectileCount: level.projectileCount,
-          staggerMs: level.staggerMs,
-          durationMs: level.durationMs,
-          growthPerHit: String(level.growthPerHit),
-          impactMultiplier: "1",
-          shake: level.shake,
-          active: true,
-        })
-        .onConflictDoNothing({ target: actionLevelsTable.code });
-      // Older databases may have the column but no icon yet. Backfill only
-      // null values so an administrator's existing database value wins.
-      await tx
-        .update(actionLevelsTable)
-        .set({ emoji: level.emoji })
-        .where(
-          and(
-            eq(actionLevelsTable.code, level.code),
-            sql`${actionLevelsTable.emoji} IS NULL`,
-          ),
-        );
-    }
-
-    const dbItems = await tx
-      .select({ id: itemsTable.id, code: itemsTable.code })
-      .from(itemsTable);
-    const dbLevels = await tx
-      .select({ id: actionLevelsTable.id, code: actionLevelsTable.code })
-      .from(actionLevelsTable);
-    for (const item of dbItems) {
-      for (const level of dbLevels) {
-        await tx
-          .insert(itemActionRulesTable)
-          .values({
-            itemId: item.id,
-            actionLevelId: level.id,
-            active: true,
-          })
-          .onConflictDoNothing();
-      }
-    }
-  });
+  defaultRoomId = room.id;
 }
 
 export async function initializePopPersonStore(): Promise<void> {
   if (!initializationPromise) {
-    initializationPromise = ensureSeedData().then(async () => {
+    initializationPromise = loadConfiguredRoom().then(async () => {
       await processDueActions();
       processorTimer = setInterval(() => {
         void processDueActions();
@@ -336,34 +114,88 @@ async function ensureRoomMembership(roomId: string, sessionId: string | undefine
 }
 
 async function getDataset(roomId: string): Promise<PopPerson[]> {
-  const rows = await db
-    .select({
-      name: peopleTable.name,
-      cargo: peopleTable.roleTitle,
-      status: peopleTable.status,
-      cidade: locationsTable.city,
-      estado: locationsTable.stateCode,
-      estadoCodigo: locationsTable.stateCode,
-      pais: locationsTable.country,
-      paisCodigo: locationsTable.countryCode,
-      value: cellsTable.currentValue,
-      color: cellsTable.backgroundColor,
-    })
-    .from(cellsTable)
-    .innerJoin(peopleTable, eq(cellsTable.personId, peopleTable.id))
-    .leftJoin(locationsTable, eq(peopleTable.locationId, locationsTable.id))
-    .where(
-      and(
-        eq(cellsTable.roomId, roomId),
-        eq(cellsTable.active, true),
-        eq(peopleTable.active, true),
-      ),
-    )
-    .orderBy(asc(cellsTable.createdAt));
+  const [rows, categories] = await Promise.all([
+    db
+      .select({
+        name: peopleTable.name,
+        categoryId: peopleTable.categoryId,
+        categoryName: categoriesTable.name,
+        categorySlug: categoriesTable.slug,
+        categoryParentId: categoriesTable.parentId,
+        status: peopleTable.status,
+        cidade: locationsTable.city,
+        estado: locationsTable.stateCode,
+        estadoCodigo: locationsTable.stateCode,
+        pais: locationsTable.country,
+        paisCodigo: locationsTable.countryCode,
+        value: cellsTable.currentValue,
+        color: peopleTable.color,
+      })
+      .from(cellsTable)
+      .innerJoin(peopleTable, eq(cellsTable.personId, peopleTable.id))
+      .innerJoin(categoriesTable, eq(peopleTable.categoryId, categoriesTable.id))
+      .leftJoin(locationsTable, eq(peopleTable.locationId, locationsTable.id))
+      .where(
+        and(
+          eq(cellsTable.roomId, roomId),
+          eq(cellsTable.active, true),
+          eq(peopleTable.active, true),
+          eq(categoriesTable.active, true),
+        ),
+      )
+      .orderBy(asc(cellsTable.createdAt)),
+    db
+      .select({
+        id: categoriesTable.id,
+        name: categoriesTable.name,
+        slug: categoriesTable.slug,
+        parentId: categoriesTable.parentId,
+      })
+      .from(categoriesTable)
+      .where(eq(categoriesTable.active, true)),
+  ]);
+
+  const categoryById = new Map(categories.map((category) => [category.id, category]));
+  const pathCache = new Map<string, PopPersonCategory[]>();
+  const getCategoryPath = (
+    categoryId: string,
+    visiting = new Set<string>(),
+  ): PopPersonCategory[] => {
+    const cached = pathCache.get(categoryId);
+    if (cached) return cached;
+    if (visiting.has(categoryId)) {
+      throw new Error("Hierarquia de categorias inválida: ciclo detectado.");
+    }
+    const category = categoryById.get(categoryId);
+    if (!category) {
+      throw new Error(`Categoria "${categoryId}" não encontrada.`);
+    }
+    const nextVisiting = new Set(visiting).add(categoryId);
+    const parentPath = category.parentId
+      ? getCategoryPath(category.parentId, nextVisiting)
+      : [];
+    const path = [
+      ...parentPath,
+      {
+        id: category.id,
+        name: category.name,
+        slug: category.slug,
+        parentId: category.parentId,
+      },
+    ];
+    pathCache.set(categoryId, path);
+    return path;
+  };
 
   return rows.map((person) => ({
     name: person.name,
-    cargo: person.cargo ?? "",
+    category: {
+      id: person.categoryId,
+      name: person.categoryName,
+      slug: person.categorySlug,
+      parentId: person.categoryParentId,
+    },
+    categoryPath: getCategoryPath(person.categoryId),
     cidade: person.cidade ?? "",
     estado: person.estado ?? "",
     estadoCodigo: person.estadoCodigo ?? "",
@@ -416,6 +248,7 @@ async function getActions(
       level: actionLevelsTable.code,
       targetName: peopleTable.name,
       status: actionsTable.status,
+      actionStartDelayMs: actionsTable.startDelayMs,
       executeAt: actionsTable.scheduledFor,
       completedAt: actionsTable.completedAt,
       levelCount: actionLevelsTable.projectileCount,
@@ -461,6 +294,11 @@ async function getActions(
       "durationMs",
       action.levelDurationMs,
     );
+    const startDelayMs = snapshotNumber(
+      action.ruleSnapshot,
+      "startDelayMs",
+      action.actionStartDelayMs,
+    );
     const impactMultiplier = snapshotNumber(
       action.ruleSnapshot,
       "impactMultiplier",
@@ -478,9 +316,10 @@ async function getActions(
       id: action.id,
       mode: action.mode,
       elementId: action.elementId,
-      level: action.level as ActionLevelCode,
+      level: action.level,
       targetName: action.targetName,
       status: toActionStatus(action.status),
+      startDelayMs,
       executeAt: action.executeAt.getTime(),
       completedAt: action.completedAt?.getTime() ?? null,
       count,
@@ -524,6 +363,7 @@ async function getPopPersonConfig(): Promise<PopPersonConfig> {
         powerLabel: actionLevelsTable.powerLabel,
         emoji: actionLevelsTable.emoji,
         projectileCount: actionLevelsTable.projectileCount,
+        startDelayMs: actionLevelsTable.startDelayMs,
         staggerMs: actionLevelsTable.staggerMs,
         durationMs: actionLevelsTable.durationMs,
         growthPerHit: actionLevelsTable.growthPerHit,
@@ -537,6 +377,7 @@ async function getPopPersonConfig(): Promise<PopPersonConfig> {
       .select({
         itemId: itemActionRulesTable.itemId,
         actionLevelId: itemActionRulesTable.actionLevelId,
+        startDelayMs: itemActionRulesTable.startDelayMs,
         impactMultiplier: itemActionRulesTable.impactMultiplier,
         growthPerHit: itemActionRulesTable.growthPerHit,
         projectileCount: itemActionRulesTable.projectileCount,
@@ -564,11 +405,7 @@ async function getPopPersonConfig(): Promise<PopPersonConfig> {
   return {
     elements,
     levels: dbLevels.map((level) => {
-      if (
-        !isActionLevelCode(level.code) ||
-        !level.powerLabel ||
-        !level.emoji
-      ) {
+      if (!level.powerLabel || !level.emoji) {
         throw new Error(`Nível "${level.code}" está com configuração inválida.`);
       }
 
@@ -578,6 +415,7 @@ async function getPopPersonConfig(): Promise<PopPersonConfig> {
         powerLabel: level.powerLabel,
         emoji: level.emoji,
         count: level.projectileCount,
+        startDelayMs: level.startDelayMs,
         staggerMs: level.staggerMs,
         duration: level.durationMs,
         growthPerHit: toNumber(level.growthPerHit),
@@ -594,8 +432,9 @@ async function getPopPersonConfig(): Promise<PopPersonConfig> {
         );
         return {
           elementId: item.code,
-          level: level.code as ActionLevelCode,
+          level: level.code,
           count: values.count,
+          startDelayMs: values.startDelayMs,
           staggerMs: values.staggerMs,
           duration: values.durationMs,
           growthPerHit: values.growthPerHit,
@@ -605,8 +444,6 @@ async function getPopPersonConfig(): Promise<PopPersonConfig> {
         };
       }),
     ),
-    actionDelayMs: ACTION_DELAY_MS,
-    minValue: MIN_VALUE,
   };
 }
 
@@ -643,6 +480,7 @@ export async function getPopPersonState(
 function calculateActionValues(
   item: { impactPower: string; price: string },
   level: {
+    startDelayMs: number;
     projectileCount: number;
     staggerMs: number;
     durationMs: number;
@@ -651,6 +489,7 @@ function calculateActionValues(
     shake: boolean;
   },
   rule: {
+    startDelayMs: number | null;
     projectileCount: number | null;
     staggerMs: number | null;
     durationMs: number | null;
@@ -659,6 +498,7 @@ function calculateActionValues(
     priceOverride: string | null;
   } | undefined,
 ) {
+  const startDelayMs = rule?.startDelayMs ?? level.startDelayMs;
   const count = rule?.projectileCount ?? level.projectileCount;
   const staggerMs = rule?.staggerMs ?? level.staggerMs;
   const durationMs = rule?.durationMs ?? level.durationMs;
@@ -672,6 +512,7 @@ function calculateActionValues(
   );
   const price = toNumber(rule?.priceOverride ?? item.price);
   return {
+    startDelayMs,
     count,
     staggerMs,
     durationMs,
@@ -759,13 +600,14 @@ export async function createPopPersonAction(
       )
       .limit(1);
     const values = calculateActionValues(item, level, rule);
-    const scheduledFor = new Date(now.getTime() + ACTION_DELAY_MS);
+    const scheduledFor = new Date(now.getTime() + values.startDelayMs);
     const completesAt = new Date(
       scheduledFor.getTime() +
         (values.count - 1) * values.staggerMs +
         values.durationMs,
     );
     const ruleSnapshot = {
+      startDelayMs: values.startDelayMs,
       count: values.count,
       staggerMs: values.staggerMs,
       durationMs: values.durationMs,
@@ -787,6 +629,7 @@ export async function createPopPersonAction(
         actionLevelId: level.id,
         mode: input.mode,
         status: "queued",
+        startDelayMs: values.startDelayMs,
         scheduledFor,
         completesAt,
         effectiveImpact: String(values.totalImpact),

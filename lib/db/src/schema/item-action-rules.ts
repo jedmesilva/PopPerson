@@ -24,6 +24,7 @@ export const itemActionRulesTable = pgTable(
     actionLevelId: uuid("action_level_id")
       .notNull()
       .references(() => actionLevelsTable.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    startDelayMs: integer("start_delay_ms"),
     impactMultiplier: numeric("impact_multiplier", { precision: 14, scale: 6 }),
     growthPerHit: numeric("growth_per_hit", { precision: 14, scale: 6 }),
     projectileCount: integer("projectile_count"),

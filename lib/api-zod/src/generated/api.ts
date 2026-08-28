@@ -35,10 +35,14 @@ export const GetAccessLocationResponse = zod.object({
 /**
  * @summary Get PopPerson configuration and state
  */
+export const getPopPersonResponseConfigLevelsItemStartDelayMsMin = 0;
+
 
 export const getPopPersonResponseConfigLevelsItemStaggerMsMin = 0;
 
 export const getPopPersonResponseConfigLevelsItemDurationMin = 0;
+
+export const getPopPersonResponseConfigActionRulesItemStartDelayMsMin = 0;
 
 
 export const getPopPersonResponseConfigActionRulesItemStaggerMsMin = 0;
@@ -47,7 +51,7 @@ export const getPopPersonResponseConfigActionRulesItemDurationMin = 0;
 
 export const getPopPersonResponseConfigActionRulesItemPriceMin = 0;
 
-export const getPopPersonResponseConfigActionDelayMsMin = 0;
+export const getPopPersonResponseStateActionsItemStartDelayMsMin = 0;
 
 export const getPopPersonResponseStateActionsItemExecuteAtMin = 0;
 
@@ -81,10 +85,11 @@ export const GetPopPersonResponse = zod.object({
 }))
 }),
   "levels": zod.array(zod.object({
-  "key": zod.enum(['moderado', 'forte', 'extremo', 'devastador', 'apocaliptico']),
+  "key": zod.string(),
   "label": zod.string(),
   "powerLabel": zod.string(),
   "emoji": zod.string(),
+  "startDelayMs": zod.number().min(getPopPersonResponseConfigLevelsItemStartDelayMsMin),
   "count": zod.number().min(1),
   "staggerMs": zod.number().min(getPopPersonResponseConfigLevelsItemStaggerMsMin),
   "duration": zod.number().min(getPopPersonResponseConfigLevelsItemDurationMin),
@@ -94,7 +99,8 @@ export const GetPopPersonResponse = zod.object({
 })),
   "actionRules": zod.array(zod.object({
   "elementId": zod.string(),
-  "level": zod.enum(['moderado', 'forte', 'extremo', 'devastador', 'apocaliptico']),
+  "level": zod.string(),
+  "startDelayMs": zod.number().min(getPopPersonResponseConfigActionRulesItemStartDelayMsMin),
   "count": zod.number().min(1),
   "staggerMs": zod.number().min(getPopPersonResponseConfigActionRulesItemStaggerMsMin),
   "duration": zod.number().min(getPopPersonResponseConfigActionRulesItemDurationMin),
@@ -102,14 +108,23 @@ export const GetPopPersonResponse = zod.object({
   "impactMultiplier": zod.number(),
   "price": zod.number().min(getPopPersonResponseConfigActionRulesItemPriceMin),
   "shake": zod.boolean()
-})),
-  "actionDelayMs": zod.number().min(getPopPersonResponseConfigActionDelayMsMin),
-  "minValue": zod.number()
+}))
 }),
   "state": zod.object({
   "dataset": zod.array(zod.object({
   "name": zod.string(),
-  "cargo": zod.string(),
+  "category": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "slug": zod.string(),
+  "parentId": zod.string().nullable()
+}),
+  "categoryPath": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "slug": zod.string(),
+  "parentId": zod.string().nullable()
+})),
   "cidade": zod.string(),
   "estado": zod.string(),
   "estadoCodigo": zod.string(),
@@ -123,7 +138,8 @@ export const GetPopPersonResponse = zod.object({
   "id": zod.string(),
   "mode": zod.enum(['atacar', 'defender']),
   "elementId": zod.string(),
-  "level": zod.enum(['moderado', 'forte', 'extremo', 'devastador', 'apocaliptico']),
+  "level": zod.string(),
+  "startDelayMs": zod.number().min(getPopPersonResponseStateActionsItemStartDelayMsMin),
   "targetName": zod.string(),
   "status": zod.enum(['queued', 'running', 'completed']),
   "executeAt": zod.number().min(getPopPersonResponseStateActionsItemExecuteAtMin),
@@ -150,6 +166,8 @@ export const GetPopPersonResponse = zod.object({
 /**
  * @summary Get the current PopPerson state
  */
+export const getPopPersonStateResponseActionsItemStartDelayMsMin = 0;
+
 export const getPopPersonStateResponseActionsItemExecuteAtMin = 0;
 
 export const getPopPersonStateResponseActionsItemCompletedAtMin = 0;
@@ -164,7 +182,18 @@ export const getPopPersonStateResponseActionsItemDurationMin = 0;
 export const GetPopPersonStateResponse = zod.object({
   "dataset": zod.array(zod.object({
   "name": zod.string(),
-  "cargo": zod.string(),
+  "category": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "slug": zod.string(),
+  "parentId": zod.string().nullable()
+}),
+  "categoryPath": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "slug": zod.string(),
+  "parentId": zod.string().nullable()
+})),
   "cidade": zod.string(),
   "estado": zod.string(),
   "estadoCodigo": zod.string(),
@@ -178,7 +207,8 @@ export const GetPopPersonStateResponse = zod.object({
   "id": zod.string(),
   "mode": zod.enum(['atacar', 'defender']),
   "elementId": zod.string(),
-  "level": zod.enum(['moderado', 'forte', 'extremo', 'devastador', 'apocaliptico']),
+  "level": zod.string(),
+  "startDelayMs": zod.number().min(getPopPersonStateResponseActionsItemStartDelayMsMin),
   "targetName": zod.string(),
   "status": zod.enum(['queued', 'running', 'completed']),
   "executeAt": zod.number().min(getPopPersonStateResponseActionsItemExecuteAtMin),
@@ -204,6 +234,7 @@ export const GetPopPersonStateResponse = zod.object({
 /**
  * @summary Queue an attack or defense action
  */
+
 export const createPopPersonActionBodyIdempotencyKeyMax = 160;
 
 
@@ -211,10 +242,12 @@ export const createPopPersonActionBodyIdempotencyKeyMax = 160;
 export const CreatePopPersonActionBody = zod.object({
   "mode": zod.enum(['atacar', 'defender']),
   "elementId": zod.string(),
-  "level": zod.enum(['moderado', 'forte', 'extremo', 'devastador', 'apocaliptico']),
+  "level": zod.string().min(1),
   "targetName": zod.string(),
   "idempotencyKey": zod.string().min(1).max(createPopPersonActionBodyIdempotencyKeyMax).optional()
 })
+
+export const createPopPersonActionResponseStartDelayMsMin = 0;
 
 export const createPopPersonActionResponseExecuteAtMin = 0;
 
@@ -231,7 +264,8 @@ export const CreatePopPersonActionResponse = zod.object({
   "id": zod.string(),
   "mode": zod.enum(['atacar', 'defender']),
   "elementId": zod.string(),
-  "level": zod.enum(['moderado', 'forte', 'extremo', 'devastador', 'apocaliptico']),
+  "level": zod.string(),
+  "startDelayMs": zod.number().min(createPopPersonActionResponseStartDelayMsMin),
   "targetName": zod.string(),
   "status": zod.enum(['queued', 'running', 'completed']),
   "executeAt": zod.number().min(createPopPersonActionResponseExecuteAtMin),

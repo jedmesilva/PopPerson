@@ -36,9 +36,18 @@ export const PopPersonStatus = {
   candidato: 'candidato',
 } as const;
 
+export interface PopPersonCategory {
+  id: string;
+  name: string;
+  slug: string;
+  /** @nullable */
+  parentId: string | null;
+}
+
 export interface PopPerson {
   name: string;
-  cargo: string;
+  category: PopPersonCategory;
+  categoryPath: PopPersonCategory[];
   cidade: string;
   estado: string;
   estadoCodigo: string;
@@ -66,22 +75,13 @@ export interface PopPersonElement {
   gender: PopPersonElementGender;
 }
 
-export type PopPersonLevelKey = typeof PopPersonLevelKey[keyof typeof PopPersonLevelKey];
-
-
-export const PopPersonLevelKey = {
-  moderado: 'moderado',
-  forte: 'forte',
-  extremo: 'extremo',
-  devastador: 'devastador',
-  apocaliptico: 'apocaliptico',
-} as const;
-
 export interface PopPersonLevel {
-  key: PopPersonLevelKey;
+  key: string;
   label: string;
   powerLabel: string;
   emoji: string;
+  /** @minimum 0 */
+  startDelayMs: number;
   /** @minimum 1 */
   count: number;
   /** @minimum 0 */
@@ -93,20 +93,11 @@ export interface PopPersonLevel {
   shake: boolean;
 }
 
-export type PopPersonActionRuleLevel = typeof PopPersonActionRuleLevel[keyof typeof PopPersonActionRuleLevel];
-
-
-export const PopPersonActionRuleLevel = {
-  moderado: 'moderado',
-  forte: 'forte',
-  extremo: 'extremo',
-  devastador: 'devastador',
-  apocaliptico: 'apocaliptico',
-} as const;
-
 export interface PopPersonActionRule {
   elementId: string;
-  level: PopPersonActionRuleLevel;
+  level: string;
+  /** @minimum 0 */
+  startDelayMs: number;
   /** @minimum 1 */
   count: number;
   /** @minimum 0 */
@@ -129,9 +120,6 @@ export interface PopPersonConfig {
   elements: PopPersonConfigElements;
   levels: PopPersonLevel[];
   actionRules: PopPersonActionRule[];
-  /** @minimum 0 */
-  actionDelayMs: number;
-  minValue: number;
 }
 
 export type PopPersonActionMode = typeof PopPersonActionMode[keyof typeof PopPersonActionMode];
@@ -140,17 +128,6 @@ export type PopPersonActionMode = typeof PopPersonActionMode[keyof typeof PopPer
 export const PopPersonActionMode = {
   atacar: 'atacar',
   defender: 'defender',
-} as const;
-
-export type PopPersonActionLevel = typeof PopPersonActionLevel[keyof typeof PopPersonActionLevel];
-
-
-export const PopPersonActionLevel = {
-  moderado: 'moderado',
-  forte: 'forte',
-  extremo: 'extremo',
-  devastador: 'devastador',
-  apocaliptico: 'apocaliptico',
 } as const;
 
 export type PopPersonActionStatus = typeof PopPersonActionStatus[keyof typeof PopPersonActionStatus];
@@ -166,7 +143,9 @@ export interface PopPersonAction {
   id: string;
   mode: PopPersonActionMode;
   elementId: string;
-  level: PopPersonActionLevel;
+  level: string;
+  /** @minimum 0 */
+  startDelayMs: number;
   targetName: string;
   status: PopPersonActionStatus;
   /** @minimum 0 */
@@ -206,21 +185,11 @@ export const PopPersonActionInputMode = {
   defender: 'defender',
 } as const;
 
-export type PopPersonActionInputLevel = typeof PopPersonActionInputLevel[keyof typeof PopPersonActionInputLevel];
-
-
-export const PopPersonActionInputLevel = {
-  moderado: 'moderado',
-  forte: 'forte',
-  extremo: 'extremo',
-  devastador: 'devastador',
-  apocaliptico: 'apocaliptico',
-} as const;
-
 export interface PopPersonActionInput {
   mode: PopPersonActionInputMode;
   elementId: string;
-  level: PopPersonActionInputLevel;
+  /** @minLength 1 */
+  level: string;
   targetName: string;
   /**
      * @minLength 1

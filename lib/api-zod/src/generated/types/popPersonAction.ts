@@ -5,7 +5,6 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { PopPersonActionLevel } from './popPersonActionLevel';
 import type { PopPersonActionMode } from './popPersonActionMode';
 import type { PopPersonActionStatus } from './popPersonActionStatus';
 import type { PopPersonElement } from './popPersonElement';
@@ -14,7 +13,9 @@ export interface PopPersonAction {
   id: string;
   mode: PopPersonActionMode;
   elementId: string;
-  level: PopPersonActionLevel;
+  level: string;
+  /** @minimum 0 */
+  startDelayMs: number;
   targetName: string;
   status: PopPersonActionStatus;
   /** @minimum 0 */

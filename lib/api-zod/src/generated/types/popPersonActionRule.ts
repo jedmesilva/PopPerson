@@ -5,11 +5,12 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { PopPersonActionRuleLevel } from './popPersonActionRuleLevel';
 
 export interface PopPersonActionRule {
   elementId: string;
-  level: PopPersonActionRuleLevel;
+  level: string;
+  /** @minimum 0 */
+  startDelayMs: number;
   /** @minimum 1 */
   count: number;
   /** @minimum 0 */

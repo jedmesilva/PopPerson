@@ -13,7 +13,4 @@ export interface PopPersonConfig {
   elements: PopPersonConfigElements;
   levels: PopPersonLevel[];
   actionRules: PopPersonActionRule[];
-  /** @minimum 0 */
-  actionDelayMs: number;
-  minValue: number;
 }

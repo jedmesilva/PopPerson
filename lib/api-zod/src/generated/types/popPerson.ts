@@ -5,11 +5,13 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { PopPersonCategory } from './popPersonCategory';
 import type { PopPersonStatus } from './popPersonStatus';
 
 export interface PopPerson {
   name: string;
-  cargo: string;
+  category: PopPersonCategory;
+  categoryPath: PopPersonCategory[];
   cidade: string;
   estado: string;
   estadoCodigo: string;

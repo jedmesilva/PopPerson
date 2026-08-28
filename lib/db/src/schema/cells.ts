@@ -9,7 +9,6 @@ import {
   timestamp,
   uniqueIndex,
   uuid,
-  varchar,
 } from "drizzle-orm/pg-core";
 import { z } from "zod/v4";
 import { peopleTable } from "./people";
@@ -25,7 +24,6 @@ export const cellsTable = pgTable(
     personId: uuid("person_id")
       .notNull()
       .references(() => peopleTable.id, { onDelete: "restrict", onUpdate: "cascade" }),
-    backgroundColor: varchar("background_color", { length: 32 }).notNull(),
     currentValue: numeric("current_value", { precision: 14, scale: 4 }).notNull().default("10"),
     minimumValue: numeric("minimum_value", { precision: 14, scale: 4 }).notNull().default("2"),
     maximumValue: numeric("maximum_value", { precision: 14, scale: 4 }),

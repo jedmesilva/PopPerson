@@ -3,6 +3,7 @@ export * from "./action-events";
 export * from "./action-levels";
 export * from "./actions";
 export * from "./cells";
+export * from "./categories";
 export * from "./item-action-rules";
 export * from "./items";
 export * from "./locations";

@@ -11,6 +11,7 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { z } from "zod/v4";
+import { categoriesTable } from "./categories";
 import { locationsTable } from "./locations";
 
 export const peopleTable = pgTable(
@@ -19,7 +20,13 @@ export const peopleTable = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     name: text("name").notNull(),
     slug: varchar("slug", { length: 160 }).notNull().unique(),
-    roleTitle: text("role_title"),
+    categoryId: uuid("category_id")
+      .notNull()
+      .references(() => categoriesTable.id, {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      }),
+    color: varchar("color", { length: 32 }).notNull(),
     status: varchar("status", { length: 32 }).notNull().default("titular"),
     imageUrl: text("image_url"),
     locationId: uuid("location_id").references(() => locationsTable.id, {
@@ -37,6 +44,7 @@ export const peopleTable = pgTable(
       using: sql`false`,
       withCheck: sql`false`,
     }),
+    index("people_category_idx").on(table.categoryId),
     index("people_location_idx").on(table.locationId),
   ],
 );

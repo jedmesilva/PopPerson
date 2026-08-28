@@ -119,12 +119,16 @@ components:
           type: string
     PopPerson:
       type: object
-      required: [name, cargo, cidade, estado, estadoCodigo, pais, paisCodigo, status, value, color]
+      required: [name, category, categoryPath, cidade, estado, estadoCodigo, pais, paisCodigo, status, value, color]
       properties:
         name:
           type: string
-        cargo:
-          type: string
+        category:
+          $ref: "#/components/schemas/PopPersonCategory"
+        categoryPath:
+          type: array
+          items:
+            $ref: "#/components/schemas/PopPersonCategory"
         cidade:
           type: string
         estado:
@@ -142,6 +146,18 @@ components:
           type: number
         color:
           type: string
+    PopPersonCategory:
+      type: object
+      required: [id, name, slug, parentId]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        slug:
+          type: string
+        parentId:
+          type: ["string", "null"]
     PopPersonElement:
       type: object
       required: [id, emoji, label, force, price, gender]
@@ -161,17 +177,19 @@ components:
           enum: [m, f]
     PopPersonLevel:
       type: object
-      required: [key, label, powerLabel, emoji, count, staggerMs, duration, growthPerHit, impactMultiplier, shake]
+      required: [key, label, powerLabel, emoji, startDelayMs, count, staggerMs, duration, growthPerHit, impactMultiplier, shake]
       properties:
         key:
           type: string
-          enum: [moderado, forte, extremo, devastador, apocaliptico]
         label:
           type: string
         powerLabel:
           type: string
         emoji:
           type: string
+        startDelayMs:
+          type: number
+          minimum: 0
         count:
           type: number
           minimum: 1
@@ -189,13 +207,15 @@ components:
           type: boolean
     PopPersonActionRule:
       type: object
-      required: [elementId, level, count, staggerMs, duration, growthPerHit, impactMultiplier, price, shake]
+      required: [elementId, level, startDelayMs, count, staggerMs, duration, growthPerHit, impactMultiplier, price, shake]
       properties:
         elementId:
           type: string
         level:
           type: string
-          enum: [moderado, forte, extremo, devastador, apocaliptico]
+        startDelayMs:
+          type: number
+          minimum: 0
         count:
           type: number
           minimum: 1
@@ -216,7 +236,7 @@ components:
           type: boolean
     PopPersonConfig:
       type: object
-      required: [elements, levels, actionRules, actionDelayMs, minValue]
+      required: [elements, levels, actionRules]
       properties:
         elements:
           type: object
@@ -238,14 +258,9 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PopPersonActionRule"
-        actionDelayMs:
-          type: number
-          minimum: 0
-        minValue:
-          type: number
     PopPersonAction:
       type: object
-      required: [id, mode, elementId, level, targetName, status, executeAt, count, growthPerHit, impactMultiplier, staggerMs, duration, shake, element]
+      required: [id, mode, elementId, level, targetName, status, startDelayMs, executeAt, count, growthPerHit, impactMultiplier, staggerMs, duration, shake, element]
       properties:
         id:
           type: string
@@ -256,7 +271,9 @@ components:
           type: string
         level:
           type: string
-          enum: [moderado, forte, extremo, devastador, apocaliptico]
+        startDelayMs:
+          type: number
+          minimum: 0
         targetName:
           type: string
         status:
@@ -316,7 +333,7 @@ components:
           type: string
         level:
           type: string
-          enum: [moderado, forte, extremo, devastador, apocaliptico]
+          minLength: 1
         targetName:
           type: string
         idempotencyKey:

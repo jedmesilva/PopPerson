@@ -5,13 +5,14 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { PopPersonLevelKey } from './popPersonLevelKey';
 
 export interface PopPersonLevel {
-  key: PopPersonLevelKey;
+  key: string;
   label: string;
   powerLabel: string;
   emoji: string;
+  /** @minimum 0 */
+  startDelayMs: number;
   /** @minimum 1 */
   count: number;
   /** @minimum 0 */

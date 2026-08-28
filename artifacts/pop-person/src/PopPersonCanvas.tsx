@@ -187,7 +187,11 @@ function FilterSection({ label, options, selected, onSelect, disabled, disabledH
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
           }}
         >
-          {options.map((opt) => <option key={opt} value={opt} style={{ backgroundColor: "#171717", color: "#f5f5f5" }}>{opt}</option>)}
+          {options.map((opt) => {
+            const value = typeof opt === "string" ? opt : opt.value;
+            const label = typeof opt === "string" ? opt : opt.label;
+            return <option key={value} value={value} style={{ backgroundColor: "#171717", color: "#f5f5f5" }}>{label}</option>;
+          })}
         </select>
         <ChevronDown size={14} style={{ position: "absolute", right: "9px", top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: disabled ? "#404040" : isActive ? "#c7d2fe" : "#737373" }} />
       </div>
@@ -215,13 +219,13 @@ export default function PopPersonCanvas() {
   const canvasRef = useRef(null);
   const boardWrapRef = useRef(null);
   const [dataset, setDataset] = useState([]);
-  const [filters, setFilters] = useState({ pais: "Todos", estado: "Todos", cidade: "Todos" });
+  const [filters, setFilters] = useState({ pais: "Todos", estado: "Todos", cidade: "Todos", categoria: "Todos" });
   const [showFiltersModal, setShowFiltersModal] = useState(false);
   const [selectedCell, setSelectedCell] = useState(null);
   const [pendingMode, setPendingMode] = useState(null);
   const [modalStep, setModalStep] = useState("elemento");
   const [modalElement, setModalElement] = useState(null);
-  const [modalLevel, setModalLevel] = useState("moderado");
+  const [modalLevel, setModalLevel] = useState("");
   const [showQueueModal, setShowQueueModal] = useState(false);
   const [queue, setQueue] = useState([]);
   const [activeActions, setActiveActions] = useState([]);
@@ -257,12 +261,35 @@ export default function PopPersonCanvas() {
     const scoped = dataset.filter((d) => (filters.pais === "Todos" || d.pais === filters.pais) && (filters.estado === "Todos" || d.estado === filters.estado));
     return ["Todos", ...Array.from(new Set(scoped.map((d) => d.cidade))).sort()];
   }, [dataset, filters.pais, filters.estado]);
+  const categoriaOptions = useMemo(() => {
+    const categories = new Map();
+    dataset.forEach((person) => {
+      person.categoryPath.forEach((category) => {
+        if (!categories.has(category.id)) {
+          categories.set(category.id, {
+            value: category.id,
+            label: person.categoryPath.map((item) => item.name).slice(
+              0,
+              person.categoryPath.findIndex((item) => item.id === category.id) + 1,
+            ).join(" / "),
+          });
+        }
+      });
+    });
+    return [{ value: "Todos", label: "Todos" }, ...Array.from(categories.values()).sort((a, b) => a.label.localeCompare(b.label))];
+  }, [dataset]);
   const setFilterLevel = useCallback((level, value) => {
-    setFilters((prev) => level === "pais" ? { pais: value, estado: "Todos", cidade: "Todos" } : level === "estado" ? { ...prev, estado: value, cidade: "Todos" } : { ...prev, cidade: value });
+    setFilters((prev) => level === "pais"
+      ? { pais: value, estado: "Todos", cidade: "Todos", categoria: prev.categoria }
+      : level === "estado"
+        ? { ...prev, estado: value, cidade: "Todos" }
+        : level === "cidade"
+          ? { ...prev, cidade: value }
+          : { ...prev, categoria: value });
   }, []);
-  const clearFilters = useCallback(() => setFilters({ pais: "Todos", estado: "Todos", cidade: "Todos" }), []);
-  const activeFilterCount = (filters.pais !== "Todos" ? 1 : 0) + (filters.estado !== "Todos" ? 1 : 0) + (filters.cidade !== "Todos" ? 1 : 0);
-  const filteredDataset = useMemo(() => dataset.filter((d) => (filters.pais === "Todos" || d.pais === filters.pais) && (filters.estado === "Todos" || d.estado === filters.estado) && (filters.cidade === "Todos" || d.cidade === filters.cidade)), [dataset, filters]);
+  const clearFilters = useCallback(() => setFilters({ pais: "Todos", estado: "Todos", cidade: "Todos", categoria: "Todos" }), []);
+  const activeFilterCount = (filters.pais !== "Todos" ? 1 : 0) + (filters.estado !== "Todos" ? 1 : 0) + (filters.cidade !== "Todos" ? 1 : 0) + (filters.categoria !== "Todos" ? 1 : 0);
+  const filteredDataset = useMemo(() => dataset.filter((d) => (filters.pais === "Todos" || d.pais === filters.pais) && (filters.estado === "Todos" || d.estado === filters.estado) && (filters.cidade === "Todos" || d.cidade === filters.cidade) && (filters.categoria === "Todos" || d.categoryPath.some((category) => category.id === filters.categoria))), [dataset, filters]);
   const leaves = useMemo(() => computeLeaves(filteredDataset), [filteredDataset]);
 
   useEffect(() => {
@@ -297,6 +324,7 @@ export default function PopPersonCanvas() {
       pais: selectedCountry,
       estado: selectedState,
       cidade: cityMatch?.cidade ?? "Todos",
+      categoria: "Todos",
     });
   }, [accessLocationQuery.data, dataset]);
 
@@ -418,7 +446,8 @@ export default function PopPersonCanvas() {
   const getActionTiming = useCallback((item, now) => {
     if (item.kind === "queued") {
       const secondsLeft = Math.max(0, (item.executeAt - now) / 1000);
-      return { timeLabel: `Inicia em ${secondsLeft.toFixed(1)}s`, progress: 1 - (secondsLeft * 1000) / (config?.actionDelayMs || 1) };
+      const delayMs = Math.max(0, item.startDelayMs);
+      return { timeLabel: secondsLeft > 0 ? `Inicia em ${secondsLeft.toFixed(1)}s` : "Iniciando", progress: delayMs > 0 ? 1 - (secondsLeft * 1000) / delayMs : 1 };
     }
     const totalCount = item.count;
     if (!totalCount) return { timeLabel: "—", progress: 0 };
@@ -426,7 +455,7 @@ export default function PopPersonCanvas() {
     const inFlight = projectilesRef.current.filter((p) => p.firingId === item.id).length;
     const landed = Math.max(0, totalCount - (emitter ? emitter.remaining : 0) - inFlight);
     return { timeLabel: `${Math.round(Math.min(1, landed / totalCount) * 100)}%`, progress: Math.min(1, landed / totalCount) };
-  }, [config?.actionDelayMs]);
+  }, []);
 
   useEffect(() => {
     if (queue.length === 0 && activeActions.length === 0) return undefined;
@@ -453,7 +482,7 @@ export default function PopPersonCanvas() {
     setPendingMode(mode);
     setModalStep("elemento");
     setModalElement(null);
-    setModalLevel(levels[0]?.key ?? "moderado");
+    setModalLevel(levels[0]?.key ?? "");
   }, [levels]);
   const closeModal = useCallback(() => setPendingMode(null), []);
   const pickElement = useCallback((element) => { setModalElement(element); setModalStep("intensidade"); }, []);
@@ -873,10 +902,11 @@ export default function PopPersonCanvas() {
               <span style={{ color: "#fff", fontWeight: 800, fontSize: "18px", letterSpacing: "-0.01em" }}>Filtros</span>
               <button data-testid="button-close-filters" onClick={() => setShowFiltersModal(false)} style={closeButtonStyle}><X size={13} /></button>
             </div>
-            <div style={{ display: "flex", gap: "10px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "10px" }}>
               <FilterSection label="País" options={paisOptions} selected={filters.pais} onSelect={(v) => setFilterLevel("pais", v)} />
               <FilterSection label="Estado" options={estadoOptions} selected={filters.estado} onSelect={(v) => setFilterLevel("estado", v)} disabled={filters.pais === "Todos"} disabledHint="Escolha um país" />
               <FilterSection label="Cidade" options={cidadeOptions} selected={filters.cidade} onSelect={(v) => setFilterLevel("cidade", v)} disabled={filters.estado === "Todos"} disabledHint="Escolha um estado" />
+              <FilterSection label="Categoria" options={categoriaOptions} selected={filters.categoria} onSelect={(v) => setFilterLevel("categoria", v)} />
             </div>
             <div style={{ display: "flex", gap: "10px", marginTop: "4px" }}>
               <button data-testid="button-clear-filters" onClick={clearFilters} disabled={activeFilterCount === 0} style={{ flex: 1, padding: "10px", borderRadius: "9999px", backgroundColor: "#262626", color: activeFilterCount === 0 ? "#525252" : "#f5f5f5", fontWeight: 700, fontSize: "13px", border: "1px solid #333", cursor: activeFilterCount === 0 ? "default" : "pointer" }}>Limpar filtros</button>
@@ -932,7 +962,7 @@ export default function PopPersonCanvas() {
                 <div style={{ position: "absolute", inset: 0, backgroundColor: selectedCellData.color, display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,0.5)", fontSize: "56px", fontWeight: 700 }}>{selectedInitials}</div>
                 <span style={{ position: "absolute", top: "10px", left: "10px", fontSize: "10px", fontWeight: 700, padding: "3px 9px", borderRadius: "9999px", color: selectedCellData.status === "titular" ? "#93c5fd" : "#fde68a", backgroundColor: selectedCellData.status === "titular" ? "rgba(30,58,95,0.9)" : "rgba(77,58,18,0.9)", backdropFilter: "blur(4px)" }}>{selectedCellData.status === "titular" ? "Em exercício" : "Candidato(a)"}</span>
                 <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "16px 12px 12px", background: "linear-gradient(to top, rgba(0,0,0,0.88), rgba(0,0,0,0.5) 65%, transparent)", display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "1px", minWidth: 0 }}><span style={{ color: "rgba(255,255,255,0.65)", fontSize: "11px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedCellData.cargo}</span><span style={{ color: "#fff", fontSize: "16px", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedCellData.name}</span></div>
+                   <div style={{ display: "flex", flexDirection: "column", gap: "1px", minWidth: 0 }}><span style={{ color: "rgba(255,255,255,0.65)", fontSize: "11px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedCellData.categoryPath.map((category) => category.name).join(" / ")}</span><span style={{ color: "#fff", fontSize: "16px", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedCellData.name}</span></div>
                   <div style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 }}><span style={{ color: "rgba(255,255,255,0.55)", fontSize: "9px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Localização</span><span style={{ color: "#fff", fontSize: "12px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedCellData.cidade}, {selectedCellData.estado} - {selectedCellData.pais}</span></div>
                 </div>
               </div>
@@ -977,7 +1007,7 @@ export default function PopPersonCanvas() {
                 </div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderRadius: "10px", backgroundColor: "#262626", border: "1px solid #333" }}><div style={{ display: "flex", flexDirection: "column", gap: "3px", minWidth: 0 }}><span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Custo da ação</span><span style={{ color: "#f5f5f5", fontSize: "13px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{modalElement.label} {levelByKey[modalLevel]?.label ?? modalLevel}</span></div><span style={{ color: "#4ade80", fontSize: "17px", fontWeight: 700, fontFamily: "monospace", flexShrink: 0 }}>{selectedActionRule ? formatBRL(selectedActionRule.price) : "—"}</span></div>
                 {createActionMutation.error && <span style={{ color: "#fca5a5", fontSize: "11px" }}>{actionWasRateLimited ? "Muitas ações em pouco tempo. Aguarde um instante e tente novamente." : "Não foi possível enviar esta ação. Tente novamente."}</span>}
-                 <button data-testid="button-send-action" onClick={confirmAction} disabled={createActionMutation.isPending || !selectedActionRule} style={{ padding: "10px", borderRadius: "9999px", backgroundColor: createActionMutation.isPending || !selectedActionRule ? "#525252" : "#f5f5f5", color: "#0a0a0a", fontWeight: 700, border: "none", cursor: createActionMutation.isPending ? "wait" : "pointer" }}>{createActionMutation.isPending ? "Enviando…" : `Enviar (${config.actionDelayMs / 1000}s)`}</button>
+                 <button data-testid="button-send-action" onClick={confirmAction} disabled={createActionMutation.isPending || !selectedActionRule} style={{ padding: "10px", borderRadius: "9999px", backgroundColor: createActionMutation.isPending || !selectedActionRule ? "#525252" : "#f5f5f5", color: "#0a0a0a", fontWeight: 700, border: "none", cursor: createActionMutation.isPending ? "wait" : "pointer" }}>{createActionMutation.isPending ? "Enviando…" : selectedActionRule?.startDelayMs > 0 ? `Enviar (inicia em ${Math.ceil(selectedActionRule.startDelayMs / 1000)}s)` : "Enviar agora"}</button>
               </>
             )}
           </div>

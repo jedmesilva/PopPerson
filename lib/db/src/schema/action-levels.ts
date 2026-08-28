@@ -22,6 +22,7 @@ export const actionLevelsTable = pgTable(
     powerLabel: varchar("power_label", { length: 32 }),
     emoji: varchar("emoji", { length: 16 }),
     sortOrder: integer("sort_order").notNull(),
+    startDelayMs: integer("start_delay_ms").notNull().default(0),
     projectileCount: integer("projectile_count").notNull(),
     staggerMs: integer("stagger_ms").notNull(),
     durationMs: integer("duration_ms").notNull(),

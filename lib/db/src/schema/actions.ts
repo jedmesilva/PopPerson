@@ -2,6 +2,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  integer,
   index,
   jsonb,
   numeric,
@@ -53,6 +54,7 @@ export const actionsTable = pgTable(
     mode: actionModeEnum("mode").notNull(),
     status: actionStatusEnum("status").notNull().default("queued"),
     requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+    startDelayMs: integer("start_delay_ms").notNull().default(0),
     scheduledFor: timestamp("scheduled_for", { withTimezone: true }).notNull(),
     completesAt: timestamp("completes_at", { withTimezone: true }).notNull(),
     activatedAt: timestamp("activated_at", { withTimezone: true }),
