@@ -187,24 +187,30 @@ async function getDataset(roomId: string): Promise<PopPerson[]> {
     return path;
   };
 
-  return rows.map((person) => ({
-    name: person.name,
-    category: {
-      id: person.categoryId,
-      name: person.categoryName,
-      slug: person.categorySlug,
-      parentId: person.categoryParentId,
-    },
-    categoryPath: getCategoryPath(person.categoryId),
-    cidade: person.cidade ?? "",
-    estado: person.estado ?? "",
-    estadoCodigo: person.estadoCodigo ?? "",
-    pais: person.pais ?? "",
-    paisCodigo: person.paisCodigo ?? "",
-    status: person.status === "candidato" ? "candidato" : "titular",
-    value: toNumber(person.value),
-    color: person.color,
-  }));
+  return rows.map((person) => {
+    if (person.status !== "titular" && person.status !== "candidato") {
+      throw new Error(`Status inválido para "${person.name}": "${person.status}".`);
+    }
+
+    return {
+      name: person.name,
+      category: {
+        id: person.categoryId,
+        name: person.categoryName,
+        slug: person.categorySlug,
+        parentId: person.categoryParentId,
+      },
+      categoryPath: getCategoryPath(person.categoryId),
+      cidade: person.cidade ?? "",
+      estado: person.estado ?? "",
+      estadoCodigo: person.estadoCodigo ?? "",
+      pais: person.pais ?? "",
+      paisCodigo: person.paisCodigo ?? "",
+      status: person.status,
+      value: toNumber(person.value),
+      color: person.color,
+    };
+  });
 }
 
 type PopPersonElement = PopPersonConfig["elements"]["atacar"][number];
@@ -294,11 +300,10 @@ async function getActions(
       "durationMs",
       action.levelDurationMs,
     );
-    const startDelayMs = snapshotNumber(
-      action.ruleSnapshot,
-      "startDelayMs",
-      action.actionStartDelayMs,
-    );
+    // The action row is the source of truth once the action is queued. Its
+    // snapshot is retained for the other execution values, but the schedule
+    // must always reflect the persisted action timing.
+    const startDelayMs = action.actionStartDelayMs;
     const impactMultiplier = snapshotNumber(
       action.ruleSnapshot,
       "impactMultiplier",
@@ -345,6 +350,7 @@ async function getPopPersonConfig(): Promise<PopPersonConfig> {
   const [dbItems, dbLevels, dbRules] = await Promise.all([
     db
       .select({
+        id: itemsTable.id,
         code: itemsTable.code,
         mode: itemsTable.mode,
         name: itemsTable.name,
@@ -358,6 +364,7 @@ async function getPopPersonConfig(): Promise<PopPersonConfig> {
       .orderBy(asc(itemsTable.createdAt)),
     db
       .select({
+        id: actionLevelsTable.id,
         code: actionLevelsTable.code,
         label: actionLevelsTable.label,
         powerLabel: actionLevelsTable.powerLabel,
@@ -428,7 +435,7 @@ async function getPopPersonConfig(): Promise<PopPersonConfig> {
         const values = calculateActionValues(
           item,
           level,
-          rulesByPair.get(`${item.code}:${level.code}`),
+          rulesByPair.get(`${item.id}:${level.id}`),
         );
         return {
           elementId: item.code,

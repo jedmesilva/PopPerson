@@ -599,7 +599,7 @@ export default function PopPersonCanvas() {
       const eased = easeOutQuad(progress);
       const x = quadBezier(p.startX, p.controlX, p.endX, eased);
       const y = quadBezier(p.startY, p.controlY, p.endY, eased);
-      const fontSize = p.level === "apocaliptico" ? 3.2 : 4.6;
+      const fontSize = 4.6;
       [0.09, 0.18, 0.27].forEach((offset, i) => {
         const tt = eased - offset;
         if (tt <= 0) return;
