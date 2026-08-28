@@ -259,6 +259,7 @@ export default function PopPersonCanvas() {
   const impactsRef = useRef([]);
   const shakeActionIdsRef = useRef(new Set());
   const activeActionIdsRef = useRef([]);
+  const seenServerActionIdsRef = useRef(new Set());
   const transformRef = useRef({ x: 0, y: 0, scale: 1 });
   const fitTransformRef = useRef({ x: 0, y: 0, scale: 1 });
   const recenterAnimRef = useRef(null);
@@ -283,6 +284,51 @@ export default function PopPersonCanvas() {
     const localExecuteAt = performance.now() + Math.max(0, serverAction.executeAt - Date.now());
     setQueue((prev) => [...prev, { id: serverAction.id, mode: serverAction.mode, element: actionElement, level: serverAction.level, targetName: serverAction.targetName, executeAt: localExecuteAt }]);
   }, []);
+
+  useEffect(() => {
+    if (!config) return undefined;
+
+    let socket;
+    let retryTimer;
+    let stopped = false;
+
+    function connect() {
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      socket = new WebSocket(`${protocol}//${window.location.host}/ws`);
+
+      socket.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          if (!message?.state?.dataset || !Array.isArray(message.state.actions)) return;
+
+          setDataset(message.state.dataset);
+          message.state.actions.forEach((serverAction) => {
+            if (seenServerActionIdsRef.current.has(serverAction.id)) return;
+            const actionElement = (config.elements?.[serverAction.mode] ?? []).find(
+              (element) => element.id === serverAction.elementId,
+            );
+            if (!actionElement || serverAction.status === "completed") return;
+            seenServerActionIdsRef.current.add(serverAction.id);
+            queueAction(serverAction, actionElement);
+          });
+        } catch {
+          // Ignore malformed messages and let the polling fallback reconcile state.
+        }
+      };
+
+      socket.onclose = () => {
+        if (!stopped) retryTimer = window.setTimeout(connect, 2000);
+      };
+      socket.onerror = () => socket.close();
+    }
+
+    connect();
+    return () => {
+      stopped = true;
+      window.clearTimeout(retryTimer);
+      socket?.close();
+    };
+  }, [config, queueAction]);
   const getRemainingUnits = useCallback((item) => {
     const emitter = emittersRef.current.find((e) => e.id === item.id);
     return (emitter ? emitter.remaining : 0) + projectilesRef.current.filter((p) => p.firingId === item.id).length;
@@ -337,6 +383,7 @@ export default function PopPersonCanvas() {
       },
       {
         onSuccess: (action) => {
+          seenServerActionIdsRef.current.add(action.id);
           queueAction(action, modalElement);
           closeModal();
           setSelectedCell(null);

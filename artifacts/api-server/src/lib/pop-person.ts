@@ -66,6 +66,7 @@ const dataset: PopPerson[] = POLITICIANS.map((politician, index) => ({
 }));
 
 const actions = new Map<string, PopPersonAction>();
+const stateListeners = new Set<(state: PopPersonState) => void>();
 
 function activeActions(): PopPersonAction[] {
   return [...actions.values()].filter((action) => action.status !== "completed");
@@ -76,6 +77,18 @@ function currentState(): PopPersonState {
     dataset: dataset.map((person) => ({ ...person })),
     actions: activeActions().map((action) => ({ ...action })),
   };
+}
+
+function notifyStateChange(): void {
+  const state = currentState();
+  stateListeners.forEach((listener) => listener(state));
+}
+
+export function subscribePopPersonState(
+  listener: (state: PopPersonState) => void,
+): () => void {
+  stateListeners.add(listener);
+  return () => stateListeners.delete(listener);
 }
 
 function completeAction(action: PopPersonAction): void {
@@ -89,11 +102,13 @@ function completeAction(action: PopPersonAction): void {
   );
   action.status = "completed";
   action.completedAt = Date.now();
+  notifyStateChange();
 }
 
 function scheduleAction(action: PopPersonAction, totalDuration: number): void {
   setTimeout(() => {
     action.status = "running";
+    notifyStateChange();
     setTimeout(() => completeAction(action), totalDuration);
   }, Math.max(0, action.executeAt - Date.now()));
 }
@@ -133,6 +148,7 @@ export function createPopPersonAction(input: PopPersonActionInput): PopPersonAct
   };
 
   actions.set(action.id, action);
+  notifyStateChange();
   scheduleAction(action, (level.count - 1) * level.staggerMs + level.duration);
   return { ...action };
 }
