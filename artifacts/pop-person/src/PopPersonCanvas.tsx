@@ -344,22 +344,6 @@ export default function PopPersonCanvas() {
   }, [pendingMode, modalElement, modalLevel, selectedCell, queueAction, closeModal, createActionMutation]);
   const selectedCellData = useMemo(() => leaves.find((l) => l.name === selectedCell) || null, [leaves, selectedCell]);
 
-  if (bootstrapQuery.isError) {
-    return (
-      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", backgroundColor: "#0a0a0a", color: "#fca5a5", fontSize: "13px", padding: "24px", textAlign: "center" }}>
-        Não foi possível carregar o servidor do PopPerson. Tente atualizar a página.
-      </div>
-    );
-  }
-
-  if (bootstrapQuery.isLoading || !config) {
-    return (
-      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", backgroundColor: "#0a0a0a", color: "#a3a3a3", fontSize: "13px" }}>
-        Carregando PopPerson…
-      </div>
-    );
-  }
-
   function cssSize() {
     const r = boardWrapRef.current.getBoundingClientRect();
     return { w: r.width, h: r.height };
@@ -681,6 +665,22 @@ export default function PopPersonCanvas() {
       canvas.removeEventListener("pointercancel", onPointerUp);
     };
   }, [selectCell]);
+
+  if (bootstrapQuery.isError) {
+    return (
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", backgroundColor: "#0a0a0a", color: "#fca5a5", fontSize: "13px", padding: "24px", textAlign: "center" }}>
+        Não foi possível carregar o servidor do PopPerson. Tente atualizar a página.
+      </div>
+    );
+  }
+
+  if (bootstrapQuery.isLoading || !config) {
+    return (
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", backgroundColor: "#0a0a0a", color: "#a3a3a3", fontSize: "13px" }}>
+        Carregando PopPerson…
+      </div>
+    );
+  }
 
   const closeButtonStyle = { width: "26px", height: "26px", borderRadius: "9999px", backgroundColor: "#262626", color: "#a3a3a3", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" };
   const selectedInitials = selectedCellData ? selectedCellData.name.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase() : "";
