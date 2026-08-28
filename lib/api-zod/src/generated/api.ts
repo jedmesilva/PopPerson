@@ -47,6 +47,10 @@ export const getPopPersonResponseStateActionsItemExecuteAtMin = 0;
 export const getPopPersonResponseStateActionsItemCompletedAtMin = 0;
 
 
+export const getPopPersonResponseStateActionsItemStaggerMsMin = 0;
+
+export const getPopPersonResponseStateActionsItemDurationMin = 0;
+
 
 
 export const GetPopPersonResponse = zod.object({
@@ -106,7 +110,18 @@ export const GetPopPersonResponse = zod.object({
   "executeAt": zod.number().min(getPopPersonResponseStateActionsItemExecuteAtMin),
   "completedAt": zod.number().min(getPopPersonResponseStateActionsItemCompletedAtMin).nullish(),
   "count": zod.number().min(1),
-  "growthPerHit": zod.number()
+  "growthPerHit": zod.number(),
+  "staggerMs": zod.number().min(getPopPersonResponseStateActionsItemStaggerMsMin),
+  "duration": zod.number().min(getPopPersonResponseStateActionsItemDurationMin),
+  "shake": zod.boolean(),
+  "element": zod.object({
+  "id": zod.string(),
+  "emoji": zod.string(),
+  "label": zod.string(),
+  "force": zod.number(),
+  "price": zod.number(),
+  "gender": zod.enum(['m', 'f'])
+})
 }))
 })
 })
@@ -119,6 +134,10 @@ export const getPopPersonStateResponseActionsItemExecuteAtMin = 0;
 
 export const getPopPersonStateResponseActionsItemCompletedAtMin = 0;
 
+
+export const getPopPersonStateResponseActionsItemStaggerMsMin = 0;
+
+export const getPopPersonStateResponseActionsItemDurationMin = 0;
 
 
 
@@ -145,7 +164,18 @@ export const GetPopPersonStateResponse = zod.object({
   "executeAt": zod.number().min(getPopPersonStateResponseActionsItemExecuteAtMin),
   "completedAt": zod.number().min(getPopPersonStateResponseActionsItemCompletedAtMin).nullish(),
   "count": zod.number().min(1),
-  "growthPerHit": zod.number()
+  "growthPerHit": zod.number(),
+  "staggerMs": zod.number().min(getPopPersonStateResponseActionsItemStaggerMsMin),
+  "duration": zod.number().min(getPopPersonStateResponseActionsItemDurationMin),
+  "shake": zod.boolean(),
+  "element": zod.object({
+  "id": zod.string(),
+  "emoji": zod.string(),
+  "label": zod.string(),
+  "force": zod.number(),
+  "price": zod.number(),
+  "gender": zod.enum(['m', 'f'])
+})
 }))
 })
 
@@ -170,6 +200,10 @@ export const createPopPersonActionResponseExecuteAtMin = 0;
 export const createPopPersonActionResponseCompletedAtMin = 0;
 
 
+export const createPopPersonActionResponseStaggerMsMin = 0;
+
+export const createPopPersonActionResponseDurationMin = 0;
+
 
 
 export const CreatePopPersonActionResponse = zod.object({
@@ -182,7 +216,18 @@ export const CreatePopPersonActionResponse = zod.object({
   "executeAt": zod.number().min(createPopPersonActionResponseExecuteAtMin),
   "completedAt": zod.number().min(createPopPersonActionResponseCompletedAtMin).nullish(),
   "count": zod.number().min(1),
-  "growthPerHit": zod.number()
+  "growthPerHit": zod.number(),
+  "staggerMs": zod.number().min(createPopPersonActionResponseStaggerMsMin),
+  "duration": zod.number().min(createPopPersonActionResponseDurationMin),
+  "shake": zod.boolean(),
+  "element": zod.object({
+  "id": zod.string(),
+  "emoji": zod.string(),
+  "label": zod.string(),
+  "force": zod.number(),
+  "price": zod.number(),
+  "gender": zod.enum(['m', 'f'])
+})
 })
 
 

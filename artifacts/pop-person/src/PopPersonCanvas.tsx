@@ -22,14 +22,6 @@ function quadBezierTangent(p0, p1, p2, t) {
 }
 
 const MODE_LABEL = { atacar: "Ataque", defender: "Defesa" };
-const LEVEL_LABEL_BY_MODE = {
-  atacar: { moderado: "Moderado", forte: "Forte", extremo: "Extremo", devastador: "Devastador", apocaliptico: "Apocalíptico" },
-  defender: { moderado: "Moderada", forte: "Forte", extremo: "Extrema", devastador: "Devastadora", apocaliptico: "Apocalíptica" },
-};
-const LEVEL_LABEL_BY_GENDER = {
-  m: { moderado: "Moderado", forte: "Forte", extremo: "Extremo", devastador: "Devastador", apocaliptico: "Apocalíptico" },
-  f: { moderado: "Moderada", forte: "Forte", extremo: "Extrema", devastador: "Devastadora", apocaliptico: "Apocalíptica" },
-};
 const MAX_CONCURRENT_PROJECTILES = 24;
 const LAYOUT_PADDING = 2;
 const CIRCLE_GAP = 2.5;
@@ -318,21 +310,41 @@ export default function PopPersonCanvas() {
   useEffect(() => { selectedCellRef.current = selectedCell; }, [selectedCell]);
   useEffect(() => { activeActionIdsRef.current = activeActions.map((a) => a.id); }, [activeActions]);
 
-  const executeAction = useCallback((actionMode, actionLevel, actionElement, targetName) => {
-    const levelConfig = levelByKey[actionLevel];
-    if (!levelConfig) return;
-    const direction = actionMode === "defender" ? 1 : -1;
-    const growthPerUnit = levelConfig.growthPerHit * ((actionElement.force ?? 5) / 5);
+  const executeAction = useCallback((serverAction) => {
+    const direction = serverAction.mode === "defender" ? 1 : -1;
+    const actionElement = serverAction.element;
     const firingId = Date.now() + Math.random();
-    emittersRef.current.push({ id: firingId, targetName, remaining: levelConfig.count, staggerMs: levelConfig.staggerMs, duration: levelConfig.duration, growthPerHit: growthPerUnit, direction, emoji: actionElement.emoji, level: actionLevel, nextSpawnTime: performance.now() });
-    setActiveActions((prev) => [...prev, { id: firingId, mode: actionMode, level: actionLevel, element: actionElement, targetName, firedAt: performance.now() }]);
-    if (levelConfig.shake) shakeActionIdsRef.current.add(firingId);
-  }, [levelByKey]);
+    emittersRef.current.push({
+      id: firingId,
+      targetName: serverAction.targetName,
+      remaining: serverAction.count,
+      staggerMs: serverAction.staggerMs,
+      duration: serverAction.duration,
+      growthPerHit: serverAction.growthPerHit,
+      direction,
+      emoji: actionElement.emoji,
+      level: serverAction.level,
+      nextSpawnTime: performance.now(),
+    });
+    setActiveActions((prev) => [
+      ...prev,
+      {
+        id: firingId,
+        mode: serverAction.mode,
+        level: serverAction.level,
+        element: actionElement,
+        targetName: serverAction.targetName,
+        count: serverAction.count,
+        firedAt: performance.now(),
+      },
+    ]);
+    if (serverAction.shake) shakeActionIdsRef.current.add(firingId);
+  }, []);
   const executeActionRef = useRef(executeAction);
   useEffect(() => { executeActionRef.current = executeAction; }, [executeAction]);
-  const queueAction = useCallback((serverAction, actionElement) => {
+  const queueAction = useCallback((serverAction) => {
     const localExecuteAt = performance.now() + Math.max(0, serverAction.executeAt - Date.now());
-    setQueue((prev) => [...prev, { id: serverAction.id, mode: serverAction.mode, element: actionElement, level: serverAction.level, targetName: serverAction.targetName, executeAt: localExecuteAt }]);
+    setQueue((prev) => [...prev, { ...serverAction, executeAt: localExecuteAt }]);
   }, []);
   const reconcileServerState = useCallback((serverState) => {
     if (serverState?.dataset) setDataset(serverState.dataset);
@@ -340,14 +352,11 @@ export default function PopPersonCanvas() {
 
     serverState.actions.forEach((serverAction) => {
       if (seenServerActionIdsRef.current.has(serverAction.id)) return;
-      const actionElement = (config?.elements?.[serverAction.mode] ?? []).find(
-        (element) => element.id === serverAction.elementId,
-      );
-      if (!actionElement || serverAction.status === "completed") return;
+      if (serverAction.status === "completed") return;
       seenServerActionIdsRef.current.add(serverAction.id);
-      queueAction(serverAction, actionElement);
+      queueAction(serverAction);
     });
-  }, [config, queueAction]);
+  }, [queueAction]);
   useEffect(() => {
     if (bootstrapQuery.data?.state) {
       reconcileServerState(bootstrapQuery.data.state);
@@ -403,13 +412,13 @@ export default function PopPersonCanvas() {
       const secondsLeft = Math.max(0, (item.executeAt - now) / 1000);
       return { timeLabel: `Inicia em ${secondsLeft.toFixed(1)}s`, progress: 1 - (secondsLeft * 1000) / (config?.actionDelayMs || 1) };
     }
-    const levelCfg = levelByKey[item.level];
-    if (!levelCfg) return { timeLabel: "—", progress: 0 };
+    const totalCount = item.count;
+    if (!totalCount) return { timeLabel: "—", progress: 0 };
     const emitter = emittersRef.current.find((e) => e.id === item.id);
     const inFlight = projectilesRef.current.filter((p) => p.firingId === item.id).length;
-    const landed = Math.max(0, levelCfg.count - (emitter ? emitter.remaining : 0) - inFlight);
-    return { timeLabel: `${Math.round(Math.min(1, landed / levelCfg.count) * 100)}%`, progress: Math.min(1, landed / levelCfg.count) };
-  }, [config?.actionDelayMs, levelByKey]);
+    const landed = Math.max(0, totalCount - (emitter ? emitter.remaining : 0) - inFlight);
+    return { timeLabel: `${Math.round(Math.min(1, landed / totalCount) * 100)}%`, progress: Math.min(1, landed / totalCount) };
+  }, [config?.actionDelayMs]);
 
   useEffect(() => {
     if (queue.length === 0 && activeActions.length === 0) return undefined;
@@ -419,7 +428,7 @@ export default function PopPersonCanvas() {
       setQueue((prev) => {
         const stillPending = prev.filter((a) => a.executeAt > now);
         if (stillPending.length !== prev.length) {
-          prev.filter((a) => a.executeAt <= now).forEach((a) => executeActionRef.current(a.mode, a.level, a.element, a.targetName));
+          prev.filter((a) => a.executeAt <= now).forEach((a) => executeActionRef.current(a));
         }
         return stillPending;
       });
@@ -432,7 +441,12 @@ export default function PopPersonCanvas() {
   useEffect(() => { if (queue.length === 0 && activeActions.length === 0) setShowQueueModal(false); }, [queue.length, activeActions.length]);
 
   const selectCell = useCallback((name) => setSelectedCell((prev) => prev === name ? null : name), []);
-  const openModal = useCallback((mode) => { setPendingMode(mode); setModalStep("elemento"); setModalElement(null); setModalLevel("moderado"); }, []);
+  const openModal = useCallback((mode) => {
+    setPendingMode(mode);
+    setModalStep("elemento");
+    setModalElement(null);
+    setModalLevel(levels[0]?.key ?? "moderado");
+  }, [levels]);
   const closeModal = useCallback(() => setPendingMode(null), []);
   const pickElement = useCallback((element) => { setModalElement(element); setModalStep("intensidade"); }, []);
   const confirmAction = useCallback(() => {
@@ -450,7 +464,7 @@ export default function PopPersonCanvas() {
       {
         onSuccess: (action) => {
           seenServerActionIdsRef.current.add(action.id);
-          queueAction(action, modalElement);
+          queueAction(action);
           closeModal();
           setSelectedCell(null);
         },

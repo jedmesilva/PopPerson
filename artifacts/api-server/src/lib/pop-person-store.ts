@@ -64,6 +64,10 @@ type ActionLevelCode =
   | "devastador"
   | "apocaliptico";
 
+function isActionLevelCode(value: string): value is ActionLevelCode {
+  return LEVELS.some((level) => level.code === value);
+}
+
 const ELEMENTS: Record<ActionMode, Array<{
   code: string;
   emoji: string;
@@ -178,7 +182,7 @@ async function ensureSeedData(): Promise<void> {
         locationIds.set(person.slug, existingLocation.id);
       }
 
-      const [dbPerson] = await tx
+      let [dbPerson] = await tx
         .insert(peopleTable)
         .values({
           name: person.name,
@@ -188,18 +192,15 @@ async function ensureSeedData(): Promise<void> {
           locationId: locationIds.get(person.slug),
           active: true,
         })
-        .onConflictDoUpdate({
-          target: peopleTable.slug,
-          set: {
-            name: person.name,
-            roleTitle: person.cargo,
-            status: person.status,
-            locationId: locationIds.get(person.slug),
-            active: true,
-            updatedAt: now,
-          },
-        })
+        .onConflictDoNothing({ target: peopleTable.slug })
         .returning({ id: peopleTable.id });
+      if (!dbPerson) {
+        [dbPerson] = await tx
+          .select({ id: peopleTable.id })
+          .from(peopleTable)
+          .where(eq(peopleTable.slug, person.slug))
+          .limit(1);
+      }
       if (!dbPerson) throw new Error(`Person seed failed for ${person.slug}`);
 
       await tx
@@ -242,6 +243,7 @@ async function ensureSeedData(): Promise<void> {
           code: level.code,
           label: level.label,
           powerLabel: level.powerLabel,
+          emoji: level.emoji,
           sortOrder: index,
           projectileCount: level.projectileCount,
           staggerMs: level.staggerMs,
@@ -254,16 +256,10 @@ async function ensureSeedData(): Promise<void> {
         .onConflictDoUpdate({
           target: actionLevelsTable.code,
           set: {
-            label: level.label,
-            powerLabel: level.powerLabel,
-            sortOrder: index,
-            projectileCount: level.projectileCount,
-            staggerMs: level.staggerMs,
-            durationMs: level.durationMs,
-            growthPerHit: String(level.growthPerHit),
-            shake: level.shake,
-            active: true,
-            updatedAt: now,
+            // Existing level settings are owned by the database. This only
+            // backfills the visual icon for rows created before this column
+            // existed.
+            emoji: level.emoji,
           },
         });
     }
@@ -343,7 +339,13 @@ async function getDataset(roomId: string): Promise<PopPerson[]> {
     .from(cellsTable)
     .innerJoin(peopleTable, eq(cellsTable.personId, peopleTable.id))
     .leftJoin(locationsTable, eq(peopleTable.locationId, locationsTable.id))
-    .where(and(eq(cellsTable.roomId, roomId), eq(cellsTable.active, true)))
+    .where(
+      and(
+        eq(cellsTable.roomId, roomId),
+        eq(cellsTable.active, true),
+        eq(peopleTable.active, true),
+      ),
+    )
     .orderBy(asc(cellsTable.createdAt));
 
   return rows.map((person) => ({
@@ -360,19 +362,54 @@ async function getDataset(roomId: string): Promise<PopPerson[]> {
   }));
 }
 
-async function getActions(roomId: string): Promise<PopPersonAction[]> {
+type PopPersonElement = PopPersonConfig["elements"]["atacar"][number];
+
+function toPopPersonElement(item: {
+  code: string;
+  name: string;
+  emoji: string | null;
+  gender: string | null;
+  impactPower: string;
+  price: string;
+}): PopPersonElement {
+  if (!item.emoji || (item.gender !== "m" && item.gender !== "f")) {
+    throw new Error(`Item "${item.code}" está sem emoji ou gênero válido.`);
+  }
+
+  return {
+    id: item.code,
+    emoji: item.emoji,
+    label: item.name,
+    force: toNumber(item.impactPower),
+    price: toNumber(item.price),
+    gender: item.gender,
+  };
+}
+
+async function getActions(
+  roomId: string,
+  actionId?: string,
+): Promise<PopPersonAction[]> {
   const rows = await db
     .select({
       id: actionsTable.id,
       mode: actionsTable.mode,
       elementId: itemsTable.code,
+      elementName: itemsTable.name,
+      elementEmoji: itemsTable.emoji,
+      elementGender: itemsTable.gender,
+      elementForce: itemsTable.impactPower,
+      elementPrice: itemsTable.price,
       level: actionLevelsTable.code,
       targetName: peopleTable.name,
       status: actionsTable.status,
       executeAt: actionsTable.scheduledFor,
       completedAt: actionsTable.completedAt,
-      count: actionLevelsTable.projectileCount,
-      growthPerHit: actionsTable.ruleSnapshot,
+      levelCount: actionLevelsTable.projectileCount,
+      levelStaggerMs: actionLevelsTable.staggerMs,
+      levelDurationMs: actionLevelsTable.durationMs,
+      levelShake: actionLevelsTable.shake,
+      ruleSnapshot: actionsTable.ruleSnapshot,
     })
     .from(actionsTable)
     .innerJoin(itemsTable, eq(actionsTable.itemId, itemsTable.id))
@@ -380,25 +417,57 @@ async function getActions(roomId: string): Promise<PopPersonAction[]> {
     .innerJoin(cellsTable, eq(actionsTable.cellId, cellsTable.id))
     .innerJoin(peopleTable, eq(cellsTable.personId, peopleTable.id))
     .where(
-      and(
-        eq(actionsTable.roomId, roomId),
-        inArray(actionsTable.status, ["queued", "running"]),
-      ),
+      actionId
+        ? and(eq(actionsTable.roomId, roomId), eq(actionsTable.id, actionId))
+        : and(
+            eq(actionsTable.roomId, roomId),
+            inArray(actionsTable.status, ["queued", "running"]),
+          ),
     )
     .orderBy(asc(actionsTable.scheduledFor));
 
-  return rows.map((action) => ({
-    id: action.id,
-    mode: action.mode,
-    elementId: action.elementId,
-    level: action.level as ActionLevelCode,
-    targetName: action.targetName,
-    status: toActionStatus(action.status),
-    executeAt: action.executeAt.getTime(),
-    completedAt: action.completedAt?.getTime() ?? null,
-    count: action.count,
-    growthPerHit: snapshotNumber(action.growthPerHit, "growthPerHit", 0),
-  }));
+  return rows.map((action) => {
+    const element = toPopPersonElement({
+      code: action.elementId,
+      name: action.elementName,
+      emoji: action.elementEmoji,
+      gender: action.elementGender,
+      impactPower: action.elementForce,
+      price: action.elementPrice,
+    });
+    const count = snapshotNumber(action.ruleSnapshot, "count", action.levelCount);
+    const staggerMs = snapshotNumber(
+      action.ruleSnapshot,
+      "staggerMs",
+      action.levelStaggerMs,
+    );
+    const duration = snapshotNumber(
+      action.ruleSnapshot,
+      "durationMs",
+      action.levelDurationMs,
+    );
+
+    return {
+      id: action.id,
+      mode: action.mode,
+      elementId: action.elementId,
+      level: action.level as ActionLevelCode,
+      targetName: action.targetName,
+      status: toActionStatus(action.status),
+      executeAt: action.executeAt.getTime(),
+      completedAt: action.completedAt?.getTime() ?? null,
+      count,
+      growthPerHit: snapshotNumber(
+        action.ruleSnapshot,
+        "growthPerHit",
+        0,
+      ),
+      staggerMs,
+      duration,
+      shake: action.levelShake,
+      element,
+    };
+  });
 }
 
 async function currentState(roomId: string): Promise<PopPersonState> {
@@ -410,19 +479,36 @@ async function currentState(roomId: string): Promise<PopPersonState> {
 }
 
 async function getPopPersonConfig(): Promise<PopPersonConfig> {
-  const dbItems = await db
-    .select({
-      code: itemsTable.code,
-      mode: itemsTable.mode,
-      name: itemsTable.name,
-      emoji: itemsTable.emoji,
-      gender: itemsTable.gender,
-      impactPower: itemsTable.impactPower,
-      price: itemsTable.price,
-    })
-    .from(itemsTable)
-    .where(eq(itemsTable.active, true))
-    .orderBy(asc(itemsTable.createdAt));
+  const [dbItems, dbLevels] = await Promise.all([
+    db
+      .select({
+        code: itemsTable.code,
+        mode: itemsTable.mode,
+        name: itemsTable.name,
+        emoji: itemsTable.emoji,
+        gender: itemsTable.gender,
+        impactPower: itemsTable.impactPower,
+        price: itemsTable.price,
+      })
+      .from(itemsTable)
+      .where(eq(itemsTable.active, true))
+      .orderBy(asc(itemsTable.createdAt)),
+    db
+      .select({
+        code: actionLevelsTable.code,
+        label: actionLevelsTable.label,
+        powerLabel: actionLevelsTable.powerLabel,
+        emoji: actionLevelsTable.emoji,
+        projectileCount: actionLevelsTable.projectileCount,
+        staggerMs: actionLevelsTable.staggerMs,
+        durationMs: actionLevelsTable.durationMs,
+        growthPerHit: actionLevelsTable.growthPerHit,
+        shake: actionLevelsTable.shake,
+      })
+      .from(actionLevelsTable)
+      .where(eq(actionLevelsTable.active, true))
+      .orderBy(asc(actionLevelsTable.sortOrder)),
+  ]);
 
   const elements: PopPersonConfig["elements"] = {
     atacar: [],
@@ -430,28 +516,32 @@ async function getPopPersonConfig(): Promise<PopPersonConfig> {
   };
 
   for (const item of dbItems) {
-    if (!item.emoji || (item.gender !== "m" && item.gender !== "f")) {
-      throw new Error(`Item "${item.code}" está sem emoji ou gênero válido.`);
-    }
-
-    elements[item.mode].push({
-      id: item.code,
-      emoji: item.emoji,
-      label: item.name,
-      force: toNumber(item.impactPower),
-      price: toNumber(item.price),
-      gender: item.gender,
-    });
+    elements[item.mode].push(toPopPersonElement(item));
   }
 
   return {
     elements,
-    levels: LEVELS.map(({ code, projectileCount, durationMs, ...level }) => ({
-      key: code,
-      count: projectileCount,
-      duration: durationMs,
-      ...level,
-    })),
+    levels: dbLevels.map((level) => {
+      if (
+        !isActionLevelCode(level.code) ||
+        !level.powerLabel ||
+        !level.emoji
+      ) {
+        throw new Error(`Nível "${level.code}" está com configuração inválida.`);
+      }
+
+      return {
+        key: level.code,
+        label: level.label,
+        powerLabel: level.powerLabel,
+        emoji: level.emoji,
+        count: level.projectileCount,
+        staggerMs: level.staggerMs,
+        duration: level.durationMs,
+        growthPerHit: toNumber(level.growthPerHit),
+        shake: level.shake,
+      };
+    }),
     actionDelayMs: ACTION_DELAY_MS,
     minValue: MIN_VALUE,
   };
@@ -670,19 +760,10 @@ export async function createPopPersonAction(
     return { action, created: true };
   });
 
+  const [response] = await getActions(roomId, result.action.id);
+  if (!response) throw new Error("Ação criada, mas não pôde ser carregada.");
   if (result.created) await notifyStateChange();
-  return {
-    id: result.action.id,
-    mode: result.action.mode,
-    elementId: input.elementId,
-    level: input.level,
-    targetName: input.targetName,
-    status: toActionStatus(result.action.status),
-    executeAt: result.action.scheduledFor.getTime(),
-    completedAt: result.action.completedAt?.getTime() ?? null,
-    count: snapshotNumber(result.action.ruleSnapshot, "count", 1),
-    growthPerHit: snapshotNumber(result.action.ruleSnapshot, "growthPerHit", 0),
-  };
+  return response;
 }
 
 async function processDueActions(): Promise<void> {

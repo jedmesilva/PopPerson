@@ -150,6 +150,12 @@ export interface PopPersonAction {
   /** @minimum 1 */
   count: number;
   growthPerHit: number;
+  /** @minimum 0 */
+  staggerMs: number;
+  /** @minimum 0 */
+  duration: number;
+  shake: boolean;
+  element: PopPersonElement;
 }
 
 export interface PopPersonState {

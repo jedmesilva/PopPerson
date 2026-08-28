@@ -20,6 +20,7 @@ export const actionLevelsTable = pgTable(
     code: varchar("code", { length: 80 }).notNull().unique(),
     label: varchar("label", { length: 120 }).notNull(),
     powerLabel: varchar("power_label", { length: 32 }),
+    emoji: varchar("emoji", { length: 16 }),
     sortOrder: integer("sort_order").notNull(),
     projectileCount: integer("projectile_count").notNull(),
     staggerMs: integer("stagger_ms").notNull(),

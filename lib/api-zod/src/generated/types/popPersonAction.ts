@@ -8,6 +8,7 @@
 import type { PopPersonActionLevel } from './popPersonActionLevel';
 import type { PopPersonActionMode } from './popPersonActionMode';
 import type { PopPersonActionStatus } from './popPersonActionStatus';
+import type { PopPersonElement } from './popPersonElement';
 
 export interface PopPersonAction {
   id: string;
@@ -26,4 +27,10 @@ export interface PopPersonAction {
   /** @minimum 1 */
   count: number;
   growthPerHit: number;
+  /** @minimum 0 */
+  staggerMs: number;
+  /** @minimum 0 */
+  duration: number;
+  shake: boolean;
+  element: PopPersonElement;
 }
