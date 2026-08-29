@@ -873,6 +873,7 @@ export default function PopPersonCanvas() {
     let pinchStartDist = null;
     let pinchStartScale = 1;
     let pinchStartWorld = null;
+    let multiPointerGesture = false;
     function getMid(rect) {
       const pts = [...activePointers.values()];
       return { x: (pts[0].x + pts[1].x) / 2 - rect.left, y: (pts[0].y + pts[1].y) / 2 - rect.top };
@@ -897,6 +898,9 @@ export default function PopPersonCanvas() {
       canvas.setPointerCapture(e.pointerId);
       activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (activePointers.size === 2) {
+        // Once a second pointer joins, this interaction can only be a gesture.
+        // Do not let releasing the last finger fall through to cell selection.
+        multiPointerGesture = true;
         dragging = false;
         const rect = canvas.getBoundingClientRect();
         pinchStartDist = getDist();
@@ -929,11 +933,14 @@ export default function PopPersonCanvas() {
     }
     function onPointerUp(e) {
       const rect = canvas.getBoundingClientRect();
-      const wasClick = activePointers.size === 1 && dragging && !moved;
+      const wasClick = activePointers.size === 1 && dragging && !moved && !multiPointerGesture;
       const px = e.clientX - rect.left;
       const py = e.clientY - rect.top;
       activePointers.delete(e.pointerId);
-      if (activePointers.size < 2) pinchStartDist = null;
+      if (activePointers.size < 2) {
+        pinchStartDist = null;
+        pinchStartWorld = null;
+      }
       if (activePointers.size === 1) {
         const [rem] = activePointers.values();
         dragging = true;
@@ -941,6 +948,7 @@ export default function PopPersonCanvas() {
         lastY = rem.y;
       } else if (activePointers.size === 0) {
         dragging = false;
+        multiPointerGesture = false;
         if (wasClick) {
           const t = transformRef.current;
           const worldX = (px - t.x) / t.scale;
