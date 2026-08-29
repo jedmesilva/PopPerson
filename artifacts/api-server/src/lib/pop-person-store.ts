@@ -735,6 +735,15 @@ async function processDueActions(): Promise<void> {
   try {
     const now = new Date();
     await db.transaction(async (tx) => {
+      // The in-process `processing` flag prevents overlap inside one Node
+      // process, but it cannot coordinate multiple API instances. Use a
+      // transaction-scoped PostgreSQL lock so only one worker can mutate the
+      // action/event/cell/room graph at a time.
+      const processorLockResult = await tx.execute(
+        sql`SELECT pg_try_advisory_xact_lock(hashtextextended('pop-person-action-processor', 0)) AS acquired`,
+      );
+      if (!processorLockResult.rows[0]?.acquired) return;
+
       const activated = await tx
         .update(actionsTable)
         .set({
