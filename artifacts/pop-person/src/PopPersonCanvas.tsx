@@ -733,12 +733,31 @@ export default function PopPersonCanvas() {
     const now = performance.now();
     impactsRef.current.forEach((imp) => {
       const p = Math.min(1, (now - imp.startTime) / imp.duration);
+      const impactRadius = imp.r * (0.9 + p * 0.4);
+      const impactGradient = ctx.createRadialGradient(
+        imp.x,
+        imp.y,
+        impactRadius * 0.08,
+        imp.x,
+        imp.y,
+        impactRadius,
+      );
+      impactGradient.addColorStop(0, "rgba(0, 0, 0, 0)");
+      impactGradient.addColorStop(0.28, `rgba(${imp.color}, 0.04)`);
+      impactGradient.addColorStop(0.62, `rgba(${imp.color}, 0.34)`);
+      impactGradient.addColorStop(0.84, `rgba(${imp.color}, 0.7)`);
+      impactGradient.addColorStop(1, "rgba(0, 0, 0, 0)");
       ctx.save();
       ctx.globalAlpha = 1 - p;
       ctx.beginPath();
-      ctx.arc(imp.x, imp.y, imp.r * (0.9 + p * 0.4), 0, Math.PI * 2);
-      ctx.fillStyle = imp.color;
+      ctx.arc(imp.x, imp.y, impactRadius, 0, Math.PI * 2);
+      ctx.fillStyle = impactGradient;
       ctx.fill();
+      ctx.beginPath();
+      ctx.arc(imp.x, imp.y, imp.r * (0.72 + p * 0.48), 0, Math.PI * 2);
+      ctx.lineWidth = 2.5 / t.scale;
+      ctx.strokeStyle = `rgba(${imp.color}, 0.82)`;
+      ctx.stroke();
       ctx.restore();
     });
     projectilesRef.current.forEach((p) => {
@@ -829,7 +848,7 @@ export default function PopPersonCanvas() {
       });
       finished.forEach((f) => {
         const target = leavesRef.current.find((l) => l.name === f.targetName);
-        if (target) impactsRef.current.push({ x: target.x, y: target.y, r: target.r, color: f.direction === 1 ? "#22c55e" : "#ef4444", startTime: now, duration: 350 });
+        if (target) impactsRef.current.push({ x: target.x, y: target.y, r: target.r, color: f.direction === 1 ? "34, 197, 94" : "239, 68, 68", startTime: now, duration: 350 });
       });
       impactsRef.current = impactsRef.current.filter((i) => now - i.startTime < i.duration);
       if (activeActionIdsRef.current.length > 0) {
