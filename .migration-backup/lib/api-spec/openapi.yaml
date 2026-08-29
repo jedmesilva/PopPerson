@@ -1,0 +1,361 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: pop-person
+    description: PopPerson domain operations
+  - name: access
+    description: Access origin operations
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /access/location:
+    get:
+      operationId: getAccessLocation
+      tags: [access]
+      summary: Resolve the approximate origin of the current access
+      description: Returns an approximate city, region, and country based on the request IP.
+      responses:
+        "200":
+          description: Approximate access location
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessLocation"
+  /pop-person:
+    get:
+      operationId: getPopPerson
+      tags: [pop-person]
+      summary: Get PopPerson configuration and state
+      responses:
+        "200":
+          description: PopPerson bootstrap data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PopPersonBootstrap"
+  /pop-person/state:
+    get:
+      operationId: getPopPersonState
+      tags: [pop-person]
+      summary: Get the current PopPerson state
+      responses:
+        "200":
+          description: Current dataset and active actions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PopPersonState"
+  /pop-person/actions:
+    post:
+      operationId: createPopPersonAction
+      tags: [pop-person]
+      summary: Queue an attack or defense action
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PopPersonActionInput"
+      responses:
+        "201":
+          description: Queued action
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PopPersonAction"
+        "400":
+          description: Invalid action
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    AccessLocation:
+      type: object
+      required: [source, city, region, regionCode, country, countryCode, timezone]
+      properties:
+        source:
+          type: string
+          enum: [ip, local, unavailable]
+        city:
+          type: string
+        region:
+          type: string
+        regionCode:
+          type: string
+        country:
+          type: string
+        countryCode:
+          type: string
+        timezone:
+          type: string
+    PopPerson:
+      type: object
+      required: [name, category, categoryPath, gender, cidade, estado, estadoCodigo, pais, paisCodigo, status, value, color, imageUrl]
+      properties:
+        name:
+          type: string
+        category:
+          $ref: "#/components/schemas/PopPersonCategory"
+        categoryPath:
+          type: array
+          items:
+            $ref: "#/components/schemas/PopPersonCategory"
+        gender:
+          type: ["string", "null"]
+          description: Gender recorded for the person, when known.
+        cidade:
+          type: string
+        estado:
+          type: string
+        estadoCodigo:
+          type: string
+        pais:
+          type: string
+        paisCodigo:
+          type: string
+        status:
+          type: string
+          enum: [titular, candidato]
+        value:
+          type: number
+        color:
+          type: string
+        imageUrl:
+          type: ["string", "null"]
+          description: Optional person image URL. The client keeps the cell color as the fallback background.
+    PopPersonCategory:
+      type: object
+      required: [id, name, slug, parentId]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        slug:
+          type: string
+        parentId:
+          type: ["string", "null"]
+    PopPersonElement:
+      type: object
+      required: [id, emoji, imageUrl, label, description, force, price, gender]
+      properties:
+        id:
+          type: string
+        emoji:
+          type: string
+        imageUrl:
+          type: ["string", "null"]
+          description: Optional item image URL. The client can fall back to emoji when absent.
+        label:
+          type: string
+        description:
+          type: ["string", "null"]
+          description: Optional item description.
+        force:
+          type: number
+        price:
+          type: number
+        gender:
+          type: string
+          enum: [m, f]
+    PopPersonLevel:
+      type: object
+      required: [key, label, powerLabel, emoji, startDelayMs, count, staggerMs, duration, growthPerHit, impactMultiplier, shake]
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        powerLabel:
+          type: string
+        emoji:
+          type: string
+        startDelayMs:
+          type: number
+          minimum: 0
+        count:
+          type: number
+          minimum: 1
+        staggerMs:
+          type: number
+          minimum: 0
+        duration:
+          type: number
+          minimum: 0
+        growthPerHit:
+          type: number
+        impactMultiplier:
+          type: number
+        shake:
+          type: boolean
+    PopPersonActionRule:
+      type: object
+      required: [elementId, level, startDelayMs, count, staggerMs, duration, growthPerHit, impactMultiplier, price, shake]
+      properties:
+        elementId:
+          type: string
+        level:
+          type: string
+        startDelayMs:
+          type: number
+          minimum: 0
+        count:
+          type: number
+          minimum: 1
+        staggerMs:
+          type: number
+          minimum: 0
+        duration:
+          type: number
+          minimum: 0
+        growthPerHit:
+          type: number
+        impactMultiplier:
+          type: number
+        price:
+          type: number
+          minimum: 0
+        shake:
+          type: boolean
+    PopPersonConfig:
+      type: object
+      required: [elements, levels, actionRules]
+      properties:
+        elements:
+          type: object
+          required: [atacar, defender]
+          properties:
+            atacar:
+              type: array
+              items:
+                $ref: "#/components/schemas/PopPersonElement"
+            defender:
+              type: array
+              items:
+                $ref: "#/components/schemas/PopPersonElement"
+        levels:
+          type: array
+          items:
+            $ref: "#/components/schemas/PopPersonLevel"
+        actionRules:
+          type: array
+          items:
+            $ref: "#/components/schemas/PopPersonActionRule"
+    PopPersonAction:
+      type: object
+      required: [id, mode, elementId, level, targetName, status, startDelayMs, executeAt, count, growthPerHit, impactMultiplier, staggerMs, duration, shake, element]
+      properties:
+        id:
+          type: string
+        mode:
+          type: string
+          enum: [atacar, defender]
+        elementId:
+          type: string
+        level:
+          type: string
+        startDelayMs:
+          type: number
+          minimum: 0
+        targetName:
+          type: string
+        status:
+          type: string
+          enum: [queued, running, completed]
+        executeAt:
+          type: number
+          minimum: 0
+        completedAt:
+          type: ["number", "null"]
+          minimum: 0
+        count:
+          type: number
+          minimum: 1
+        growthPerHit:
+          type: number
+        impactMultiplier:
+          type: number
+        staggerMs:
+          type: number
+          minimum: 0
+        duration:
+          type: number
+          minimum: 0
+        shake:
+          type: boolean
+        element:
+          $ref: "#/components/schemas/PopPersonElement"
+    PopPersonState:
+      type: object
+      required: [dataset, actions]
+      properties:
+        dataset:
+          type: array
+          items:
+            $ref: "#/components/schemas/PopPerson"
+        actions:
+          type: array
+          items:
+            $ref: "#/components/schemas/PopPersonAction"
+    PopPersonBootstrap:
+      type: object
+      required: [config, state]
+      properties:
+        config:
+          $ref: "#/components/schemas/PopPersonConfig"
+        state:
+          $ref: "#/components/schemas/PopPersonState"
+    PopPersonActionInput:
+      type: object
+      required: [mode, elementId, level, targetName]
+      properties:
+        mode:
+          type: string
+          enum: [atacar, defender]
+        elementId:
+          type: string
+        level:
+          type: string
+          minLength: 1
+        targetName:
+          type: string
+        idempotencyKey:
+          type: string
+          minLength: 1
+          maxLength: 160
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
