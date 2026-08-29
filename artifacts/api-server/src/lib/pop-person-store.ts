@@ -30,6 +30,7 @@ import type {
   PopPersonConfig,
   PopPersonState,
 } from "@workspace/api-zod";
+import { logger } from "./logger";
 
 const PROCESS_INTERVAL_MS = 500;
 type StateListener = (state: PopPersonState) => void | Promise<void>;
@@ -711,7 +712,14 @@ export async function createPopPersonAction(
 
   const [response] = await getActions(roomId, result.action.id);
   if (!response) throw new Error("Ação criada, mas não pôde ser carregada.");
-  if (result.created) await notifyStateChange();
+  if (result.created) {
+    void notifyStateChange().catch((error) => {
+      logger.error(
+        { err: error, actionId: result.action.id },
+        "Failed to notify PopPerson action state change",
+      );
+    });
+  }
   return response;
 }
 
