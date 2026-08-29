@@ -4,8 +4,8 @@ Aplicativo interativo para visualizar pessoas públicas e executar ações de at
 
 ## Run & Operate
 
-- Workflow `PopPerson API` — `PORT=5000 pnpm --filter @workspace/api-server run dev`
-- Workflow `PopPerson Web` — `PORT=3000 BASE_PATH=/ pnpm --filter @workspace/pop-person run dev`
+- Workflow `artifacts/api-server: API Server` — `pnpm --filter @workspace/api-server run dev`
+- Workflow `artifacts/pop-person: web` — `pnpm --filter @workspace/pop-person run dev`
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
@@ -27,6 +27,13 @@ Aplicativo interativo para visualizar pessoas públicas e executar ações de at
 - `artifacts/api-server` — API e cálculo dos valores das ações
 - `lib/db/src/schema` — tabelas de pessoas, itens, níveis e regras
 - `lib/api-spec/openapi.yaml` — contrato da API
+
+## Deploy externo
+
+- Vercel usa o `vercel.json` da raiz para instalar o workspace e publicar `artifacts/pop-person/dist/public`.
+- Railway usa o `railway.json` da raiz para compilar e iniciar `artifacts/api-server/dist/index.mjs`.
+- No Vercel, defina `VITE_API_URL` como a URL pública do Railway sem `/api`; `VITE_WS_URL` é opcional e deve apontar para a mesma URL com `wss://`.
+- No Railway, defina `NODE_ENV=production`, `PORT` (fornecida pelo Railway), `DATABASE_URL`, `SESSION_SECRET` e `CORS_ORIGIN` com as origens exatas da Vercel.
 
 ## Architecture decisions
 

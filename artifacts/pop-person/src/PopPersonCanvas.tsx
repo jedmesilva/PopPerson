@@ -27,6 +27,21 @@ const LAYOUT_PADDING = 2;
 const CIRCLE_GAP = 2.5;
 
 function getWebSocketUrl() {
+  const configuredUrl = import.meta.env.VITE_WS_URL?.trim() || import.meta.env.VITE_API_URL?.trim();
+  if (configuredUrl) {
+    let url;
+    try {
+      url = new URL(configuredUrl);
+    } catch {
+      throw new Error("VITE_WS_URL or VITE_API_URL must be a valid absolute URL.");
+    }
+    url.protocol = url.protocol === "https:" || url.protocol === "wss:" ? "wss:" : "ws:";
+    url.pathname = `${url.pathname.replace(/\/+$/, "")}/ws`;
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  }
+
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${protocol}//${window.location.host}/ws`;
 }
