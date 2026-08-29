@@ -782,7 +782,8 @@ async function processDueActions(): Promise<void> {
         .orderBy(asc(actionsTable.scheduledFor))
         .limit(100);
 
-      for (const action of runningActions) {
+      for (let actionIndex = 0; actionIndex < runningActions.length; actionIndex += 1) {
+        const action = runningActions[actionIndex];
         const hitEvents = await tx
           .select({ id: actionEventsTable.id })
           .from(actionEventsTable)
@@ -821,9 +822,21 @@ async function processDueActions(): Promise<void> {
         );
         const delta = growthPerHit * direction;
 
+        // Share the transaction budget across all running actions. Without a
+        // per-action quota, the oldest large action can consume all 50 slots
+        // on every pass and newer actions remain running forever with zero
+        // recorded hits.
+        const remainingActions = runningActions.length - actionIndex;
+        const remainingBudget = Math.max(0, MAX_HITS_PER_TRANSACTION - hitsWritten);
+        const fairActionQuota = remainingBudget > 0
+          ? Math.max(
+              1,
+              Math.ceil(remainingBudget / Math.max(1, remainingActions)),
+            )
+          : 0;
         const hitLimit = Math.min(
           dueHitCount,
-          recordedHitCount + Math.max(0, MAX_HITS_PER_TRANSACTION - hitsWritten),
+          recordedHitCount + fairActionQuota,
         );
         for (let hitIndex = recordedHitCount; hitIndex < hitLimit; hitIndex += 1) {
           const hitAt = new Date(firstHitAt + hitIndex * staggerMs);
