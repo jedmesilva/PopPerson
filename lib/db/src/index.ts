@@ -10,7 +10,14 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  // API requests and the action worker must fail explicitly instead of
+  // holding a connection forever when the database or a transaction stalls.
+  connectionTimeoutMillis: 10_000,
+  statement_timeout: 15_000,
+  idle_in_transaction_session_timeout: 15_000,
+});
 export const db = drizzle(pool, { schema });
 
 export * from "./schema";

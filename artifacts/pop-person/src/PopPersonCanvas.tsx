@@ -259,12 +259,13 @@ function PersonVisual({ person, alt = "", style = {} }) {
 }
 
 export default function PopPersonCanvas() {
-  const accessLocationQuery = useGetAccessLocation();
-  const bootstrapQuery = useGetPopPerson({
+  const bootstrapQuery = useGetPopPerson();
+  const accessLocationQuery = useGetAccessLocation({
     query: {
-      // Resolve location first so the first page request and the location
-      // event share the same anonymous session cookie.
-      enabled: accessLocationQuery.isFetched,
+      // Location is optional. Start it only after bootstrap has established the
+      // anonymous session, so a third-party lookup cannot delay the app shell.
+      enabled: Boolean(bootstrapQuery.data),
+      retry: false,
     },
   });
   const stateQuery = useGetPopPersonState({

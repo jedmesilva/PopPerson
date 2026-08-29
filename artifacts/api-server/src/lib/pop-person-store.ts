@@ -33,6 +33,10 @@ import type {
 import { logger } from "./logger";
 
 const PROCESS_INTERVAL_MS = 500;
+// Keep each worker transaction short. A single action can contain thousands of
+// projectiles, and processing all due hits at once holds cell/room locks long
+// enough to block new action requests and other worker instances.
+const MAX_HITS_PER_TRANSACTION = 50;
 type StateListener = (state: PopPersonState) => void | Promise<void>;
 type Snapshot = Record<string, unknown>;
 
@@ -727,6 +731,7 @@ async function processDueActions(): Promise<void> {
   if (processing) return;
   processing = true;
   let changed = false;
+  let hitsWritten = 0;
   try {
     const now = new Date();
     await db.transaction(async (tx) => {
@@ -807,7 +812,11 @@ async function processDueActions(): Promise<void> {
         );
         const delta = growthPerHit * direction;
 
-        for (let hitIndex = recordedHitCount; hitIndex < dueHitCount; hitIndex += 1) {
+        const hitLimit = Math.min(
+          dueHitCount,
+          recordedHitCount + Math.max(0, MAX_HITS_PER_TRANSACTION - hitsWritten),
+        );
+        for (let hitIndex = recordedHitCount; hitIndex < hitLimit; hitIndex += 1) {
           const hitAt = new Date(firstHitAt + hitIndex * staggerMs);
           const [insertedHit] = await tx
             .insert(actionEventsTable)
@@ -852,9 +861,11 @@ async function processDueActions(): Promise<void> {
             })
             .where(eq(roomsTable.id, action.roomId));
           changed = true;
+          hitsWritten += 1;
         }
 
-        if (now.getTime() < action.completesAt.getTime()) continue;
+        const allHitsRecorded = recordedHitCount + (hitLimit - recordedHitCount) >= projectileCount;
+        if (!allHitsRecorded || now.getTime() < action.completesAt.getTime()) continue;
 
         const [claimed] = await tx
           .update(actionsTable)
@@ -887,6 +898,8 @@ async function processDueActions(): Promise<void> {
           },
         });
         changed = true;
+
+        if (hitsWritten >= MAX_HITS_PER_TRANSACTION) break;
       }
     });
 
