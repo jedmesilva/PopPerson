@@ -24,6 +24,10 @@ function quadBezierTangent(p0, p1, p2, t) {
 const MODE_LABEL = { atacar: "Ataque", defender: "Defesa" };
 const MAX_CONCURRENT_PROJECTILES = 24;
 const CIRCLE_GAP = 2.5;
+// Keep zoom effectively unbounded for users while avoiding browser floating-
+// point and canvas precision problems at the extreme ends of the scale.
+const MIN_ZOOM = 0.0001;
+const MAX_ZOOM = 100000;
 
 function getWebSocketUrl() {
   const configuredUrl = import.meta.env.DEV
@@ -147,9 +151,7 @@ function tryPackCircles(ordered, baseRadii, scale) {
 function computeLeaves(data) {
   if (data.length === 0) return [];
   const ordered = [...data].sort((a, b) => b.value - a.value);
-  const baseRadii = ordered.map((item) =>
-    Math.max(7.2, Math.sqrt(Math.max(0, item.value)) * 3.2),
-  );
+  const baseRadii = ordered.map((item) => Math.sqrt(Math.max(0, item.value)) * 3.2);
   return tryPackCircles(ordered, baseRadii, 1) || [];
 }
 
@@ -646,7 +648,7 @@ export default function PopPersonCanvas() {
       fitToView();
     }
   }, [leaves.length, fitToView]);
-  const clampScale = (s) => Math.min(Math.max(s, 0.6), 40);
+  const clampScale = (s) => Math.min(Math.max(s, MIN_ZOOM), MAX_ZOOM);
   const seedMissingRects = useCallback(() => {
     const names = new Set();
     leavesRef.current.forEach((l) => {
