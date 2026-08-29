@@ -27,7 +27,9 @@ const LAYOUT_PADDING = 2;
 const CIRCLE_GAP = 2.5;
 
 function getWebSocketUrl() {
-  const configuredUrl = import.meta.env.VITE_WS_URL?.trim() || import.meta.env.VITE_API_URL?.trim();
+  const configuredUrl = import.meta.env.DEV
+    ? ""
+    : import.meta.env.VITE_WS_URL?.trim() || import.meta.env.VITE_API_URL?.trim();
   if (configuredUrl) {
     let url;
     try {
