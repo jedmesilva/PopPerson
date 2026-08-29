@@ -751,19 +751,103 @@ async function processDueActions(): Promise<void> {
         });
       }
 
-      const dueActions = await tx
+      const runningActions = await tx
         .select()
         .from(actionsTable)
         .where(
-          and(
-            eq(actionsTable.status, "running"),
-            lte(actionsTable.completesAt, now),
-          ),
+          eq(actionsTable.status, "running"),
         )
-        .orderBy(asc(actionsTable.completesAt))
+        .orderBy(asc(actionsTable.scheduledFor))
         .limit(100);
 
-      for (const action of dueActions) {
+      for (const action of runningActions) {
+        const hitEvents = await tx
+          .select({ id: actionEventsTable.id })
+          .from(actionEventsTable)
+          .where(
+            and(
+              eq(actionEventsTable.actionId, action.id),
+              eq(actionEventsTable.eventType, "hit"),
+            ),
+          );
+        const recordedHitCount = hitEvents.length;
+        const projectileCount = Math.max(
+          1,
+          Math.floor(snapshotNumber(action.ruleSnapshot, "count", 1)),
+        );
+        const staggerMs = Math.max(
+          0,
+          snapshotNumber(action.ruleSnapshot, "staggerMs", 0),
+        );
+        const durationMs = Math.max(
+          0,
+          snapshotNumber(action.ruleSnapshot, "durationMs", 0),
+        );
+        const firstHitAt = action.scheduledFor.getTime() + durationMs;
+        const hitIntervalMs = Math.max(1, staggerMs);
+        const dueHitCount = now.getTime() >= firstHitAt
+          ? Math.min(
+              projectileCount,
+              Math.floor((now.getTime() - firstHitAt) / hitIntervalMs) + 1,
+            )
+          : 0;
+        const direction = action.mode === "defender" ? 1 : -1;
+        const growthPerHit = snapshotNumber(
+          action.ruleSnapshot,
+          "growthPerHit",
+          toNumber(action.effectiveImpact) / projectileCount,
+        );
+        const delta = growthPerHit * direction;
+
+        for (let hitIndex = recordedHitCount; hitIndex < dueHitCount; hitIndex += 1) {
+          const hitAt = new Date(firstHitAt + hitIndex * staggerMs);
+          const [insertedHit] = await tx
+            .insert(actionEventsTable)
+            .values({
+              actionId: action.id,
+              roomId: action.roomId,
+              cellId: action.cellId,
+              sequence: String(hitIndex + 3),
+              eventType: "hit",
+              status: "running",
+              deltaValue: String(delta),
+              payload: {
+                hitIndex: hitIndex + 1,
+                hitAt: hitAt.toISOString(),
+                direction: action.mode,
+              },
+            })
+            .onConflictDoNothing({
+              target: [actionEventsTable.actionId, actionEventsTable.sequence],
+            })
+            .returning({ id: actionEventsTable.id });
+          if (!insertedHit) continue;
+
+          await tx
+            .update(cellsTable)
+            .set({
+              // Apply each projectile's impact as it lands. Cells have a
+              // floor for attacks, but no upper bound for repeated defense.
+              currentValue: sql`GREATEST(
+                ${cellsTable.minimumValue},
+                ${cellsTable.currentValue} + ${delta}
+              )`,
+              stateVersion: sql`${cellsTable.stateVersion} + 1`,
+              updatedAt: now,
+            })
+            .where(eq(cellsTable.id, action.cellId));
+          await tx
+            .update(roomsTable)
+            .set({
+              stateVersion: sql`${roomsTable.stateVersion} + 1`,
+              updatedAt: now,
+            })
+            .where(eq(roomsTable.id, action.roomId));
+          changed = true;
+        }
+
+        if (now.getTime() < action.completesAt.getTime()) continue;
+
         const [claimed] = await tx
           .update(actionsTable)
           .set({
@@ -781,36 +865,14 @@ async function processDueActions(): Promise<void> {
           .returning();
         if (!claimed) continue;
 
-        const direction = claimed.mode === "defender" ? 1 : -1;
-        const delta = toNumber(claimed.effectiveImpact) * direction;
-        await tx
-          .update(cellsTable)
-          .set({
-            // Cells have a floor so attacks cannot erase them, but no upper
-            // bound: repeated defense actions must keep increasing their value.
-            currentValue: sql`GREATEST(
-              ${cellsTable.minimumValue},
-              ${cellsTable.currentValue} + ${delta}
-            )`,
-            stateVersion: sql`${cellsTable.stateVersion} + 1`,
-            updatedAt: now,
-          })
-          .where(eq(cellsTable.id, claimed.cellId));
-        await tx
-          .update(roomsTable)
-          .set({
-            stateVersion: sql`${roomsTable.stateVersion} + 1`,
-            updatedAt: now,
-          })
-          .where(eq(roomsTable.id, claimed.roomId));
         await tx.insert(actionEventsTable).values({
           actionId: claimed.id,
           roomId: claimed.roomId,
           cellId: claimed.cellId,
-          sequence: "3",
+          sequence: String(projectileCount + 3),
           eventType: "completed",
           status: "completed",
-          deltaValue: String(delta),
+          deltaValue: String(toNumber(claimed.effectiveImpact) * direction),
           payload: {
             completedAt: now.toISOString(),
             direction: claimed.mode,
