@@ -1,10 +1,11 @@
-# [Project name]
+# PopPerson
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Aplicativo interativo para visualizar pessoas públicas e executar ações de ataque ou defesa com níveis de intensidade.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- Workflow `PopPerson API` — `PORT=5000 pnpm --filter @workspace/api-server run dev`
+- Workflow `PopPerson Web` — `PORT=3000 BASE_PATH=/ pnpm --filter @workspace/pop-person run dev`
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
@@ -22,15 +23,22 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/pop-person` — interface principal e fluxo de seleção de ações
+- `artifacts/api-server` — API e cálculo dos valores das ações
+- `lib/db/src/schema` — tabelas de pessoas, itens, níveis e regras
+- `lib/api-spec/openapi.yaml` — contrato da API
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- O preço base do item é unitário; o custo total usa a quantidade de projéteis do nível selecionado.
+- Um `price_override` ativo pode substituir o total calculado para um par item/nível específico.
+- A API é a fonte de verdade para níveis, regras de preço, fila e execução das ações.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- Visualiza pessoas públicas em círculos e permite filtrar por localização e categoria.
+- Permite escolher elemento, intensidade e ação de ataque ou defesa.
+- Exibe o custo total correspondente à intensidade antes do envio.
 
 ## User preferences
 

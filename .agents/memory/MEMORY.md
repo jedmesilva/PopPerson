@@ -1,0 +1,1 @@
+- [Registro de workflows importados](imported-workflow-registration.md) — imports podem ter artifact.toml válido sem workflows registrados no runtime; confirme o inventário antes do preview.
