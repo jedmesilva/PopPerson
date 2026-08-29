@@ -722,7 +722,8 @@ export default function PopPersonCanvas() {
     const totalCount = item.count;
     if (!totalCount) return { timeLabel: "—", progress: 0 };
     const landed = Math.min(totalCount, Math.max(0, Number(item.hitCount) || 0));
-    return { timeLabel: `${landed}/${totalCount} hits`, progress: landed / totalCount };
+    const percentage = Math.round((landed / totalCount) * 100);
+    return { timeLabel: `${percentage}%`, progress: landed / totalCount };
   }, []);
 
   useEffect(() => {
