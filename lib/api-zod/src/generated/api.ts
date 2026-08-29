@@ -55,7 +55,13 @@ export const getPopPersonResponseStateActionsItemStartDelayMsMin = 0;
 
 export const getPopPersonResponseStateActionsItemExecuteAtMin = 0;
 
+export const getPopPersonResponseStateActionsItemStartedAtMin = 0;
+
 export const getPopPersonResponseStateActionsItemCompletedAtMin = 0;
+
+export const getPopPersonResponseStateActionsItemHitCountMin = 0;
+
+export const getPopPersonResponseStateActionsItemLastHitAtMin = 0;
 
 
 export const getPopPersonResponseStateActionsItemStaggerMsMin = 0;
@@ -151,7 +157,10 @@ export const GetPopPersonResponse = zod.object({
   "targetName": zod.string(),
   "status": zod.enum(['queued', 'running', 'completed']),
   "executeAt": zod.number().min(getPopPersonResponseStateActionsItemExecuteAtMin),
-  "completedAt": zod.number().min(getPopPersonResponseStateActionsItemCompletedAtMin).nullish(),
+  "startedAt": zod.number().min(getPopPersonResponseStateActionsItemStartedAtMin).nullable(),
+  "completedAt": zod.number().min(getPopPersonResponseStateActionsItemCompletedAtMin).nullable(),
+  "hitCount": zod.number().min(getPopPersonResponseStateActionsItemHitCountMin),
+  "lastHitAt": zod.number().min(getPopPersonResponseStateActionsItemLastHitAtMin).nullable(),
   "count": zod.number().min(1),
   "growthPerHit": zod.number(),
   "impactMultiplier": zod.number(),
@@ -181,7 +190,13 @@ export const getPopPersonStateResponseActionsItemStartDelayMsMin = 0;
 
 export const getPopPersonStateResponseActionsItemExecuteAtMin = 0;
 
+export const getPopPersonStateResponseActionsItemStartedAtMin = 0;
+
 export const getPopPersonStateResponseActionsItemCompletedAtMin = 0;
+
+export const getPopPersonStateResponseActionsItemHitCountMin = 0;
+
+export const getPopPersonStateResponseActionsItemLastHitAtMin = 0;
 
 
 export const getPopPersonStateResponseActionsItemStaggerMsMin = 0;
@@ -227,7 +242,10 @@ export const GetPopPersonStateResponse = zod.object({
   "targetName": zod.string(),
   "status": zod.enum(['queued', 'running', 'completed']),
   "executeAt": zod.number().min(getPopPersonStateResponseActionsItemExecuteAtMin),
-  "completedAt": zod.number().min(getPopPersonStateResponseActionsItemCompletedAtMin).nullish(),
+  "startedAt": zod.number().min(getPopPersonStateResponseActionsItemStartedAtMin).nullable(),
+  "completedAt": zod.number().min(getPopPersonStateResponseActionsItemCompletedAtMin).nullable(),
+  "hitCount": zod.number().min(getPopPersonStateResponseActionsItemHitCountMin),
+  "lastHitAt": zod.number().min(getPopPersonStateResponseActionsItemLastHitAtMin).nullable(),
   "count": zod.number().min(1),
   "growthPerHit": zod.number(),
   "impactMultiplier": zod.number(),
@@ -269,7 +287,13 @@ export const createPopPersonActionResponseStartDelayMsMin = 0;
 
 export const createPopPersonActionResponseExecuteAtMin = 0;
 
+export const createPopPersonActionResponseStartedAtMin = 0;
+
 export const createPopPersonActionResponseCompletedAtMin = 0;
+
+export const createPopPersonActionResponseHitCountMin = 0;
+
+export const createPopPersonActionResponseLastHitAtMin = 0;
 
 
 export const createPopPersonActionResponseStaggerMsMin = 0;
@@ -289,7 +313,10 @@ export const CreatePopPersonActionResponse = zod.object({
   "targetName": zod.string(),
   "status": zod.enum(['queued', 'running', 'completed']),
   "executeAt": zod.number().min(createPopPersonActionResponseExecuteAtMin),
-  "completedAt": zod.number().min(createPopPersonActionResponseCompletedAtMin).nullish(),
+  "startedAt": zod.number().min(createPopPersonActionResponseStartedAtMin).nullable(),
+  "completedAt": zod.number().min(createPopPersonActionResponseCompletedAtMin).nullable(),
+  "hitCount": zod.number().min(createPopPersonActionResponseHitCountMin),
+  "lastHitAt": zod.number().min(createPopPersonActionResponseLastHitAtMin).nullable(),
   "count": zod.number().min(1),
   "growthPerHit": zod.number(),
   "impactMultiplier": zod.number(),

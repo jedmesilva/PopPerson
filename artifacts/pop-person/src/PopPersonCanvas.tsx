@@ -430,8 +430,8 @@ export default function PopPersonCanvas() {
   const personImagesRef = useRef(new Map());
   const shakeActionIdsRef = useRef(new Set());
   const activeActionIdsRef = useRef([]);
-  const activeServerActionIdsRef = useRef(new Set());
-  const seenServerActionIdsRef = useRef(new Set());
+  const latestServerActionsRef = useRef(new Map());
+  const serverStateHydratedRef = useRef(false);
   const lastDatasetValuesRef = useRef(new Map());
   const transformRef = useRef({ x: 0, y: 0, scale: 1 });
   const fitTransformRef = useRef({ x: 0, y: 0, scale: 1 });
@@ -440,11 +440,6 @@ export default function PopPersonCanvas() {
   useEffect(() => { leavesRef.current = leaves; }, [leaves]);
   useEffect(() => { selectedCellRef.current = selectedCell; }, [selectedCell]);
   useEffect(() => { activeActionIdsRef.current = activeActions.map((a) => a.id); }, [activeActions]);
-  useEffect(() => {
-    activeServerActionIdsRef.current = new Set(
-      activeActions.map((action) => action.serverActionId).filter(Boolean),
-    );
-  }, [activeActions]);
   useEffect(() => {
     const currentNames = new Set(dataset.map((person) => person.name));
     for (const name of personImagesRef.current.keys()) {
@@ -467,11 +462,15 @@ export default function PopPersonCanvas() {
   }, [dataset]);
 
   const executeAction = useCallback((serverAction, resumeElapsedMs = 0) => {
-    if (serverAction.id && activeServerActionIdsRef.current.has(serverAction.id)) return;
-    if (serverAction.id) activeServerActionIdsRef.current.add(serverAction.id);
+    const actionId = serverAction.id;
+    if (!actionId || activeActionIdsRef.current.includes(actionId)) return;
+    activeActionIdsRef.current = [...activeActionIdsRef.current, actionId];
     const direction = serverAction.mode === "defender" ? 1 : -1;
     const actionElement = serverAction.element;
-    const firingId = Date.now() + Math.random();
+    // The database action ID is the identity of the animation. A random
+    // client-side firing ID made reconnects and state updates look like new
+    // actions, which caused duplicate projectiles and duplicate queue rows.
+    const firingId = actionId;
     const animationStartedAt = performance.now();
     const totalCount = Math.max(1, Number(serverAction.count) || 1);
     const staggerMs = Math.max(0, Number(serverAction.staggerMs) || 0);
@@ -503,12 +502,13 @@ export default function PopPersonCanvas() {
       ...prev,
       {
         id: firingId,
-        serverActionId: serverAction.id,
         mode: serverAction.mode,
         level: serverAction.level,
         element: actionElement,
         targetName: serverAction.targetName,
         count: totalCount,
+        hitCount: Math.min(totalCount, Math.max(0, Number(serverAction.hitCount) || 0)),
+        lastHitAt: serverAction.lastHitAt ?? null,
         firedAt: animationStartedAt,
       },
     ]);
@@ -517,7 +517,18 @@ export default function PopPersonCanvas() {
   const executeActionRef = useRef(executeAction);
   useEffect(() => { executeActionRef.current = executeAction; }, [executeAction]);
   const queueAction = useCallback((serverAction) => {
-    if (activeServerActionIdsRef.current.has(serverAction.id)) return;
+    if (!serverAction?.id) return;
+    latestServerActionsRef.current.set(serverAction.id, serverAction);
+    if (activeActionIdsRef.current.includes(serverAction.id)) {
+      setActiveActions((prev) => prev.map((action) => action.id === serverAction.id
+        ? {
+            ...action,
+            hitCount: Math.min(action.count, Math.max(0, Number(serverAction.hitCount) || 0)),
+            lastHitAt: serverAction.lastHitAt ?? null,
+          }
+        : action));
+      return;
+    }
 
     if (serverAction.status === "running") {
       const elapsedMs = Math.max(0, Date.now() - serverAction.executeAt);
@@ -528,12 +539,77 @@ export default function PopPersonCanvas() {
     const localExecuteAt = performance.now() + Math.max(0, serverAction.executeAt - Date.now());
     setQueue((prev) => {
       if (prev.some((queuedAction) => queuedAction.id === serverAction.id)) return prev;
-      return [...prev, { ...serverAction, executeAt: localExecuteAt }];
+      return [...prev, { ...serverAction, localExecuteAt }];
     });
   }, []);
   const reconcileServerState = useCallback((serverState) => {
+    const incomingActions = Array.isArray(serverState?.actions) ? serverState.actions : [];
+    const incomingActionIds = new Set(incomingActions.map((action) => action.id));
+    const progressTargets = new Set();
+
     if (Array.isArray(serverState?.dataset)) {
       const previousValues = lastDatasetValuesRef.current;
+      incomingActions.forEach((serverAction) => {
+        const previousAction = latestServerActionsRef.current.get(serverAction.id);
+        const previousHitCount = Number(previousAction?.hitCount) || 0;
+        const nextHitCount = Math.min(
+          Number(serverAction.count) || 0,
+          Math.max(0, Number(serverAction.hitCount) || 0),
+        );
+        latestServerActionsRef.current.set(serverAction.id, serverAction);
+
+        if (previousAction && nextHitCount > previousHitCount) {
+          progressTargets.add(serverAction.targetName);
+          const target = leavesRef.current.find((leaf) => leaf.name === serverAction.targetName);
+          const hitDelta = nextHitCount - previousHitCount;
+          if (target) {
+            for (let hitIndex = 0; hitIndex < hitDelta; hitIndex += 1) {
+              impactsRef.current.push({
+                x: target.x,
+                y: target.y,
+                r: target.r,
+                color: serverAction.mode === "defender" ? "34, 197, 94" : "239, 68, 68",
+                startTime: performance.now(),
+                duration: 350,
+              });
+            }
+          }
+        }
+
+        if (!previousAction) {
+          queueAction(serverAction);
+        } else if (
+          previousAction.status === "queued" &&
+          serverAction.status === "running"
+        ) {
+          setQueue((prev) => prev.filter((action) => action.id !== serverAction.id));
+          executeActionRef.current(
+            serverAction,
+            Math.max(0, Date.now() - serverAction.executeAt),
+          );
+        } else if (
+          serverAction.status === "running" &&
+          !activeActionIdsRef.current.includes(serverAction.id)
+        ) {
+          executeActionRef.current(
+            serverAction,
+            Math.max(0, Date.now() - serverAction.executeAt),
+          );
+        } else if (serverAction.status === "queued") {
+          setQueue((prev) => prev.map((action) => action.id === serverAction.id
+            ? { ...action, ...serverAction, localExecuteAt: action.localExecuteAt }
+            : action));
+        }
+
+        setActiveActions((prev) => prev.map((action) => action.id === serverAction.id
+          ? {
+              ...action,
+              hitCount: nextHitCount,
+              lastHitAt: serverAction.lastHitAt ?? null,
+            }
+          : action));
+      });
+
       serverState.dataset.forEach((person) => {
         const nextValue = Number(person.value);
         const previousValue = previousValues.get(person.name);
@@ -545,7 +621,10 @@ export default function PopPersonCanvas() {
           const target = leavesRef.current.find((leaf) => leaf.name === person.name);
           const animated = animatedCirclesRef.current.get(person.name);
           const circle = target || animated;
-          if (circle) {
+          // A hit progress update already creates the visual impact. Dataset
+          // deltas are retained only for the final hit, because the server
+          // removes a completed action from the active action snapshot.
+          if (circle && !progressTargets.has(person.name)) {
             impactsRef.current.push({
               x: circle.x,
               y: circle.y,
@@ -560,14 +639,24 @@ export default function PopPersonCanvas() {
       });
       setDataset(serverState.dataset);
     }
-    if (!Array.isArray(serverState?.actions)) return;
 
-    serverState.actions.forEach((serverAction) => {
-      if (seenServerActionIdsRef.current.has(serverAction.id)) return;
-      if (serverAction.status === "completed") return;
-      seenServerActionIdsRef.current.add(serverAction.id);
-      queueAction(serverAction);
-    });
+    if (serverStateHydratedRef.current) {
+      setQueue((prev) => prev.filter((action) => incomingActionIds.has(action.id)));
+      setActiveActions((prev) => {
+        const next = prev.filter((action) => incomingActionIds.has(action.id));
+        activeActionIdsRef.current = next.map((action) => action.id);
+        return next;
+      });
+      emittersRef.current = emittersRef.current.filter((emitter) => incomingActionIds.has(emitter.id));
+      projectilesRef.current = projectilesRef.current.filter((projectile) => incomingActionIds.has(projectile.firingId));
+      shakeActionIdsRef.current.forEach((id) => {
+        if (!incomingActionIds.has(id)) shakeActionIdsRef.current.delete(id);
+      });
+      for (const id of latestServerActionsRef.current.keys()) {
+        if (!incomingActionIds.has(id)) latestServerActionsRef.current.delete(id);
+      }
+    }
+    serverStateHydratedRef.current = true;
   }, [queueAction]);
   useEffect(() => {
     if (bootstrapQuery.data?.state) {
@@ -620,25 +709,14 @@ export default function PopPersonCanvas() {
   }, []);
   const getActionTiming = useCallback((item, now) => {
     if (item.kind === "queued") {
-      const secondsLeft = Math.max(0, (item.executeAt - now) / 1000);
+      const secondsLeft = Math.max(0, (item.localExecuteAt - now) / 1000);
       const delayMs = Math.max(0, item.startDelayMs);
       return { timeLabel: secondsLeft > 0 ? `Inicia em ${secondsLeft.toFixed(1)}s` : "Iniciando", progress: delayMs > 0 ? 1 - (secondsLeft * 1000) / delayMs : 1 };
     }
     const totalCount = item.count;
     if (!totalCount) return { timeLabel: "—", progress: 0 };
-    const emitter = emittersRef.current.find((e) => e.id === item.id);
-    if (emitter?.resumeStartedAt !== null && emitter?.resumeStartedAt !== undefined) {
-      const elapsed = emitter.resumeElapsedMs + Math.max(0, performance.now() - emitter.resumeStartedAt);
-      const landed = emitter.staggerMs > 0
-        ? elapsed >= emitter.duration
-          ? Math.min(totalCount, Math.floor((elapsed - emitter.duration) / emitter.staggerMs) + 1)
-          : 0
-        : elapsed >= emitter.duration ? totalCount : 0;
-      return { timeLabel: `${Math.round(Math.min(1, landed / totalCount) * 100)}%`, progress: Math.min(1, landed / totalCount) };
-    }
-    const inFlight = projectilesRef.current.filter((p) => p.firingId === item.id).length;
-    const landed = Math.max(0, totalCount - (emitter ? emitter.remaining : 0) - inFlight);
-    return { timeLabel: `${Math.round(Math.min(1, landed / totalCount) * 100)}%`, progress: Math.min(1, landed / totalCount) };
+    const landed = Math.min(totalCount, Math.max(0, Number(item.hitCount) || 0));
+    return { timeLabel: `${landed}/${totalCount} hits`, progress: landed / totalCount };
   }, []);
 
   useEffect(() => {
@@ -647,9 +725,11 @@ export default function PopPersonCanvas() {
     function hudTick() {
       const now = performance.now();
       setQueue((prev) => {
-        const stillPending = prev.filter((a) => a.executeAt > now);
+        const stillPending = prev.filter((a) => a.localExecuteAt > now);
         if (stillPending.length !== prev.length) {
-          prev.filter((a) => a.executeAt <= now).forEach((a) => executeActionRef.current(a));
+          prev.filter((a) => a.localExecuteAt <= now).forEach((a) => {
+            executeActionRef.current({ ...a, status: "running" });
+          });
         }
         return stillPending;
       });
@@ -693,9 +773,11 @@ export default function PopPersonCanvas() {
           submittingActionRef.current = false;
           idempotencyKeyRef.current = null;
           idempotencyPayloadRef.current = "";
-          const alreadySeen = seenServerActionIdsRef.current.has(action.id);
-          seenServerActionIdsRef.current.add(action.id);
-          if (!alreadySeen) queueAction(action);
+          // Register the server response immediately. The following polling
+          // or WebSocket snapshot must reconcile this same action, not enqueue
+          // a second local copy.
+          latestServerActionsRef.current.set(action.id, action);
+          queueAction(action);
           closeModal();
           setSelectedCell(null);
         },
@@ -1132,7 +1214,7 @@ export default function PopPersonCanvas() {
             const now = performance.now();
             const entry = activeActions.length > 0
               ? { kind: "firing", ...[...activeActions].sort((a, b) => getRemainingUnits(a) - getRemainingUnits(b))[0] }
-              : { kind: "queued", ...[...queue].sort((a, b) => a.executeAt - b.executeAt)[0] };
+            : { kind: "queued", ...[...queue].sort((a, b) => a.localExecuteAt - b.localExecuteAt)[0] };
             const actionColor = entry.mode === "defender" ? "#22c55e" : "#ef4444";
             const { timeLabel, progress } = getActionTiming(entry, now);
             return (
@@ -1193,7 +1275,7 @@ export default function PopPersonCanvas() {
               <button data-testid="button-close-queue" onClick={() => setShowQueueModal(false)} style={closeButtonStyle}><X size={13} /></button>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "8px", overflowY: "auto" }}>
-              {[...activeActions].sort((a, b) => getRemainingUnits(a) - getRemainingUnits(b)).map((a) => ({ kind: "firing", ...a })).concat([...queue].sort((a, b) => a.executeAt - b.executeAt).map((a) => ({ kind: "queued", ...a }))).map((item) => {
+               {[...activeActions].sort((a, b) => getRemainingUnits(a) - getRemainingUnits(b)).map((a) => ({ kind: "firing", ...a })).concat([...queue].sort((a, b) => a.localExecuteAt - b.localExecuteAt).map((a) => ({ kind: "queued", ...a }))).map((item) => {
                 const color = item.mode === "defender" ? "#22c55e" : "#ef4444";
                 const levelLabel = levelByKey[item.level]?.label ?? item.level;
                 const elementIntensityLabel = `${item.element.label} ${levelLabel}`;

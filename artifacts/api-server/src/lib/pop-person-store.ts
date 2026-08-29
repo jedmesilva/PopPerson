@@ -51,6 +51,18 @@ function toNumber(value: unknown, fallback = 0): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function toTimestampMs(value: unknown): number | null {
+  if (value instanceof Date) {
+    const timestamp = value.getTime();
+    return Number.isFinite(timestamp) ? timestamp : null;
+  }
+  if (typeof value === "string" || typeof value === "number") {
+    const timestamp = new Date(value).getTime();
+    return Number.isFinite(timestamp) ? timestamp : null;
+  }
+  return null;
+}
+
 function snapshotNumber(snapshot: unknown, key: string, fallback: number): number {
   if (!snapshot || typeof snapshot !== "object") return fallback;
   return toNumber((snapshot as Snapshot)[key], fallback);
@@ -272,6 +284,7 @@ async function getActions(
       priceCharged: actionsTable.priceCharged,
       actionStartDelayMs: actionsTable.startDelayMs,
       executeAt: actionsTable.scheduledFor,
+      activatedAt: actionsTable.activatedAt,
       completedAt: actionsTable.completedAt,
       levelCount: actionLevelsTable.projectileCount,
       levelStaggerMs: actionLevelsTable.staggerMs,
@@ -295,6 +308,37 @@ async function getActions(
           ),
     )
     .orderBy(asc(actionsTable.scheduledFor));
+
+  const hitProgressByActionId = new Map<
+    string,
+    { hitCount: number; lastHitAt: Date | null }
+  >();
+  if (rows.length > 0) {
+    const hitRows = await db
+      .select({
+        actionId: actionEventsTable.actionId,
+        hitCount: sql<number>`count(*)::int`,
+        lastHitAt: sql<Date | null>`max(${actionEventsTable.occurredAt})`,
+      })
+      .from(actionEventsTable)
+      .where(
+        and(
+          inArray(
+            actionEventsTable.actionId,
+            rows.map((action) => action.id),
+          ),
+          eq(actionEventsTable.eventType, "hit"),
+        ),
+      )
+      .groupBy(actionEventsTable.actionId);
+
+    for (const hit of hitRows) {
+      hitProgressByActionId.set(hit.actionId, {
+        hitCount: toNumber(hit.hitCount),
+        lastHitAt: hit.lastHitAt,
+      });
+    }
+  }
 
   return rows.map((action) => {
     const element = toPopPersonElement({
@@ -339,6 +383,7 @@ async function getActions(
       "price",
       toNumber(action.priceCharged, 0),
     );
+    const hitProgress = hitProgressByActionId.get(action.id);
 
     return {
       id: action.id,
@@ -349,7 +394,10 @@ async function getActions(
       status: toActionStatus(action.status),
       startDelayMs,
       executeAt: action.executeAt.getTime(),
+      startedAt: action.activatedAt?.getTime() ?? null,
       completedAt: action.completedAt?.getTime() ?? null,
+      hitCount: hitProgress?.hitCount ?? 0,
+      lastHitAt: toTimestampMs(hitProgress?.lastHitAt),
       count,
       growthPerHit,
       impactMultiplier,
@@ -733,8 +781,12 @@ async function processDueActions(): Promise<void> {
   let changed = false;
   let hitsWritten = 0;
   try {
-    const now = new Date();
-    await db.transaction(async (tx) => {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      changed = false;
+      hitsWritten = 0;
+      const now = new Date();
+      try {
+        await db.transaction(async (tx) => {
       // The in-process `processing` flag prevents overlap inside one Node
       // process, but it cannot coordinate multiple API instances. Use a
       // transaction-scoped PostgreSQL lock so only one worker can mutate the
@@ -784,6 +836,7 @@ async function processDueActions(): Promise<void> {
 
       for (let actionIndex = 0; actionIndex < runningActions.length; actionIndex += 1) {
         const action = runningActions[actionIndex];
+        let actionHitsWritten = 0;
         const hitEvents = await tx
           .select({ id: actionEventsTable.id })
           .from(actionEventsTable)
@@ -875,15 +928,18 @@ async function processDueActions(): Promise<void> {
               updatedAt: now,
             })
             .where(eq(cellsTable.id, action.cellId));
+          changed = true;
+          hitsWritten += 1;
+          actionHitsWritten += 1;
+        }
+        if (actionHitsWritten > 0) {
           await tx
             .update(roomsTable)
             .set({
-              stateVersion: sql`${roomsTable.stateVersion} + 1`,
+              stateVersion: sql`${roomsTable.stateVersion} + ${actionHitsWritten}`,
               updatedAt: now,
             })
             .where(eq(roomsTable.id, action.roomId));
-          changed = true;
-          hitsWritten += 1;
         }
 
         const allHitsRecorded = recordedHitCount + (hitLimit - recordedHitCount) >= projectileCount;
@@ -923,7 +979,16 @@ async function processDueActions(): Promise<void> {
 
         if (hitsWritten >= MAX_HITS_PER_TRANSACTION) break;
       }
-    });
+        });
+        break;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const retryable = message.includes("deadlock detected") ||
+          message.includes("could not serialize");
+        if (!retryable || attempt === 2) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
+      }
+    }
 
     if (changed) await notifyStateChange();
   } catch (error) {

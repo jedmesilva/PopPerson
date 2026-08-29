@@ -272,7 +272,7 @@ components:
             $ref: "#/components/schemas/PopPersonActionRule"
     PopPersonAction:
       type: object
-      required: [id, mode, elementId, level, targetName, status, startDelayMs, executeAt, count, growthPerHit, impactMultiplier, staggerMs, duration, price, shake, element]
+      required: [id, mode, elementId, level, targetName, status, startDelayMs, executeAt, startedAt, completedAt, hitCount, lastHitAt, count, growthPerHit, impactMultiplier, staggerMs, duration, price, shake, element]
       properties:
         id:
           type: string
@@ -294,7 +294,16 @@ components:
         executeAt:
           type: number
           minimum: 0
+        startedAt:
+          type: ["number", "null"]
+          minimum: 0
         completedAt:
+          type: ["number", "null"]
+          minimum: 0
+        hitCount:
+          type: number
+          minimum: 0
+        lastHitAt:
           type: ["number", "null"]
           minimum: 0
         count:

@@ -174,7 +174,19 @@ export interface PopPersonAction {
      * @minimum 0
      * @nullable
      */
-  completedAt?: number | null;
+  startedAt: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  completedAt: number | null;
+  /** @minimum 0 */
+  hitCount: number;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  lastHitAt: number | null;
   /** @minimum 1 */
   count: number;
   growthPerHit: number;

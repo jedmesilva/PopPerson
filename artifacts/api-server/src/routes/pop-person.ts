@@ -16,11 +16,15 @@ const router: IRouter = Router();
 
 router.get("/pop-person", async (req, res): Promise<void> => {
   const data = await getPopPersonBootstrap(res.locals.anonymousSessionId);
+  res.set("Cache-Control", "no-store");
   res.json(GetPopPersonResponse.parse(data));
 });
 
 router.get("/pop-person/state", async (req, res): Promise<void> => {
   const data = await getPopPersonState(res.locals.anonymousSessionId);
+  // This is a live multiplayer snapshot. A 304 response has no body, and
+  // clients cannot reconcile action progress from it after a reload.
+  res.set("Cache-Control", "no-store");
   res.json(GetPopPersonStateResponse.parse(data));
 });
 
