@@ -33,6 +33,10 @@ import type {
 import { logger } from "./logger";
 
 const PROCESS_INTERVAL_MS = 500;
+// An action should finish within its persisted `completesAt` timestamp. If a
+// process was offline or failed while it was running, do not resume an old
+// action indefinitely on the next tick or restart.
+const STALE_ACTION_GRACE_MS = 60_000;
 // Keep each worker transaction short. A single action can contain thousands of
 // projectiles, and processing all due hits at once holds cell/room locks long
 // enough to block new action requests and other worker instances.
@@ -795,6 +799,37 @@ async function processDueActions(): Promise<void> {
         sql`SELECT pg_try_advisory_xact_lock(hashtextextended('pop-person-action-processor', 0)) AS acquired`,
       );
       if (!processorLockResult.rows[0]?.acquired) return;
+
+      const staleBefore = new Date(now.getTime() - STALE_ACTION_GRACE_MS);
+      const staleActions = await tx
+        .update(actionsTable)
+        .set({
+          status: "cancelled",
+          cancelledAt: now,
+          updatedAt: now,
+          failureReason: "Ação expirada antes de ser concluída.",
+        })
+        .where(
+          and(
+            inArray(actionsTable.status, ["queued", "running"]),
+            lte(actionsTable.completesAt, staleBefore),
+          ),
+        )
+        .returning({ roomId: actionsTable.roomId });
+
+      if (staleActions.length > 0) {
+        changed = true;
+        const roomIds = new Set(staleActions.map((action) => action.roomId));
+        for (const roomId of roomIds) {
+          await tx
+            .update(roomsTable)
+            .set({
+              stateVersion: sql`${roomsTable.stateVersion} + 1`,
+              updatedAt: now,
+            })
+            .where(eq(roomsTable.id, roomId));
+        }
+      }
 
       const activated = await tx
         .update(actionsTable)

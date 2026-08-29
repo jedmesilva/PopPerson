@@ -518,6 +518,12 @@ export default function PopPersonCanvas() {
   useEffect(() => { executeActionRef.current = executeAction; }, [executeAction]);
   const queueAction = useCallback((serverAction) => {
     if (!serverAction?.id) return;
+    if (serverAction.status !== "queued" && serverAction.status !== "running") {
+      latestServerActionsRef.current.delete(serverAction.id);
+      setQueue((prev) => prev.filter((action) => action.id !== serverAction.id));
+      setActiveActions((prev) => prev.filter((action) => action.id !== serverAction.id));
+      return;
+    }
     latestServerActionsRef.current.set(serverAction.id, serverAction);
     if (activeActionIdsRef.current.includes(serverAction.id)) {
       setActiveActions((prev) => prev.map((action) => action.id === serverAction.id
@@ -1024,13 +1030,10 @@ export default function PopPersonCanvas() {
         if (target) impactsRef.current.push({ x: target.x, y: target.y, r: target.r, color: f.direction === 1 ? "34, 197, 94" : "239, 68, 68", startTime: now, duration: 350 });
       });
       impactsRef.current = impactsRef.current.filter((i) => now - i.startTime < i.duration);
-      if (activeActionIdsRef.current.length > 0) {
-        const stillRunningIds = activeActionIdsRef.current.filter((id) => emittersRef.current.some((e) => e.id === id) || projectilesRef.current.some((p) => p.firingId === id));
-        if (stillRunningIds.length !== activeActionIdsRef.current.length) {
-          const alive = new Set(stillRunningIds);
-          setActiveActions((prev) => prev.filter((a) => alive.has(a.id)));
-        }
-      }
+      // The local projectile animation is only visual feedback. Keep each
+      // action in the HUD until the server removes it from the live state;
+      // otherwise the browser looks finished while the API is still recording
+      // hits and updating the cell.
       shakeActionIdsRef.current.forEach((id) => {
         if (!emittersRef.current.some((e) => e.id === id) && !projectilesRef.current.some((p) => p.firingId === id)) shakeActionIdsRef.current.delete(id);
       });
