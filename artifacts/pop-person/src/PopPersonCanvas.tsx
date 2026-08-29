@@ -43,6 +43,27 @@ function formatBRL(value) {
   return `R$ ${value.toFixed(2).replace(".", ",")}`;
 }
 
+function getActionTotalPrice(element, actionRule) {
+  if (!element || !actionRule) return null;
+
+  const itemPrice = Number(element.price);
+  const intensityCount = Number(actionRule.count);
+  const apiPrice = Number(actionRule.price);
+
+  if (!Number.isFinite(itemPrice) || !Number.isFinite(intensityCount)) return null;
+
+  // `price` is normally the server-calculated total. The fallback keeps the
+  // preview correct when an older API response still contains the item's unit
+  // price instead of the intensity total. Explicit price overrides remain
+  // authoritative because they differ from the unit-price x count calculation.
+  const calculatedTotal = itemPrice * intensityCount;
+  if (!Number.isFinite(apiPrice) || (apiPrice === itemPrice && calculatedTotal !== itemPrice)) {
+    return calculatedTotal;
+  }
+
+  return apiPrice;
+}
+
 function tryPackCircles(ordered, baseRadii, scale) {
   const placed = [];
   for (let index = 0; index < ordered.length; index += 1) {
@@ -272,7 +293,7 @@ export default function PopPersonCanvas() {
   const selectedActionRule = modalElement
     ? actionRuleByKey[`${modalElement.id}:${modalLevel}`]
     : null;
-  const selectedActionPrice = selectedActionRule?.price ?? null;
+  const selectedActionPrice = getActionTotalPrice(modalElement, selectedActionRule);
 
   const paisOptions = useMemo(() => {
     const options = new Map(
