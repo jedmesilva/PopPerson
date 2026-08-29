@@ -786,9 +786,11 @@ async function processDueActions(): Promise<void> {
         await tx
           .update(cellsTable)
           .set({
-            currentValue: sql`LEAST(
-              COALESCE(${cellsTable.maximumValue}, ${cellsTable.currentValue} + ${delta}),
-              GREATEST(${cellsTable.minimumValue}, ${cellsTable.currentValue} + ${delta})
+            // Cells have a floor so attacks cannot erase them, but no upper
+            // bound: repeated defense actions must keep increasing their value.
+            currentValue: sql`GREATEST(
+              ${cellsTable.minimumValue},
+              ${cellsTable.currentValue} + ${delta}
             )`,
             stateVersion: sql`${cellsTable.stateVersion} + 1`,
             updatedAt: now,

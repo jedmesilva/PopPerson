@@ -23,7 +23,6 @@ function quadBezierTangent(p0, p1, p2, t) {
 
 const MODE_LABEL = { atacar: "Ataque", defender: "Defesa" };
 const MAX_CONCURRENT_PROJECTILES = 24;
-const LAYOUT_PADDING = 2;
 const CIRCLE_GAP = 2.5;
 
 function getWebSocketUrl() {
@@ -85,7 +84,7 @@ function tryPackCircles(ordered, baseRadii, scale) {
   const placed = [];
   for (let index = 0; index < ordered.length; index += 1) {
     const r = baseRadii[index] * scale;
-    const candidates = [{ x: 50, y: 50 }];
+    const candidates = [{ x: 0, y: 0 }];
 
     // Candidate points tangent to already placed circles are much more reliable
     // than increasing one spiral radius until it happens to find a gap.
@@ -106,29 +105,22 @@ function tryPackCircles(ordered, baseRadii, scale) {
       const angle = attempt * 2.3999632297;
       const distance = Math.sqrt(attempt) * 2.4;
       candidates.push({
-        x: 50 + Math.cos(angle) * distance,
-        y: 50 + Math.sin(angle) * distance,
+        x: Math.cos(angle) * distance,
+        y: Math.sin(angle) * distance,
       });
     }
 
     let best = null;
     let bestScore = Number.POSITIVE_INFINITY;
     for (const candidate of candidates) {
-      const inside =
-        candidate.x - r >= LAYOUT_PADDING &&
-        candidate.x + r <= 100 - LAYOUT_PADDING &&
-        candidate.y - r >= LAYOUT_PADDING &&
-        candidate.y + r <= 100 - LAYOUT_PADDING;
-      const clear =
-        inside &&
-        placed.every(
-          (other) =>
-            Math.hypot(candidate.x - other.x, candidate.y - other.y) >=
-            r + other.r + CIRCLE_GAP,
-        );
+      const clear = placed.every(
+        (other) =>
+          Math.hypot(candidate.x - other.x, candidate.y - other.y) >=
+          r + other.r + CIRCLE_GAP,
+      );
       if (!clear) continue;
 
-      const score = Math.hypot(candidate.x - 50, candidate.y - 50);
+      const score = Math.hypot(candidate.x, candidate.y);
       if (score < bestScore) {
         best = candidate;
         bestScore = score;
@@ -149,34 +141,21 @@ function tryPackCircles(ordered, baseRadii, scale) {
   return placed;
 }
 
-// A small local circle pack keeps the original self-contained behavior without an API
-// or runtime dependency. Circles remain proportional and are normalized to the canvas world.
+// The layout uses an unbounded world. Radius is based on the cell's absolute
+// value, so a cell continues to grow instead of being normalized against the
+// sum of all values or clipped to a 100x100 board.
 function computeLeaves(data) {
   if (data.length === 0) return [];
-  const total = data.reduce((sum, item) => sum + item.value, 0);
   const ordered = [...data].sort((a, b) => b.value - a.value);
-  const baseRadii = ordered.map((item) => Math.max(7.2, Math.sqrt(item.value / total) * 47));
-
-  // A layout can become temporarily impossible after a value grows or a filter
-  // changes. Reduce all radii together until there is a valid, separated pack.
-  for (let scale = 1; scale >= 0.5; scale -= 0.025) {
-    const packed = tryPackCircles(ordered, baseRadii, scale);
-    if (packed) return packed;
-  }
-
-  // This is only a last-resort safety net for unusually large datasets. It still
-  // preserves the non-overlap invariant by using a conservative minimum radius.
-  return tryPackCircles(ordered, baseRadii, 0.5) || [];
+  const baseRadii = ordered.map((item) =>
+    Math.max(7.2, Math.sqrt(Math.max(0, item.value)) * 3.2),
+  );
+  return tryPackCircles(ordered, baseRadii, 1) || [];
 }
 
 function keepCirclesSeparated(circles) {
   for (let iteration = 0; iteration < 12; iteration += 1) {
     let moved = false;
-
-    circles.forEach((circle) => {
-      circle.x = Math.min(100 - LAYOUT_PADDING - circle.r, Math.max(LAYOUT_PADDING + circle.r, circle.x));
-      circle.y = Math.min(100 - LAYOUT_PADDING - circle.r, Math.max(LAYOUT_PADDING + circle.r, circle.y));
-    });
 
     for (let first = 0; first < circles.length; first += 1) {
       for (let second = first + 1; second < circles.length; second += 1) {
@@ -310,7 +289,6 @@ export default function PopPersonCanvas() {
   const selectedActionRule = modalElement
     ? actionRuleByKey[`${modalElement.id}:${modalLevel}`]
     : null;
-  const selectedActionPrice = getActionTotalPrice(modalElement, selectedActionRule);
 
   const paisOptions = useMemo(() => {
     const options = new Map(
@@ -629,17 +607,45 @@ export default function PopPersonCanvas() {
     const r = boardWrapRef.current.getBoundingClientRect();
     return { w: r.width, h: r.height };
   }
+  const getFitTransform = useCallback(() => {
+    const { w: cw, h: ch } = cssSize();
+    const nodes = leavesRef.current;
+    if (nodes.length === 0) {
+      const scale = Math.min((cw - 32) / 100, (ch - 32) / 100);
+      return { scale, x: (cw - 100 * scale) / 2, y: (ch - 100 * scale) / 2 };
+    }
+
+    const minX = Math.min(...nodes.map((node) => node.x - node.r));
+    const maxX = Math.max(...nodes.map((node) => node.x + node.r));
+    const minY = Math.min(...nodes.map((node) => node.y - node.r));
+    const maxY = Math.max(...nodes.map((node) => node.y + node.r));
+    const worldWidth = Math.max(1, maxX - minX);
+    const worldHeight = Math.max(1, maxY - minY);
+    const scale = Math.min((cw - 32) / worldWidth, (ch - 32) / worldHeight);
+    return {
+      scale,
+      x: (cw - worldWidth * scale) / 2 - minX * scale,
+      y: (ch - worldHeight * scale) / 2 - minY * scale,
+    };
+  }, []);
   const fitToView = useCallback(() => {
     if (!boardWrapRef.current) return;
-    const { w: cw, h: ch } = cssSize();
-    const scale = Math.min((cw - 32) / 100, (ch - 32) / 100);
-    const fit = { scale, x: (cw - 100 * scale) / 2, y: (ch - 100 * scale) / 2 };
+    const fit = getFitTransform();
     fitTransformRef.current = fit;
     transformRef.current = fit;
-  }, []);
+  }, [getFitTransform]);
   const recenterView = useCallback(() => {
-    recenterAnimRef.current = { from: { ...transformRef.current }, to: { ...fitTransformRef.current }, startTime: performance.now(), duration: 380 };
-  }, []);
+    const fit = getFitTransform();
+    fitTransformRef.current = fit;
+    recenterAnimRef.current = { from: { ...transformRef.current }, to: fit, startTime: performance.now(), duration: 380 };
+  }, [getFitTransform]);
+  const initialFitAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!initialFitAppliedRef.current && leaves.length > 0) {
+      initialFitAppliedRef.current = true;
+      fitToView();
+    }
+  }, [leaves.length, fitToView]);
   const clampScale = (s) => Math.min(Math.max(s, 0.6), 40);
   const seedMissingRects = useCallback(() => {
     const names = new Set();
