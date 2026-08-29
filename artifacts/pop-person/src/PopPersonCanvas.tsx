@@ -28,6 +28,8 @@ const CIRCLE_GAP = 2.5;
 // point and canvas precision problems at the extreme ends of the scale.
 const MIN_ZOOM = 0.0001;
 const MAX_ZOOM = 100000;
+const PROJECTILE_FONT_RATIO = 0.24;
+const MIN_PROJECTILE_FONT_SIZE = 1.5;
 
 function getWebSocketUrl() {
   const configuredUrl = import.meta.env.DEV
@@ -61,6 +63,11 @@ function normalizeLocationValue(value) {
 
 function formatBRL(value) {
   return `R$ ${value.toFixed(2).replace(".", ",")}`;
+}
+
+function getProjectileFontSize(radius) {
+  const safeRadius = Number.isFinite(radius) && radius > 0 ? radius : 16;
+  return Math.max(MIN_PROJECTILE_FONT_SIZE, safeRadius * PROJECTILE_FONT_RATIO);
 }
 
 function getActionTotalPrice(element, actionRule) {
@@ -735,7 +742,10 @@ export default function PopPersonCanvas() {
       const eased = easeOutQuad(progress);
       const x = quadBezier(p.startX, p.controlX, p.endX, eased);
       const y = quadBezier(p.startY, p.controlY, p.endY, eased);
-      const fontSize = 4.6;
+      const targetCircle = animatedCirclesRef.current.get(p.targetName);
+      const targetLeaf = leavesRef.current.find((leaf) => leaf.name === p.targetName);
+      const targetRadius = targetCircle?.r ?? targetLeaf?.r;
+      const fontSize = getProjectileFontSize(targetRadius);
       [0.09, 0.18, 0.27].forEach((offset, i) => {
         const tt = eased - offset;
         if (tt <= 0) return;
