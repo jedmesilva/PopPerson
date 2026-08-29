@@ -432,6 +432,7 @@ export default function PopPersonCanvas() {
   const activeActionIdsRef = useRef([]);
   const activeServerActionIdsRef = useRef(new Set());
   const seenServerActionIdsRef = useRef(new Set());
+  const lastDatasetValuesRef = useRef(new Map());
   const transformRef = useRef({ x: 0, y: 0, scale: 1 });
   const fitTransformRef = useRef({ x: 0, y: 0, scale: 1 });
   const recenterAnimRef = useRef(null);
@@ -531,7 +532,34 @@ export default function PopPersonCanvas() {
     });
   }, []);
   const reconcileServerState = useCallback((serverState) => {
-    if (serverState?.dataset) setDataset(serverState.dataset);
+    if (Array.isArray(serverState?.dataset)) {
+      const previousValues = lastDatasetValuesRef.current;
+      serverState.dataset.forEach((person) => {
+        const nextValue = Number(person.value);
+        const previousValue = previousValues.get(person.name);
+        if (
+          previousValue !== undefined &&
+          Number.isFinite(nextValue) &&
+          nextValue !== previousValue
+        ) {
+          const target = leavesRef.current.find((leaf) => leaf.name === person.name);
+          const animated = animatedCirclesRef.current.get(person.name);
+          const circle = target || animated;
+          if (circle) {
+            impactsRef.current.push({
+              x: circle.x,
+              y: circle.y,
+              r: Math.max(circle.r, animated?.r ?? 0),
+              color: nextValue > previousValue ? "34, 197, 94" : "239, 68, 68",
+              startTime: performance.now(),
+              duration: 520,
+            });
+          }
+        }
+        if (Number.isFinite(nextValue)) previousValues.set(person.name, nextValue);
+      });
+      setDataset(serverState.dataset);
+    }
     if (!Array.isArray(serverState?.actions)) return;
 
     serverState.actions.forEach((serverAction) => {
