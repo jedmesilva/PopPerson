@@ -291,6 +291,10 @@ export default function PopPersonCanvas() {
   const selectedActionRule = modalElement
     ? actionRuleByKey[`${modalElement.id}:${modalLevel}`]
     : null;
+  const selectedActionPrice = useMemo(
+    () => getActionTotalPrice(modalElement, selectedActionRule),
+    [modalElement, selectedActionRule],
+  );
 
   const paisOptions = useMemo(() => {
     const options = new Map(
