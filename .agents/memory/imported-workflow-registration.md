@@ -7,4 +7,4 @@ Artefatos importados podem conter um `.replit-artifact/artifact.toml` válido se
 
 **Why:** O arquivo de metadados do repositório não garante que o runtime atual tenha registrado ou iniciado o serviço.
 
-**How to apply:** Antes de reiniciar ou capturar um preview, consulte o inventário de workflows, confirme os nomes gerenciados e compare `localPort` e `services.env.PORT` com a porta efetiva do workflow. Preserve os comandos e as variáveis exigidas pelo projeto.
+**How to apply:** Antes de reiniciar ou capturar um preview, consulte o inventário de workflows, confirme os nomes gerenciados e compare `localPort` e `services.env.PORT` com a porta efetiva do workflow. Imports podem manter workflows legados com os mesmos processos; pare-os antes de iniciar os gerenciados para evitar disputa de portas. Preserve os comandos e as variáveis exigidas pelo projeto.
