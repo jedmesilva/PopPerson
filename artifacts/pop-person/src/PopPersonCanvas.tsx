@@ -1119,7 +1119,7 @@ export default function PopPersonCanvas() {
                 }
               : action));
             nextHitSpawnAtRef.current = now + Math.max(
-              70,
+              16,
               Number(nextAction.staggerMs) || 0,
             );
           }

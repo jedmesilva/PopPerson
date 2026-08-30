@@ -47,7 +47,7 @@ export type PopPersonHitEvent = {
   sequence: number;
   hitAt: number;
   occurredAt: number;
-  direction: "attacker" | "defender";
+  direction: PopPersonAction["mode"];
   delta: number;
 };
 type StateListener = (
