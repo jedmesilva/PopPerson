@@ -1,3 +1,4 @@
 - [Registro de workflows importados](imported-workflow-registration.md) — imports podem ter artifact.toml válido sem workflows registrados no runtime; confirme o inventário antes do preview.
 - [Efeitos em células móveis](realtime-canvas-effects.md) — projéteis e impactos devem seguir a posição atual da célula, nunca coordenadas capturadas apenas no disparo.
 - [Autoridade realtime versus exibição](realtime-authority-display.md) — snapshots atualizam a autoridade; hits confirmados controlam a progressão visual durante ações ativas.
+- [Sequenciamento de eventos de ação](action-event-sequencing.md) — o evento final precisa ocupar uma sequência após o último hit, sem reutilizar números fixos.
