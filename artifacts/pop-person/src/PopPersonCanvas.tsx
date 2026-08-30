@@ -740,17 +740,28 @@ export default function PopPersonCanvas() {
     if (serverStateHydratedRef.current) {
       setQueue((prev) => prev.filter((action) => incomingActionIds.has(action.id)));
       setActiveActions((prev) => {
-        const next = prev.filter((action) => incomingActionIds.has(action.id));
+        const next = prev.filter((action) => {
+          if (incomingActionIds.has(action.id)) return true;
+          if (deferredCompletedActionIdsRef.current.has(action.id)) return true;
+          return hitQueueRef.current.some((hit) => hit.actionId === action.id)
+            || projectilesRef.current.some((projectile) => projectile.firingId === action.id)
+            || impactsRef.current.some((impact) => impact.actionId === action.id);
+        });
         activeActionIdsRef.current = next.map((action) => action.id);
         return next;
       });
       emittersRef.current = emittersRef.current.filter((emitter) => incomingActionIds.has(emitter.id));
-      projectilesRef.current = projectilesRef.current.filter((projectile) => incomingActionIds.has(projectile.firingId));
+      projectilesRef.current = projectilesRef.current.filter((projectile) => (
+        incomingActionIds.has(projectile.firingId)
+        || deferredCompletedActionIdsRef.current.has(projectile.firingId)
+      ));
       shakeActionIdsRef.current.forEach((id) => {
         if (!incomingActionIds.has(id)) shakeActionIdsRef.current.delete(id);
       });
       for (const id of latestServerActionsRef.current.keys()) {
-        if (!incomingActionIds.has(id)) latestServerActionsRef.current.delete(id);
+        if (!incomingActionIds.has(id) && !deferredCompletedActionIdsRef.current.has(id)) {
+          latestServerActionsRef.current.delete(id);
+        }
       }
     }
     serverStateHydratedRef.current = true;
