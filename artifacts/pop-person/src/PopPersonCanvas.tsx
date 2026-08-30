@@ -33,6 +33,7 @@ function deterministicUnit(seed) {
 const MODE_LABEL = { atacar: "Ataque", defender: "Defesa" };
 const MAX_CONCURRENT_PROJECTILES = 24;
 const IMPACT_DURATION_MS = 350;
+const PROJECTILE_MAX_LIFETIME_MS = 3000;
 const CIRCLE_GAP = 2.5;
 // Keep zoom effectively unbounded for users while avoiding browser floating-
 // point and canvas precision problems at the extreme ends of the scale.
@@ -1100,13 +1101,18 @@ export default function PopPersonCanvas() {
     const now = performance.now();
     impactsRef.current.forEach((imp) => {
       const p = Math.min(1, (now - imp.startTime) / imp.duration);
-      const impactRadius = imp.r * (0.9 + p * 0.4);
+      const impactTarget = animatedCirclesRef.current.get(imp.targetName)
+        ?? leavesRef.current.find((leaf) => leaf.name === imp.targetName);
+      const impactX = impactTarget?.x ?? imp.x;
+      const impactY = impactTarget?.y ?? imp.y;
+      const impactBaseRadius = impactTarget?.r ?? imp.r;
+      const impactRadius = impactBaseRadius * (0.9 + p * 0.4);
       const impactGradient = ctx.createRadialGradient(
-        imp.x,
-        imp.y,
+        impactX,
+        impactY,
         impactRadius * 0.08,
-        imp.x,
-        imp.y,
+        impactX,
+        impactY,
         impactRadius,
       );
       impactGradient.addColorStop(0, "rgba(0, 0, 0, 0)");
@@ -1117,11 +1123,11 @@ export default function PopPersonCanvas() {
       ctx.save();
       ctx.globalAlpha = 1 - p;
       ctx.beginPath();
-      ctx.arc(imp.x, imp.y, impactRadius, 0, Math.PI * 2);
+      ctx.arc(impactX, impactY, impactRadius, 0, Math.PI * 2);
       ctx.fillStyle = impactGradient;
       ctx.fill();
       ctx.beginPath();
-      ctx.arc(imp.x, imp.y, imp.r * (0.72 + p * 0.48), 0, Math.PI * 2);
+      ctx.arc(impactX, impactY, impactBaseRadius * (0.72 + p * 0.48), 0, Math.PI * 2);
       ctx.lineWidth = 2.5 / t.scale;
       ctx.strokeStyle = `rgba(${imp.color}, 0.82)`;
       ctx.stroke();
@@ -1130,10 +1136,19 @@ export default function PopPersonCanvas() {
     projectilesRef.current.forEach((p) => {
       const progress = Math.min(Math.max((now - p.startTime) / p.duration, 0), 1);
       const eased = easeOutQuad(progress);
-      const x = quadBezier(p.startX, p.controlX, p.endX, eased);
-      const y = quadBezier(p.startY, p.controlY, p.endY, eased);
       const targetCircle = animatedCirclesRef.current.get(p.targetName);
       const targetLeaf = leavesRef.current.find((leaf) => leaf.name === p.targetName);
+      // The layout can move a cell while a projectile is in flight. Keep the
+      // endpoint attached to the animated circle instead of the coordinates
+      // captured when the projectile was spawned.
+      const endX = targetCircle?.x ?? targetLeaf?.x ?? p.endX;
+      const endY = targetCircle?.y ?? targetLeaf?.y ?? p.endY;
+      const originalMidX = (p.startX + p.endX) / 2;
+      const originalMidY = (p.startY + p.endY) / 2;
+      const controlX = (p.startX + endX) / 2 + (p.controlX - originalMidX);
+      const controlY = (p.startY + endY) / 2 + (p.controlY - originalMidY);
+      const x = quadBezier(p.startX, controlX, endX, eased);
+      const y = quadBezier(p.startY, controlY, endY, eased);
       const targetRadius = targetCircle?.r ?? targetLeaf?.r;
       const projectileFontSizeScreen = getStableCellTextSize(targetRadius * t.scale);
       const fontSize = projectileFontSizeScreen / t.scale;
@@ -1145,12 +1160,12 @@ export default function PopPersonCanvas() {
         ctx.font = `${fontSize * (1 - i * 0.14)}px sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText(p.emoji, quadBezier(p.startX, p.controlX, p.endX, tt), quadBezier(p.startY, p.controlY, p.endY, tt));
+        ctx.fillText(p.emoji, quadBezier(p.startX, controlX, endX, tt), quadBezier(p.startY, controlY, endY, tt));
         ctx.restore();
       });
       ctx.save();
       ctx.translate(x, y);
-      ctx.rotate(Math.atan2(quadBezierTangent(p.startY, p.controlY, p.endY, eased), quadBezierTangent(p.startX, p.controlX, p.endX, eased)));
+      ctx.rotate(Math.atan2(quadBezierTangent(p.startY, controlY, endY, eased), quadBezierTangent(p.startX, controlX, endX, eased)));
       ctx.font = `${fontSize}px sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -1261,6 +1276,7 @@ export default function PopPersonCanvas() {
           if (target) {
             impactsRef.current.push({
               actionId: nextHit.actionId,
+              targetName: nextHit.targetName,
               x: target.x,
               y: target.y,
               r: target.r,
@@ -1292,7 +1308,11 @@ export default function PopPersonCanvas() {
         }
       }
       projectilesRef.current = projectilesRef.current.filter((p) => {
-        return !visualizedHitKeysRef.current.has(`${p.firingId}:${p.hitIndex}`);
+        const hitKey = `${p.firingId}:${p.hitIndex}`;
+        if (visualizedHitKeysRef.current.has(hitKey)) return false;
+        // Never leave a projectile parked at the target forever if a
+        // confirmation event is lost during a reconnect or server failure.
+        return now - p.startTime < p.duration + PROJECTILE_MAX_LIFETIME_MS;
       });
       impactsRef.current = impactsRef.current.filter((i) => now - i.startTime < i.duration);
       deferredCompletedActionIdsRef.current.forEach((actionId) => {
