@@ -434,6 +434,7 @@ export default function PopPersonCanvas() {
   const shakeActionIdsRef = useRef(new Set());
   const activeActionIdsRef = useRef([]);
   const latestServerActionsRef = useRef(new Map());
+  const locallyCreatedActionIdsRef = useRef(new Set());
   const latestServerStateVersionRef = useRef(-1);
   const serverStateHydratedRef = useRef(false);
   const lastDatasetValuesRef = useRef(new Map());
@@ -585,7 +586,11 @@ export default function PopPersonCanvas() {
           lastHitAt: lastHitAt > 0 ? lastHitAt : null,
         };
       });
+    incomingActions.forEach((serverAction) => {
+      locallyCreatedActionIdsRef.current.delete(serverAction.id);
+    });
     const incomingActionIds = new Set(incomingActions.map((action) => action.id));
+    locallyCreatedActionIdsRef.current.forEach((id) => incomingActionIds.add(id));
     const progressTargets = new Set();
 
     if (Array.isArray(serverState?.dataset)) {
@@ -773,15 +778,9 @@ export default function PopPersonCanvas() {
     let hudRaf;
     function hudTick() {
       const now = performance.now();
-      setQueue((prev) => {
-        const stillPending = prev.filter((a) => a.localExecuteAt > now);
-        if (stillPending.length !== prev.length) {
-          prev.filter((a) => a.localExecuteAt <= now).forEach((a) => {
-            executeActionRef.current({ ...a, status: "running" });
-          });
-        }
-        return stillPending;
-      });
+      // The local clock only updates the queue countdown. The server must
+      // promote the action to `running` before any projectile is spawned.
+      // Otherwise the canvas could show hits before they exist in the ledger.
       forceTick((t) => t + 1);
       hudRaf = requestAnimationFrame(hudTick);
     }
@@ -825,6 +824,7 @@ export default function PopPersonCanvas() {
           // Register the server response immediately. The following polling
           // or WebSocket snapshot must reconcile this same action, not enqueue
           // a second local copy.
+          locallyCreatedActionIdsRef.current.add(action.id);
           latestServerActionsRef.current.set(action.id, action);
           queueAction(action);
           closeModal();
