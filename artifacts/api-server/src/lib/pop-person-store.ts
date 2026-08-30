@@ -1036,6 +1036,7 @@ async function processDueActionsLegacy(): Promise<void> {
   // Kept only as a migration marker for source-map compatibility. The
   // resolved-event worker above is the sole action processor.
   return;
+  /*
   if (processing) return;
   processing = true;
   let hitsWritten = 0;
@@ -1341,4 +1342,5 @@ async function processDueActionsLegacy(): Promise<void> {
   } finally {
     processing = false;
   }
+  */
 }

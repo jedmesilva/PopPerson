@@ -603,8 +603,6 @@ export default function PopPersonCanvas() {
       const oldestEventId = processedRealtimeEventIdsRef.current.values().next().value;
       processedRealtimeEventIdsRef.current.delete(oldestEventId);
     }
-    if (activeActionIdsRef.current.includes(actionId)) return;
-
     const serverNow = serverClockRef.current.serverTime
       + (performance.now() - serverClockRef.current.clientPerfAt);
     const targetName = resolvedEvent?.targetName || serverAction.targetName;
@@ -622,6 +620,33 @@ export default function PopPersonCanvas() {
       : Number.isFinite(previousValue) && Number.isFinite(eventDelta)
         ? previousValue + eventDelta
         : Number.NaN;
+
+    if (activeActionIdsRef.current.includes(actionId)) {
+      const existingAction = animationActionsRef.current.get(actionId);
+      if (existingAction) {
+        animationActionsRef.current.set(actionId, {
+          ...existingAction,
+          ...serverAction,
+          status: "running",
+          resolvedPreviousValue: Number.isFinite(previousValue) ? previousValue : null,
+          resolvedFinalValue: Number.isFinite(finalValue) ? finalValue : null,
+          resolvedDelta: Number.isFinite(eventDelta) ? eventDelta : null,
+          resolvedStateVersion: Number(resolvedEvent?.stateVersion),
+        });
+      }
+      if (targetName && Number.isFinite(finalValue)) {
+        serverDatasetRef.current = serverDatasetRef.current.map((person) => (
+          person.name === targetName ? { ...person, value: finalValue } : person
+        ));
+      }
+      realtimeDebug("action:authoritative-update", {
+        eventId,
+        actionId,
+        targetName,
+        finalValue: Number.isFinite(finalValue) ? finalValue : null,
+      });
+      return;
+    }
 
     // Keep the server's resolved value separate from the value rendered by the
     // canvas. The visual dataset advances only when each projectile lands.
@@ -910,16 +935,8 @@ export default function PopPersonCanvas() {
     }
     if (Array.isArray(serverState?.dataset)) {
       serverDatasetRef.current = serverState.dataset;
-      setDataset(serverState.dataset);
     }
     serverStateHydratedRef.current = true;
-    realtimeDebug("snapshot:applied", {
-      stateVersion: incomingStateVersion,
-      actionCount: 0,
-      resetVisuals,
-      activeProjectiles: projectilesRef.current.length,
-    });
-    return;
 
     const incomingActions = (Array.isArray(serverState?.actions) ? serverState.actions : [])
       .map((serverAction) => {
@@ -1234,10 +1251,32 @@ export default function PopPersonCanvas() {
           submittingActionRef.current = false;
           idempotencyKeyRef.current = null;
           idempotencyPayloadRef.current = "";
-           // The POST only acknowledges persistence. The animation starts
-           // exclusively from the single action:resolved realtime event.
-           // If this browser misses that event, the next snapshot provides the
-           // authoritative final cell value without replaying old effects.
+           // A successful POST is already a durable action. Start the visual
+           // fallback immediately so a lost/reconnecting WebSocket cannot make
+           // the action appear to vanish. A later resolved event reconciles the
+           // predicted final value with the server's authoritative value.
+           const previousValue = Number(
+             leavesRef.current.find((person) => person.name === action.targetName)?.value,
+           );
+           const direction = action.mode === "defender" ? 1 : -1;
+           const count = Math.max(1, Number(action.count) || 1);
+           const growthPerHit = Number(action.growthPerHit) || 0;
+           startResolvedActionRef.current(action, {
+             eventId: `local:${action.id}`,
+             actionId: action.id,
+             hitCount: count,
+             direction: action.mode,
+             delta: growthPerHit * direction * count,
+             targetName: action.targetName,
+             previousValue: Number.isFinite(previousValue) ? previousValue : 0,
+             finalValue: Number.isFinite(previousValue)
+               ? previousValue + growthPerHit * direction * count
+               : Number.NaN,
+             durationMs: Number(action.duration) || 0,
+             intervalMs: Number(action.staggerMs) || 0,
+             stateVersion: latestServerStateVersionRef.current,
+             resolvedAt: Date.now(),
+           });
           closeModal();
           setSelectedCell(null);
         },
@@ -1248,7 +1287,7 @@ export default function PopPersonCanvas() {
         },
       },
     );
-  }, [pendingMode, modalElement, modalLevel, selectedCell, queueAction, closeModal, createActionMutation]);
+  }, [pendingMode, modalElement, modalLevel, selectedCell, closeModal, createActionMutation]);
   const selectedCellData = useMemo(() => leaves.find((l) => l.name === selectedCell) || null, [leaves, selectedCell]);
 
   function cssSize() {
