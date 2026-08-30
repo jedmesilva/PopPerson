@@ -1894,7 +1894,6 @@ export default function PopPersonCanvas() {
         <div style={{ flexShrink: 0, display: "flex", alignItems: "center", padding: "6px 12px", borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.55)", backdropFilter: "blur(6px)" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: "1px" }}>
             <span data-testid="text-brand" style={{ color: "#f5f5f5", fontWeight: 800, fontSize: "15px", letterSpacing: "-0.01em" }}>InstaPop</span>
-            <span style={{ color: "#a3a3a3", fontSize: "9px", fontWeight: 600, letterSpacing: "0.01em", whiteSpace: "nowrap" }}>Popularidade em jogo</span>
           </div>
         </div>
         <div className="action-pill-container" style={{ flex: "1 1 auto", minWidth: 0, display: "flex", justifyContent: "center", containerType: "inline-size" }}>
