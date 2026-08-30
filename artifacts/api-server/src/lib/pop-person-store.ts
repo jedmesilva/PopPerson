@@ -50,6 +50,7 @@ export type PopPersonHitEvent = {
   occurredAt: number;
   direction: PopPersonAction["mode"];
   delta: number;
+  targetName: string;
   value: number;
   stateVersion: number;
 };
@@ -912,8 +913,26 @@ async function processDueActions(): Promise<void> {
       }
 
       const runningActions = await tx
-        .select()
+        .select({
+          id: actionsTable.id,
+          roomId: actionsTable.roomId,
+          cellId: actionsTable.cellId,
+          itemId: actionsTable.itemId,
+          actionLevelId: actionsTable.actionLevelId,
+          mode: actionsTable.mode,
+          status: actionsTable.status,
+          startDelayMs: actionsTable.startDelayMs,
+          scheduledFor: actionsTable.scheduledFor,
+          completesAt: actionsTable.completesAt,
+          activatedAt: actionsTable.activatedAt,
+          completedAt: actionsTable.completedAt,
+          effectiveImpact: actionsTable.effectiveImpact,
+          ruleSnapshot: actionsTable.ruleSnapshot,
+          targetName: peopleTable.name,
+        })
         .from(actionsTable)
+        .innerJoin(cellsTable, eq(actionsTable.cellId, cellsTable.id))
+        .innerJoin(peopleTable, eq(cellsTable.personId, peopleTable.id))
         .where(
           eq(actionsTable.status, "running"),
         )
@@ -1030,6 +1049,7 @@ async function processDueActions(): Promise<void> {
             occurredAt: now.getTime(),
             direction: action.mode,
             delta,
+            targetName: action.targetName,
             value: toNumber(updatedCell?.currentValue),
             stateVersion: toNumber(updatedRoom?.stateVersion),
           };
