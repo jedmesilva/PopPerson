@@ -433,6 +433,10 @@ export default function PopPersonCanvas() {
   const queuedHitKeysRef = useRef(new Set());
   const visualHitCountsRef = useRef(new Map());
   const nextHitSpawnAtRef = useRef(0);
+  const serverClockRef = useRef({
+    serverTime: Date.now(),
+    clientPerfAt: performance.now(),
+  });
   const impactsRef = useRef([]);
   const personImagesRef = useRef(new Map());
   const shakeActionIdsRef = useRef(new Set());
@@ -450,6 +454,13 @@ export default function PopPersonCanvas() {
   useEffect(() => { leavesRef.current = leaves; }, [leaves]);
   useEffect(() => { selectedCellRef.current = selectedCell; }, [selectedCell]);
   useEffect(() => { activeActionIdsRef.current = activeActions.map((a) => a.id); }, [activeActions]);
+  const syncServerClock = useCallback((serverTime, clientPerfAt = performance.now()) => {
+    if (!Number.isFinite(Number(serverTime))) return;
+    serverClockRef.current = {
+      serverTime: Number(serverTime),
+      clientPerfAt,
+    };
+  }, []);
   useEffect(() => {
     const currentNames = new Set(dataset.map((person) => person.name));
     for (const name of personImagesRef.current.keys()) {
@@ -479,6 +490,16 @@ export default function PopPersonCanvas() {
     const actionElement = serverAction.element;
     const animationStartedAt = performance.now();
     const totalCount = Math.max(1, Number(serverAction.count) || 1);
+    const serverNow = serverClockRef.current.serverTime
+      + (animationStartedAt - serverClockRef.current.clientPerfAt);
+    const startAtServer = Number(serverAction.executeAt) || serverNow;
+    const staggerMs = Math.max(0, Number(serverAction.staggerMs) || 0);
+    const elapsedMs = Math.max(0, serverNow - startAtServer);
+    const nextIndex = elapsedMs <= 0
+      ? 0
+      : staggerMs > 0
+        ? Math.min(totalCount, Math.ceil(elapsedMs / staggerMs))
+        : totalCount;
     // A running action is now only a HUD/animation identity. Individual
     // projectiles are created from WebSocket hit events, never from a local
     // timer based on the aggregate hitCount snapshot.
@@ -491,6 +512,20 @@ export default function PopPersonCanvas() {
         Math.min(totalCount, Math.max(0, Number(serverAction.hitCount) || 0)),
       );
     }
+    emittersRef.current.push({
+      id: actionId,
+      targetName: serverAction.targetName,
+      nextIndex,
+      count: totalCount,
+      startAtServer,
+      staggerMs,
+      duration: Math.max(180, Number(serverAction.duration) || 0),
+      growthPerHit: serverAction.growthPerHit,
+      direction,
+      emoji: actionElement.emoji,
+      level: serverAction.level,
+      remaining: totalCount - nextIndex,
+    });
     setActiveActions((prev) => [
       ...prev,
       {
@@ -737,6 +772,7 @@ export default function PopPersonCanvas() {
 
     let socket;
     let retryTimer;
+    let clockTimer;
     let stopped = false;
 
     function connect() {
@@ -745,11 +781,33 @@ export default function PopPersonCanvas() {
 
       nextSocket.onopen = () => {
         setIsRealtimeConnected(true);
+        const clientTime = performance.now();
+        nextSocket.send(JSON.stringify({ type: "clock:ping", clientTime }));
+        clockTimer = window.setInterval(() => {
+          if (nextSocket.readyState !== WebSocket.OPEN) return;
+          const pingTime = performance.now();
+          nextSocket.send(JSON.stringify({ type: "clock:ping", clientTime: pingTime }));
+        }, 5000);
       };
 
       nextSocket.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
+          if (message?.type === "clock:pong") {
+            const receivedAt = performance.now();
+            const sentAt = Number(message.clientTime);
+            const roundTripMs = Number.isFinite(sentAt)
+              ? Math.max(0, receivedAt - sentAt)
+              : 0;
+            syncServerClock(
+              Number(message.serverTime) + roundTripMs / 2,
+              receivedAt,
+            );
+            return;
+          }
+          if (Number.isFinite(Number(message?.serverTime))) {
+            syncServerClock(message.serverTime);
+          }
           if (message?.type === "hit" && message.event) {
             enqueueHitEvent(message.event);
             return;
@@ -764,6 +822,7 @@ export default function PopPersonCanvas() {
 
       nextSocket.onclose = () => {
         setIsRealtimeConnected(false);
+        window.clearInterval(clockTimer);
         if (!stopped) retryTimer = window.setTimeout(connect, 2000);
       };
       nextSocket.onerror = () => nextSocket.close();
@@ -773,10 +832,11 @@ export default function PopPersonCanvas() {
     return () => {
       stopped = true;
       window.clearTimeout(retryTimer);
+      window.clearInterval(clockTimer);
       setIsRealtimeConnected(false);
       socket?.close();
     };
-  }, [config, enqueueHitEvent, reconcileServerState]);
+  }, [config, enqueueHitEvent, reconcileServerState, syncServerClock]);
   const getRemainingUnits = useCallback((item) => {
     const emitter = emittersRef.current.find((e) => e.id === item.id);
     return (emitter ? emitter.remaining : 0) + projectilesRef.current.filter((p) => p.firingId === item.id).length;
@@ -1058,77 +1118,79 @@ export default function PopPersonCanvas() {
         showRecenterRef.current = deviated;
         setShowRecenter(deviated);
       }
-      // WebSocket hit events are the only source for new projectiles. The
-      // queue deliberately consumes one event at a time, so a burst of
-      // messages from one committed database transaction still becomes a
-      // readable sequence instead of a single visual volley.
-      if (now >= nextHitSpawnAtRef.current && projectilesRef.current.length < MAX_CONCURRENT_PROJECTILES) {
-        let nextHit = null;
-        let nextAction = null;
-        while (hitQueueRef.current.length > 0) {
-          const candidate = hitQueueRef.current.shift();
-          queuedHitKeysRef.current.delete(`${candidate.actionId}:${candidate.hitIndex}`);
-          const action = animationActionsRef.current.get(candidate.actionId);
-          if (!action) {
-            hitQueueRef.current.unshift(candidate);
-            queuedHitKeysRef.current.add(`${candidate.actionId}:${candidate.hitIndex}`);
-            break;
-          }
-          const displayedCount = visualHitCountsRef.current.get(candidate.actionId) || 0;
-          if (candidate.hitIndex <= displayedCount) continue;
-          nextHit = candidate;
-          nextAction = action;
-          break;
-        }
-
-        if (nextHit && nextAction) {
+      const serverNow = serverClockRef.current.serverTime
+        + (now - serverClockRef.current.clientPerfAt);
+      let spawnedThisFrame = 0;
+      emittersRef.current = emittersRef.current.filter((emitter) => {
+        while (
+          emitter.nextIndex < emitter.count
+          && serverNow >= emitter.startAtServer + emitter.nextIndex * emitter.staggerMs
+          && projectilesRef.current.length < MAX_CONCURRENT_PROJECTILES
+          && spawnedThisFrame < 4
+        ) {
           const currentLeaves = leavesRef.current;
-          const target = currentLeaves.find((l) => l.name === nextAction.targetName)
+          const target = currentLeaves.find((l) => l.name === emitter.targetName)
             || currentLeaves[Math.floor(Math.random() * currentLeaves.length)];
-          if (target) {
-            const direction = nextAction.mode === "defender" ? 1 : -1;
-            const spreadX = Math.min(96, Math.max(4, target.x + (Math.random() - 0.5) * 46));
-            const spreadY = -4 - Math.random() * 10;
-            const dx = target.x - spreadX;
-            const dy = target.y - spreadY;
-            const dist = Math.hypot(dx, dy) || 1;
-            const perpX = -dy / dist;
-            const perpY = dx / dist;
-            const arcMag = (0.18 + Math.random() * 0.22) * dist * (Math.random() < 0.5 ? -1 : 1);
-            projectilesRef.current.push({
-              id: Math.random(),
-              firingId: nextAction.id,
-              targetName: target.name,
-              startX: spreadX,
-              startY: spreadY,
-              endX: target.x,
-              endY: target.y,
-              controlX: (spreadX + target.x) / 2 + perpX * arcMag,
-              controlY: (spreadY + target.y) / 2 + perpY * arcMag,
-              startTime: now,
-              duration: Math.max(180, Number(nextAction.duration) || 0),
-              growthPerHit: nextAction.growthPerHit,
-              direction,
-              emoji: nextAction.element.emoji,
-              level: nextAction.level,
-            });
+          if (!target) break;
+          const plannedStartServer = emitter.startAtServer
+            + emitter.nextIndex * emitter.staggerMs;
+          const ageMs = Math.max(0, serverNow - plannedStartServer);
+          const spreadX = Math.min(96, Math.max(4, target.x + (Math.random() - 0.5) * 46));
+          const spreadY = -4 - Math.random() * 10;
+          const dx = target.x - spreadX;
+          const dy = target.y - spreadY;
+          const dist = Math.hypot(dx, dy) || 1;
+          const perpX = -dy / dist;
+          const perpY = dx / dist;
+          const arcMag = (0.18 + Math.random() * 0.22) * dist * (Math.random() < 0.5 ? -1 : 1);
+          projectilesRef.current.push({
+            id: Math.random(),
+            firingId: emitter.id,
+            targetName: target.name,
+            startX: spreadX,
+            startY: spreadY,
+            endX: target.x,
+            endY: target.y,
+            controlX: (spreadX + target.x) / 2 + perpX * arcMag,
+            controlY: (spreadY + target.y) / 2 + perpY * arcMag,
+            startTime: now - ageMs,
+            duration: emitter.duration,
+            growthPerHit: emitter.growthPerHit,
+            direction: emitter.direction,
+            emoji: emitter.emoji,
+            level: emitter.level,
+          });
+          emitter.nextIndex += 1;
+          emitter.remaining = emitter.count - emitter.nextIndex;
+          spawnedThisFrame += 1;
+        }
+        return emitter.nextIndex < emitter.count;
+      });
+
+      // Hit events confirm the server-side impact and advance the HUD one
+      // event at a time. The projectile itself follows the server timeline
+      // above, so network delivery jitter cannot move the animation clock.
+      if (now >= nextHitSpawnAtRef.current) {
+        const nextHit = hitQueueRef.current.shift();
+        if (nextHit) {
+          queuedHitKeysRef.current.delete(`${nextHit.actionId}:${nextHit.hitIndex}`);
+          const nextAction = animationActionsRef.current.get(nextHit.actionId);
+          if (nextAction) {
+            const displayedCount = visualHitCountsRef.current.get(nextHit.actionId) || 0;
             const visualCount = Math.min(
               Math.max(1, Number(nextAction.count) || 1),
-              (visualHitCountsRef.current.get(nextAction.id) || 0) + 1,
+              Math.max(displayedCount, Number(nextHit.hitIndex) || 0),
             );
-            visualHitCountsRef.current.set(nextAction.id, visualCount);
-            setActiveActions((prev) => prev.map((action) => action.id === nextAction.id
+            visualHitCountsRef.current.set(nextHit.actionId, visualCount);
+            setActiveActions((prev) => prev.map((action) => action.id === nextHit.actionId
               ? {
                   ...action,
                   hitCount: visualCount,
                   lastHitAt: nextHit.occurredAt || action.lastHitAt,
                 }
               : action));
-            nextHitSpawnAtRef.current = now + Math.max(
-              16,
-              Number(nextAction.staggerMs) || 0,
-            );
           }
+          nextHitSpawnAtRef.current = now + 16;
         }
       }
       const finished = [];
