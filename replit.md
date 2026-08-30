@@ -1,4 +1,4 @@
-# PopPerson
+# InstaPop
 
 Aplicativo interativo para visualizar pessoas públicas e executar ações de ataque ou defesa com níveis de intensidade.
 
