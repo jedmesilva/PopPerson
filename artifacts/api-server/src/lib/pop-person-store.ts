@@ -42,6 +42,10 @@ const STALE_ACTION_GRACE_MS = 60_000;
 // projectiles, and processing all due hits at once holds cell/room locks long
 // enough to block new action requests and other worker instances.
 const MAX_HITS_PER_TRANSACTION = 50;
+// Multiple API processes may be connected to the same database. Serialize the
+// action worker at the database level so two workers cannot lock the same
+// action/cell/room rows in different orders and deadlock each other.
+const POP_PERSON_WORKER_LOCK_KEY = 29184731;
 export type PopPersonHitEvent = {
   actionId: string;
   hitIndex: number;
@@ -832,6 +836,15 @@ async function processDueActions(): Promise<void> {
       const now = new Date();
       try {
         await db.transaction(async (tx) => {
+      const lockResult = await tx.execute(
+        sql`SELECT pg_try_advisory_xact_lock(${POP_PERSON_WORKER_LOCK_KEY}) AS locked`,
+      );
+      const lockRow = (
+        lockResult as unknown as { rows?: Array<{ locked?: boolean | string }> }
+      ).rows?.[0];
+      const lockAcquired = lockRow?.locked === true || lockRow?.locked === "t";
+      if (!lockAcquired) return;
+
       const staleBefore = new Date(now.getTime() - STALE_ACTION_GRACE_MS);
       const staleActions = await tx
         .update(actionsTable)
