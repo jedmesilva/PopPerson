@@ -202,6 +202,11 @@ export interface PopPersonAction {
 }
 
 export interface PopPersonState {
+  /**
+     * Monotonic room version used to reject stale realtime snapshots.
+     * @minimum 0
+     */
+  stateVersion: number;
   dataset: PopPerson[];
   actions: PopPersonAction[];
 }

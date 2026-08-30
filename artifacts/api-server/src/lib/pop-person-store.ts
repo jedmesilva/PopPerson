@@ -415,11 +415,17 @@ async function getActions(
 }
 
 async function currentState(roomId: string): Promise<PopPersonState> {
-  const [dataset, actions] = await Promise.all([
+  const [[room], dataset, actions] = await Promise.all([
+    db
+      .select({ stateVersion: roomsTable.stateVersion })
+      .from(roomsTable)
+      .where(eq(roomsTable.id, roomId))
+      .limit(1),
     getDataset(roomId),
     getActions(roomId),
   ]);
-  return { dataset, actions };
+  if (!room) throw new Error("PopPerson room is unavailable.");
+  return { stateVersion: room.stateVersion, dataset, actions };
 }
 
 async function getPopPersonConfig(): Promise<PopPersonConfig> {
@@ -858,6 +864,13 @@ async function processDueActions(): Promise<void> {
           deltaValue: "0",
           payload: { startedAt: now.toISOString() },
         });
+        await tx
+          .update(roomsTable)
+          .set({
+            stateVersion: sql`${roomsTable.stateVersion} + 1`,
+            updatedAt: now,
+          })
+          .where(eq(roomsTable.id, action.roomId));
       }
 
       const runningActions = await tx
@@ -1010,6 +1023,13 @@ async function processDueActions(): Promise<void> {
             direction: claimed.mode,
           },
         });
+        await tx
+          .update(roomsTable)
+          .set({
+            stateVersion: sql`${roomsTable.stateVersion} + 1`,
+            updatedAt: now,
+          })
+          .where(eq(roomsTable.id, claimed.roomId));
         changed = true;
 
         if (hitsWritten >= MAX_HITS_PER_TRANSACTION) break;

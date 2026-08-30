@@ -328,8 +328,12 @@ components:
           $ref: "#/components/schemas/PopPersonElement"
     PopPersonState:
       type: object
-      required: [dataset, actions]
+      required: [stateVersion, dataset, actions]
       properties:
+        stateVersion:
+          type: number
+          minimum: 0
+          description: Monotonic room version used to reject stale realtime snapshots.
         dataset:
           type: array
           items:

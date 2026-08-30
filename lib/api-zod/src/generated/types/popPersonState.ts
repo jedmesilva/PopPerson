@@ -9,6 +9,11 @@ import type { PopPerson } from './popPerson';
 import type { PopPersonAction } from './popPersonAction';
 
 export interface PopPersonState {
+  /**
+     * Monotonic room version used to reject stale realtime snapshots.
+     * @minimum 0
+     */
+  stateVersion: number;
   dataset: PopPerson[];
   actions: PopPersonAction[];
 }

@@ -51,6 +51,8 @@ export const getPopPersonResponseConfigActionRulesItemDurationMin = 0;
 
 export const getPopPersonResponseConfigActionRulesItemPriceMin = 0;
 
+export const getPopPersonResponseStateStateVersionMin = 0;
+
 export const getPopPersonResponseStateActionsItemStartDelayMsMin = 0;
 
 export const getPopPersonResponseStateActionsItemExecuteAtMin = 0;
@@ -123,6 +125,7 @@ export const GetPopPersonResponse = zod.object({
 }))
 }),
   "state": zod.object({
+  "stateVersion": zod.number().min(getPopPersonResponseStateStateVersionMin).describe('Monotonic room version used to reject stale realtime snapshots.'),
   "dataset": zod.array(zod.object({
   "name": zod.string(),
   "category": zod.object({
@@ -186,6 +189,8 @@ export const GetPopPersonResponse = zod.object({
 /**
  * @summary Get the current PopPerson state
  */
+export const getPopPersonStateResponseStateVersionMin = 0;
+
 export const getPopPersonStateResponseActionsItemStartDelayMsMin = 0;
 
 export const getPopPersonStateResponseActionsItemExecuteAtMin = 0;
@@ -208,6 +213,7 @@ export const getPopPersonStateResponseActionsItemPriceMin = 0;
 
 
 export const GetPopPersonStateResponse = zod.object({
+  "stateVersion": zod.number().min(getPopPersonStateResponseStateVersionMin).describe('Monotonic room version used to reject stale realtime snapshots.'),
   "dataset": zod.array(zod.object({
   "name": zod.string(),
   "category": zod.object({

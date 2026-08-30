@@ -268,10 +268,13 @@ export default function PopPersonCanvas() {
       retry: false,
     },
   });
+  const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
   const stateQuery = useGetPopPersonState({
     query: {
       enabled: Boolean(bootstrapQuery.data),
-      refetchInterval: 1000,
+      // WebSocket is the primary transport. Poll only while it is unavailable
+      // so a stale REST response cannot race a realtime snapshot.
+      refetchInterval: isRealtimeConnected ? false : 1000,
     },
   });
   const createActionMutation = useCreatePopPersonAction();
@@ -431,6 +434,7 @@ export default function PopPersonCanvas() {
   const shakeActionIdsRef = useRef(new Set());
   const activeActionIdsRef = useRef([]);
   const latestServerActionsRef = useRef(new Map());
+  const latestServerStateVersionRef = useRef(-1);
   const serverStateHydratedRef = useRef(false);
   const lastDatasetValuesRef = useRef(new Map());
   const transformRef = useRef({ x: 0, y: 0, scale: 1 });
@@ -549,7 +553,38 @@ export default function PopPersonCanvas() {
     });
   }, []);
   const reconcileServerState = useCallback((serverState) => {
-    const incomingActions = Array.isArray(serverState?.actions) ? serverState.actions : [];
+    const incomingStateVersion = Number(serverState?.stateVersion);
+    if (!Number.isFinite(incomingStateVersion)) return;
+    if (incomingStateVersion < latestServerStateVersionRef.current) return;
+    latestServerStateVersionRef.current = incomingStateVersion;
+
+    const incomingActions = (Array.isArray(serverState?.actions) ? serverState.actions : [])
+      .map((serverAction) => {
+        const previousAction = latestServerActionsRef.current.get(serverAction.id);
+        if (!previousAction) return serverAction;
+
+        const count = Math.max(
+          1,
+          Number(serverAction.count) || Number(previousAction.count) || 1,
+        );
+        const previousHitCount = Math.max(0, Number(previousAction.hitCount) || 0);
+        const nextHitCount = Math.max(0, Number(serverAction.hitCount) || 0);
+        const lastHitAt = Math.max(
+          Number(previousAction.lastHitAt) || 0,
+          Number(serverAction.lastHitAt) || 0,
+        );
+
+        return {
+          ...serverAction,
+          // A queued snapshot arriving after a running snapshot is stale.
+          status: previousAction.status === "running" && serverAction.status === "queued"
+            ? "running"
+            : serverAction.status,
+          hitCount: Math.min(count, Math.max(previousHitCount, nextHitCount)),
+          startedAt: serverAction.startedAt ?? previousAction.startedAt ?? null,
+          lastHitAt: lastHitAt > 0 ? lastHitAt : null,
+        };
+      });
     const incomingActionIds = new Set(incomingActions.map((action) => action.id));
     const progressTargets = new Set();
 
@@ -683,9 +718,14 @@ export default function PopPersonCanvas() {
     let stopped = false;
 
     function connect() {
-      socket = new WebSocket(getWebSocketUrl());
+      const nextSocket = new WebSocket(getWebSocketUrl());
+      socket = nextSocket;
 
-      socket.onmessage = (event) => {
+      nextSocket.onopen = () => {
+        setIsRealtimeConnected(true);
+      };
+
+      nextSocket.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
           if (!message?.state?.dataset || !Array.isArray(message.state.actions)) return;
@@ -696,16 +736,18 @@ export default function PopPersonCanvas() {
         }
       };
 
-      socket.onclose = () => {
+      nextSocket.onclose = () => {
+        setIsRealtimeConnected(false);
         if (!stopped) retryTimer = window.setTimeout(connect, 2000);
       };
-      socket.onerror = () => socket.close();
+      nextSocket.onerror = () => nextSocket.close();
     }
 
     connect();
     return () => {
       stopped = true;
       window.clearTimeout(retryTimer);
+      setIsRealtimeConnected(false);
       socket?.close();
     };
   }, [config, reconcileServerState]);
