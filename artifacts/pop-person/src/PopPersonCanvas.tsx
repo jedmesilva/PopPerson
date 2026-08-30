@@ -1892,9 +1892,7 @@ export default function PopPersonCanvas() {
     <div style={{ width: "100%", minHeight: "100vh", backgroundColor: "#0a0a0a", position: "relative" }}>
       <div style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 60, display: "flex", alignItems: "center", gap: "8px", padding: "12px 16px", minHeight: "76px", boxSizing: "border-box" }}>
         <div style={{ flexShrink: 0, display: "flex", alignItems: "center", padding: "6px 12px", borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.55)", backdropFilter: "blur(6px)" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "1px" }}>
-            <span data-testid="text-brand" style={{ color: "#f5f5f5", fontWeight: 800, fontSize: "15px", letterSpacing: "-0.01em" }}>InstaPop</span>
-          </div>
+          <img data-testid="image-brand" src="/instapop-logo.svg" alt="InstaPop" style={{ display: "block", width: "92px", height: "auto" }} />
         </div>
         <div className="action-pill-container" style={{ flex: "1 1 auto", minWidth: 0, display: "flex", justifyContent: "center", containerType: "inline-size" }}>
           {(queue.length > 0 || activeActions.length > 0) && (() => {
