@@ -651,6 +651,8 @@ export default function PopPersonCanvas() {
       resolvedFinalValue: Number.isFinite(finalValue) ? finalValue : null,
       resolvedDelta: Number.isFinite(eventDelta) ? eventDelta : null,
       resolvedStateVersion: Number(resolvedEvent?.stateVersion),
+      resolvedFirstImpactAtServer: serverNow + duration,
+      resolvedIntervalMs: staggerMs,
     };
     animationActionsRef.current.set(actionId, animationAction);
     deferredCompletedActionIdsRef.current.add(actionId);
@@ -791,6 +793,8 @@ export default function PopPersonCanvas() {
     const resolvedPreviousValue = Number(action?.resolvedPreviousValue);
     const resolvedFinalValue = Number(action?.resolvedFinalValue);
     const resolvedDelta = Number(action?.resolvedDelta);
+    const hasContinuousResolution = Number.isFinite(resolvedPreviousValue)
+      && (Number.isFinite(resolvedFinalValue) || Number.isFinite(resolvedDelta));
     const resolvedValue = Number.isFinite(resolvedPreviousValue)
       && Number.isFinite(resolvedFinalValue)
       ? resolvedPreviousValue
@@ -802,7 +806,7 @@ export default function PopPersonCanvas() {
         : Number.NaN;
     const value = Number.isFinite(eventValue) ? eventValue : resolvedValue;
     const alreadyVisualized = visualizedHitKeysRef.current.has(hitKey);
-    if (targetName && Number.isFinite(value)) {
+    if (targetName && Number.isFinite(value) && !hasContinuousResolution) {
       pendingRadiusAnimationsRef.current.add(targetName);
     }
     const eventVersion = Number(event?.stateVersion);
@@ -812,7 +816,11 @@ export default function PopPersonCanvas() {
         eventVersion,
       );
     }
-    if (targetName && Number.isFinite(value)) {
+    // Resolved actions drive the radius continuously from the Canvas loop.
+    // Only commit the final value to React so intermediate hits do not cause
+    // the radius tween to chase a new layout target on every impact.
+    const shouldCommitDataset = !hasContinuousResolution || hitIndex >= totalCount;
+    if (targetName && Number.isFinite(value) && shouldCommitDataset) {
       setDataset((prev) => prev.map((person) => (
         person.name === targetName ? { ...person, value } : person
       )));
@@ -834,13 +842,16 @@ export default function PopPersonCanvas() {
       ? leavesRef.current.find((leaf) => leaf.name === targetName)
       : null;
     const emitter = emittersRef.current.find((item) => item.id === actionId);
+    const animatedTarget = targetName
+      ? animatedCirclesRef.current.get(targetName)
+      : null;
     if (target) {
       impactsRef.current.push({
         actionId,
         targetName,
-        x: target.x,
-        y: target.y,
-        r: target.r,
+        x: animatedTarget?.x ?? target.x,
+        y: animatedTarget?.y ?? target.y,
+        r: animatedTarget?.r ?? target.r,
         color: (event?.direction || action?.mode) === "defender"
           ? "34, 197, 94"
           : "239, 68, 68",
@@ -1617,6 +1628,58 @@ export default function PopPersonCanvas() {
           circle.radiusStartedAt = null;
         }
       });
+
+      // A resolved action owns one continuous radius progression. The impact
+      // counter remains discrete for the HUD/effects, while the cell size
+      // follows the complete value range between the first and last impact.
+      const continuousRadiusTargets = new Map();
+      animationActionsRef.current.forEach((action) => {
+        const targetName = action?.targetName;
+        const previousValue = Number(action?.resolvedPreviousValue);
+        const finalValue = Number(action?.resolvedFinalValue);
+        const delta = Number(action?.resolvedDelta);
+        const firstImpactAtServer = Number(action?.resolvedFirstImpactAtServer);
+        const intervalMs = Math.max(0, Number(action?.resolvedIntervalMs) || 0);
+        const count = Math.max(1, Number(action?.count) || 1);
+        const target = targetName
+          ? animatedCirclesRef.current.get(targetName)
+          : null;
+        if (
+          !target
+          || !Number.isFinite(previousValue)
+          || !Number.isFinite(firstImpactAtServer)
+          || (!Number.isFinite(finalValue) && !Number.isFinite(delta))
+        ) {
+          return;
+        }
+
+        const resolvedTargetValue = Number.isFinite(finalValue)
+          ? finalValue
+          : previousValue + delta;
+        const totalProgressDuration = intervalMs * count;
+        const progress = totalProgressDuration > 0
+          ? Math.min(
+              1,
+              Math.max(
+                0,
+                (serverNow - firstImpactAtServer + intervalMs) / totalProgressDuration,
+              ),
+            )
+          : serverNow >= firstImpactAtServer ? 1 : 0;
+        const visualValue = previousValue
+          + (resolvedTargetValue - previousValue) * progress;
+        const visualRadius = Math.sqrt(Math.max(0, visualValue)) * 3.2;
+        continuousRadiusTargets.set(targetName, visualRadius);
+      });
+      continuousRadiusTargets.forEach((radius, targetName) => {
+        const circle = animatedCirclesRef.current.get(targetName);
+        if (!circle) return;
+        circle.r = radius;
+        circle.radiusFrom = radius;
+        circle.radiusTarget = radius;
+        circle.radiusStartedAt = null;
+      });
+
       const lerpFactor = 1 - Math.pow(0.001, dt / 1000);
       leavesRef.current.forEach((target) => {
         const a = animatedCirclesRef.current.get(target.name);
