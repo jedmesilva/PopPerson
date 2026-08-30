@@ -41,7 +41,19 @@ const STALE_ACTION_GRACE_MS = 60_000;
 // projectiles, and processing all due hits at once holds cell/room locks long
 // enough to block new action requests and other worker instances.
 const MAX_HITS_PER_TRANSACTION = 50;
-type StateListener = (state: PopPersonState) => void | Promise<void>;
+export type PopPersonHitEvent = {
+  actionId: string;
+  hitIndex: number;
+  sequence: number;
+  hitAt: number;
+  occurredAt: number;
+  direction: "attacker" | "defender";
+  delta: number;
+};
+type StateListener = (
+  state: PopPersonState,
+  hitEvents: PopPersonHitEvent[],
+) => void | Promise<void>;
 type Snapshot = Record<string, unknown>;
 
 let defaultRoomId: string | null = null;
@@ -538,9 +550,9 @@ async function getPopPersonConfig(): Promise<PopPersonConfig> {
   };
 }
 
-async function notifyStateChange(): Promise<void> {
+async function notifyStateChange(hitEvents: PopPersonHitEvent[] = []): Promise<void> {
   const state = await currentState(await getRoomId());
-  await Promise.all([...stateListeners].map((listener) => listener(state)));
+  await Promise.all([...stateListeners].map((listener) => listener(state, hitEvents)));
 }
 
 export function subscribePopPersonState(listener: StateListener): () => void {
@@ -790,10 +802,12 @@ async function processDueActions(): Promise<void> {
   processing = true;
   let changed = false;
   let hitsWritten = 0;
+  let realtimeHitEvents: PopPersonHitEvent[] = [];
   try {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       changed = false;
       hitsWritten = 0;
+      realtimeHitEvents = [];
       const now = new Date();
       try {
         await db.transaction(async (tx) => {
@@ -963,6 +977,16 @@ async function processDueActions(): Promise<void> {
             .returning({ id: actionEventsTable.id });
           if (!insertedHit) continue;
 
+          realtimeHitEvents.push({
+            actionId: action.id,
+            hitIndex: hitIndex + 1,
+            sequence: hitIndex + 3,
+            hitAt: hitAt.getTime(),
+            occurredAt: now.getTime(),
+            direction: action.mode,
+            delta,
+          });
+
           await tx
             .update(cellsTable)
             .set({
@@ -1045,7 +1069,7 @@ async function processDueActions(): Promise<void> {
       }
     }
 
-    if (changed) await notifyStateChange();
+    if (changed) await notifyStateChange(realtimeHitEvents);
   } catch (error) {
     const { logger } = await import("./logger");
     logger.error({ err: error }, "Failed to process PopPerson actions");
