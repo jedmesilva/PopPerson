@@ -1261,22 +1261,24 @@ export default function PopPersonCanvas() {
            const direction = action.mode === "defender" ? 1 : -1;
            const count = Math.max(1, Number(action.count) || 1);
            const growthPerHit = Number(action.growthPerHit) || 0;
-           startResolvedActionRef.current(action, {
-             eventId: `local:${action.id}`,
-             actionId: action.id,
-             hitCount: count,
-             direction: action.mode,
-             delta: growthPerHit * direction * count,
-             targetName: action.targetName,
-             previousValue: Number.isFinite(previousValue) ? previousValue : 0,
-             finalValue: Number.isFinite(previousValue)
-               ? previousValue + growthPerHit * direction * count
-               : Number.NaN,
-             durationMs: Number(action.duration) || 0,
-             intervalMs: Number(action.staggerMs) || 0,
-             stateVersion: latestServerStateVersionRef.current,
-             resolvedAt: Date.now(),
-           });
+           if (!activeActionIdsRef.current.includes(action.id)) {
+             startResolvedActionRef.current(action, {
+               eventId: `local:${action.id}`,
+               actionId: action.id,
+               hitCount: count,
+               direction: action.mode,
+               delta: growthPerHit * direction * count,
+               targetName: action.targetName,
+               previousValue: Number.isFinite(previousValue) ? previousValue : 0,
+               finalValue: Number.isFinite(previousValue)
+                 ? previousValue + growthPerHit * direction * count
+                 : Number.NaN,
+               durationMs: Number(action.duration) || 0,
+               intervalMs: Number(action.staggerMs) || 0,
+               stateVersion: latestServerStateVersionRef.current,
+               resolvedAt: Date.now(),
+             });
+           }
           closeModal();
           setSelectedCell(null);
         },
