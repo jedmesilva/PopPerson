@@ -24,8 +24,6 @@ const webSocketServer = new WebSocketServer({
   noServer: true,
   maxPayload: 1024,
 });
-registerPopPersonRealtime(webSocketServer);
-
 server.on("upgrade", (request, socket, head) => {
   const requestUrl = new URL(
     request.url || "/",
@@ -50,6 +48,7 @@ server.on("error", (err) => {
 });
 
 await initializePopPersonStore();
+await registerPopPersonRealtime(webSocketServer);
 server.listen(port, () => {
   logger.info({ port }, "Server listening");
 });

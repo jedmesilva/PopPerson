@@ -1,8 +1,14 @@
 export {
   createPopPersonAction,
+  getPopPersonAction,
   getPopPersonBootstrap,
   getPopPersonState,
   initializePopPersonStore,
-  subscribePopPersonState,
 } from "./pop-person-store";
-export type { PopPersonHitEvent } from "./pop-person-store";
+export {
+  POP_PERSON_REALTIME_CHANNEL,
+} from "./pop-person-store";
+export type {
+  PopPersonHitEvent,
+  PopPersonRealtimeNotification,
+} from "./pop-person-store";

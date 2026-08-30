@@ -21,6 +21,15 @@ function quadBezierTangent(p0, p1, p2, t) {
   return 2 * (1 - t) * (p1 - p0) + 2 * t * (p2 - p1);
 }
 
+function deterministicUnit(seed) {
+  let hash = 2166136261;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash ^= seed.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) / 4294967296;
+}
+
 const MODE_LABEL = { atacar: "Ataque", defender: "Defesa" };
 const MAX_CONCURRENT_PROJECTILES = 24;
 const CIRCLE_GAP = 2.5;
@@ -446,7 +455,6 @@ export default function PopPersonCanvas() {
   const locallyCreatedActionIdsRef = useRef(new Set());
   const latestServerStateVersionRef = useRef(-1);
   const serverStateHydratedRef = useRef(false);
-  const lastDatasetValuesRef = useRef(new Map());
   const transformRef = useRef({ x: 0, y: 0, scale: 1 });
   const fitTransformRef = useRef({ x: 0, y: 0, scale: 1 });
   const recenterAnimRef = useRef(null);
@@ -557,25 +565,6 @@ export default function PopPersonCanvas() {
       sequence: Number(event.sequence) || hitIndex + 2,
     });
   }, []);
-  const enqueueMissingHitEvents = useCallback((serverAction) => {
-    if (!serverAction?.id) return;
-    const serverHitCount = Math.min(
-      Math.max(0, Number(serverAction.hitCount) || 0),
-      Math.max(1, Number(serverAction.count) || 1),
-    );
-    const displayedCount = visualHitCountsRef.current.get(serverAction.id) || 0;
-    for (let hitIndex = displayedCount + 1; hitIndex <= serverHitCount; hitIndex += 1) {
-      enqueueHitEvent({
-        actionId: serverAction.id,
-        hitIndex,
-        sequence: hitIndex + 2,
-        hitAt: serverAction.lastHitAt ?? Date.now(),
-        occurredAt: serverAction.lastHitAt ?? Date.now(),
-        direction: serverAction.mode,
-        delta: 0,
-      });
-    }
-  }, [enqueueHitEvent]);
   const queueAction = useCallback((serverAction) => {
     if (!serverAction?.id) return;
     animationActionsRef.current.set(serverAction.id, serverAction);
@@ -587,7 +576,6 @@ export default function PopPersonCanvas() {
     }
     latestServerActionsRef.current.set(serverAction.id, serverAction);
     if (activeActionIdsRef.current.includes(serverAction.id)) {
-      enqueueMissingHitEvents(serverAction);
       setActiveActions((prev) => prev.map((action) => action.id === serverAction.id
         ? {
             ...action,
@@ -602,9 +590,9 @@ export default function PopPersonCanvas() {
     }
 
     if (serverAction.status === "running") {
+      setQueue((prev) => prev.filter((action) => action.id !== serverAction.id));
       const elapsedMs = Math.max(0, Date.now() - serverAction.executeAt);
       executeActionRef.current(serverAction, elapsedMs);
-      enqueueMissingHitEvents(serverAction);
       return;
     }
 
@@ -613,7 +601,35 @@ export default function PopPersonCanvas() {
       if (prev.some((queuedAction) => queuedAction.id === serverAction.id)) return prev;
       return [...prev, { ...serverAction, localExecuteAt }];
     });
-  }, [enqueueMissingHitEvents]);
+  }, []);
+  const removeRealtimeAction = useCallback((actionId) => {
+    if (!actionId) return;
+    latestServerActionsRef.current.delete(actionId);
+    locallyCreatedActionIdsRef.current.delete(actionId);
+    setQueue((prev) => prev.filter((action) => action.id !== actionId));
+    setActiveActions((prev) => {
+      const next = prev.filter((action) => action.id !== actionId);
+      activeActionIdsRef.current = next.map((action) => action.id);
+      return next;
+    });
+    emittersRef.current = emittersRef.current.filter((emitter) => emitter.id !== actionId);
+    shakeActionIdsRef.current.delete(actionId);
+  }, []);
+  const applyLiveHitToDataset = useCallback((event) => {
+    const action = animationActionsRef.current.get(event?.actionId);
+    const value = Number(event?.value);
+    if (!action?.targetName || !Number.isFinite(value)) return;
+    const eventVersion = Number(event?.stateVersion);
+    if (Number.isFinite(eventVersion)) {
+      latestServerStateVersionRef.current = Math.max(
+        latestServerStateVersionRef.current,
+        eventVersion,
+      );
+    }
+    setDataset((prev) => prev.map((person) => (
+      person.name === action.targetName ? { ...person, value } : person
+    )));
+  }, []);
   const reconcileServerState = useCallback((serverState) => {
     const incomingStateVersion = Number(serverState?.stateVersion);
     if (!Number.isFinite(incomingStateVersion)) return;
@@ -652,10 +668,7 @@ export default function PopPersonCanvas() {
     });
     const incomingActionIds = new Set(incomingActions.map((action) => action.id));
     locallyCreatedActionIdsRef.current.forEach((id) => incomingActionIds.add(id));
-    const progressTargets = new Set();
-
     if (Array.isArray(serverState?.dataset)) {
-      const previousValues = lastDatasetValuesRef.current;
       incomingActions.forEach((serverAction) => {
         const previousAction = latestServerActionsRef.current.get(serverAction.id);
         const previousHitCount = Number(previousAction?.hitCount) || 0;
@@ -665,10 +678,6 @@ export default function PopPersonCanvas() {
         );
         animationActionsRef.current.set(serverAction.id, serverAction);
         latestServerActionsRef.current.set(serverAction.id, serverAction);
-
-        if (previousAction && nextHitCount > previousHitCount) {
-          progressTargets.add(serverAction.targetName);
-        }
 
         if (!previousAction) {
           queueAction(serverAction);
@@ -681,7 +690,6 @@ export default function PopPersonCanvas() {
             serverAction,
             Math.max(0, Date.now() - serverAction.executeAt),
           );
-          enqueueMissingHitEvents(serverAction);
         } else if (
           serverAction.status === "running" &&
           !activeActionIdsRef.current.includes(serverAction.id)
@@ -690,7 +698,6 @@ export default function PopPersonCanvas() {
             serverAction,
             Math.max(0, Date.now() - serverAction.executeAt),
           );
-          enqueueMissingHitEvents(serverAction);
         } else if (serverAction.status === "queued") {
           setQueue((prev) => prev.map((action) => action.id === serverAction.id
             ? { ...action, ...serverAction, localExecuteAt: action.localExecuteAt }
@@ -705,35 +712,6 @@ export default function PopPersonCanvas() {
               lastHitAt: serverAction.lastHitAt ?? null,
             }
           : action));
-        enqueueMissingHitEvents(serverAction);
-      });
-
-      serverState.dataset.forEach((person) => {
-        const nextValue = Number(person.value);
-        const previousValue = previousValues.get(person.name);
-        if (
-          previousValue !== undefined &&
-          Number.isFinite(nextValue) &&
-          nextValue !== previousValue
-        ) {
-          const target = leavesRef.current.find((leaf) => leaf.name === person.name);
-          const animated = animatedCirclesRef.current.get(person.name);
-          const circle = target || animated;
-          // A hit progress update already creates the visual impact. Dataset
-          // deltas are retained only for the final hit, because the server
-          // removes a completed action from the active action snapshot.
-          if (circle && !progressTargets.has(person.name)) {
-            impactsRef.current.push({
-              x: circle.x,
-              y: circle.y,
-              r: Math.max(circle.r, animated?.r ?? 0),
-              color: nextValue > previousValue ? "34, 197, 94" : "239, 68, 68",
-              startTime: performance.now(),
-              duration: 520,
-            });
-          }
-        }
-        if (Number.isFinite(nextValue)) previousValues.set(person.name, nextValue);
       });
       setDataset(serverState.dataset);
     }
@@ -755,7 +733,7 @@ export default function PopPersonCanvas() {
       }
     }
     serverStateHydratedRef.current = true;
-  }, [enqueueMissingHitEvents, queueAction]);
+  }, [queueAction]);
   useEffect(() => {
     if (bootstrapQuery.data?.state) {
       reconcileServerState(bootstrapQuery.data.state);
@@ -810,6 +788,21 @@ export default function PopPersonCanvas() {
           }
           if (message?.type === "hit" && message.event) {
             enqueueHitEvent(message.event);
+            applyLiveHitToDataset(message.event);
+            return;
+          }
+          if (
+            (message?.type === "action:queued" || message?.type === "action:started") &&
+            message.action
+          ) {
+            queueAction(message.action);
+            return;
+          }
+          if (
+            (message?.type === "action:completed" || message?.type === "action:cancelled") &&
+            message.actionId
+          ) {
+            removeRealtimeAction(message.actionId);
             return;
           }
           if (!message?.state?.dataset || !Array.isArray(message.state.actions)) return;
@@ -836,7 +829,15 @@ export default function PopPersonCanvas() {
       setIsRealtimeConnected(false);
       socket?.close();
     };
-  }, [config, enqueueHitEvent, reconcileServerState, syncServerClock]);
+  }, [
+    config,
+    enqueueHitEvent,
+    applyLiveHitToDataset,
+    queueAction,
+    removeRealtimeAction,
+    reconcileServerState,
+    syncServerClock,
+  ]);
   const getRemainingUnits = useCallback((item) => {
     const emitter = emittersRef.current.find((e) => e.id === item.id);
     return (emitter ? emitter.remaining : 0) + projectilesRef.current.filter((p) => p.firingId === item.id).length;
@@ -1129,22 +1130,32 @@ export default function PopPersonCanvas() {
           && spawnedThisFrame < 4
         ) {
           const currentLeaves = leavesRef.current;
-          const target = currentLeaves.find((l) => l.name === emitter.targetName)
-            || currentLeaves[Math.floor(Math.random() * currentLeaves.length)];
-          if (!target) break;
+          const target = currentLeaves.find((l) => l.name === emitter.targetName);
+          const hitIndex = emitter.nextIndex;
+          // A filtered-out target must never be replaced by another visible
+          // cell. Consume the scheduled visual slot without drawing it.
+          if (!target) {
+            emitter.nextIndex += 1;
+            emitter.remaining = emitter.count - emitter.nextIndex;
+            continue;
+          }
           const plannedStartServer = emitter.startAtServer
             + emitter.nextIndex * emitter.staggerMs;
           const ageMs = Math.max(0, serverNow - plannedStartServer);
-          const spreadX = Math.min(96, Math.max(4, target.x + (Math.random() - 0.5) * 46));
-          const spreadY = -4 - Math.random() * 10;
+          const spreadUnit = deterministicUnit(`${emitter.id}:${hitIndex}:spread`);
+          const heightUnit = deterministicUnit(`${emitter.id}:${hitIndex}:height`);
+          const arcUnit = deterministicUnit(`${emitter.id}:${hitIndex}:arc`);
+          const sideUnit = deterministicUnit(`${emitter.id}:${hitIndex}:side`);
+          const spreadX = Math.min(96, Math.max(4, target.x + (spreadUnit - 0.5) * 46));
+          const spreadY = -4 - heightUnit * 10;
           const dx = target.x - spreadX;
           const dy = target.y - spreadY;
           const dist = Math.hypot(dx, dy) || 1;
           const perpX = -dy / dist;
           const perpY = dx / dist;
-          const arcMag = (0.18 + Math.random() * 0.22) * dist * (Math.random() < 0.5 ? -1 : 1);
+          const arcMag = (0.18 + arcUnit * 0.22) * dist * (sideUnit < 0.5 ? -1 : 1);
           projectilesRef.current.push({
-            id: Math.random(),
+            id: `${emitter.id}:${hitIndex}`,
             firingId: emitter.id,
             targetName: target.name,
             startX: spreadX,

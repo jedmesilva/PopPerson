@@ -6,6 +6,7 @@ import {
   inArray,
   lte,
   sql,
+  type SQL,
 } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
@@ -49,18 +50,46 @@ export type PopPersonHitEvent = {
   occurredAt: number;
   direction: PopPersonAction["mode"];
   delta: number;
+  value: number;
+  stateVersion: number;
 };
-type StateListener = (
-  state: PopPersonState,
-  hitEvents: PopPersonHitEvent[],
-) => void | Promise<void>;
+export type PopPersonRealtimeNotification =
+  | {
+      type: "action:queued" | "action:started";
+      roomId: string;
+      actionId: string;
+    }
+  | {
+      type: "action:hit";
+      roomId: string;
+      event: PopPersonHitEvent;
+    }
+  | {
+      type: "action:completed" | "action:cancelled";
+      roomId: string;
+      actionId: string;
+    };
 type Snapshot = Record<string, unknown>;
+
+export const POP_PERSON_REALTIME_CHANNEL = "pop_person_live";
 
 let defaultRoomId: string | null = null;
 let initializationPromise: Promise<void> | null = null;
 let processorTimer: NodeJS.Timeout | null = null;
 let processing = false;
-const stateListeners = new Set<StateListener>();
+
+type SqlExecutor = {
+  execute(query: SQL): Promise<unknown>;
+};
+
+async function enqueueRealtimeNotification(
+  tx: SqlExecutor,
+  notification: PopPersonRealtimeNotification,
+): Promise<void> {
+  await tx.execute(
+    sql`SELECT pg_notify(${POP_PERSON_REALTIME_CHANNEL}, ${JSON.stringify(notification)})`,
+  );
+}
 
 function toNumber(value: unknown, fallback = 0): number {
   const parsed = typeof value === "number" ? value : Number(value);
@@ -426,6 +455,14 @@ async function getActions(
   });
 }
 
+export async function getPopPersonAction(
+  roomId: string,
+  actionId: string,
+): Promise<PopPersonAction | null> {
+  const [action] = await getActions(roomId, actionId);
+  return action ?? null;
+}
+
 async function currentState(roomId: string): Promise<PopPersonState> {
   const [[room], dataset, actions] = await Promise.all([
     db
@@ -548,16 +585,6 @@ async function getPopPersonConfig(): Promise<PopPersonConfig> {
       }),
     ),
   };
-}
-
-async function notifyStateChange(hitEvents: PopPersonHitEvent[] = []): Promise<void> {
-  const state = await currentState(await getRoomId());
-  await Promise.all([...stateListeners].map((listener) => listener(state, hitEvents)));
-}
-
-export function subscribePopPersonState(listener: StateListener): () => void {
-  stateListeners.add(listener);
-  return () => stateListeners.delete(listener);
 }
 
 export async function getPopPersonBootstrap(
@@ -781,45 +808,29 @@ export async function createPopPersonAction(
         updatedAt: now,
       })
       .where(eq(roomsTable.id, roomId));
+    await enqueueRealtimeNotification(tx, {
+      type: "action:queued",
+      roomId,
+      actionId: action.id,
+    });
     return { action, created: true };
   });
 
   const [response] = await getActions(roomId, result.action.id);
   if (!response) throw new Error("Ação criada, mas não pôde ser carregada.");
-  if (result.created) {
-    void notifyStateChange().catch((error) => {
-      logger.error(
-        { err: error, actionId: result.action.id },
-        "Failed to notify PopPerson action state change",
-      );
-    });
-  }
   return response;
 }
 
 async function processDueActions(): Promise<void> {
   if (processing) return;
   processing = true;
-  let changed = false;
   let hitsWritten = 0;
-  let realtimeHitEvents: PopPersonHitEvent[] = [];
   try {
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      changed = false;
       hitsWritten = 0;
-      realtimeHitEvents = [];
       const now = new Date();
       try {
         await db.transaction(async (tx) => {
-      // The in-process `processing` flag prevents overlap inside one Node
-      // process, but it cannot coordinate multiple API instances. Use a
-      // transaction-scoped PostgreSQL lock so only one worker can mutate the
-      // action/event/cell/room graph at a time.
-      const processorLockResult = await tx.execute(
-        sql`SELECT pg_try_advisory_xact_lock(hashtextextended('pop-person-action-processor', 0)) AS acquired`,
-      );
-      if (!processorLockResult.rows[0]?.acquired) return;
-
       const staleBefore = new Date(now.getTime() - STALE_ACTION_GRACE_MS);
       const staleActions = await tx
         .update(actionsTable)
@@ -835,10 +846,12 @@ async function processDueActions(): Promise<void> {
             lte(actionsTable.completesAt, staleBefore),
           ),
         )
-        .returning({ roomId: actionsTable.roomId });
+        .returning({
+          id: actionsTable.id,
+          roomId: actionsTable.roomId,
+        });
 
       if (staleActions.length > 0) {
-        changed = true;
         const roomIds = new Set(staleActions.map((action) => action.roomId));
         for (const roomId of roomIds) {
           await tx
@@ -848,6 +861,13 @@ async function processDueActions(): Promise<void> {
               updatedAt: now,
             })
             .where(eq(roomsTable.id, roomId));
+        }
+        for (const staleAction of staleActions) {
+          await enqueueRealtimeNotification(tx, {
+            type: "action:cancelled",
+            roomId: staleAction.roomId,
+            actionId: staleAction.id,
+          });
         }
       }
 
@@ -867,7 +887,6 @@ async function processDueActions(): Promise<void> {
         .returning();
 
       for (const action of activated) {
-        changed = true;
         await tx.insert(actionEventsTable).values({
           actionId: action.id,
           roomId: action.roomId,
@@ -885,6 +904,11 @@ async function processDueActions(): Promise<void> {
             updatedAt: now,
           })
           .where(eq(roomsTable.id, action.roomId));
+        await enqueueRealtimeNotification(tx, {
+          type: "action:started",
+          roomId: action.roomId,
+          actionId: action.id,
+        });
       }
 
       const runningActions = await tx
@@ -898,7 +922,6 @@ async function processDueActions(): Promise<void> {
 
       for (let actionIndex = 0; actionIndex < runningActions.length; actionIndex += 1) {
         const action = runningActions[actionIndex];
-        let actionHitsWritten = 0;
         const hitEvents = await tx
           .select({ id: actionEventsTable.id })
           .from(actionEventsTable)
@@ -977,17 +1000,7 @@ async function processDueActions(): Promise<void> {
             .returning({ id: actionEventsTable.id });
           if (!insertedHit) continue;
 
-          realtimeHitEvents.push({
-            actionId: action.id,
-            hitIndex: hitIndex + 1,
-            sequence: hitIndex + 3,
-            hitAt: hitAt.getTime(),
-            occurredAt: now.getTime(),
-            direction: action.mode,
-            delta,
-          });
-
-          await tx
+          const [updatedCell] = await tx
             .update(cellsTable)
             .set({
               // Apply each projectile's impact as it lands. Cells have a
@@ -999,19 +1012,33 @@ async function processDueActions(): Promise<void> {
               stateVersion: sql`${cellsTable.stateVersion} + 1`,
               updatedAt: now,
             })
-            .where(eq(cellsTable.id, action.cellId));
-          changed = true;
-          hitsWritten += 1;
-          actionHitsWritten += 1;
-        }
-        if (actionHitsWritten > 0) {
-          await tx
+            .where(eq(cellsTable.id, action.cellId))
+            .returning({ currentValue: cellsTable.currentValue });
+          const [updatedRoom] = await tx
             .update(roomsTable)
             .set({
-              stateVersion: sql`${roomsTable.stateVersion} + ${actionHitsWritten}`,
+              stateVersion: sql`${roomsTable.stateVersion} + 1`,
               updatedAt: now,
             })
-            .where(eq(roomsTable.id, action.roomId));
+            .where(eq(roomsTable.id, action.roomId))
+            .returning({ stateVersion: roomsTable.stateVersion });
+          const hitEvent: PopPersonHitEvent = {
+            actionId: action.id,
+            hitIndex: hitIndex + 1,
+            sequence: hitIndex + 3,
+            hitAt: hitAt.getTime(),
+            occurredAt: now.getTime(),
+            direction: action.mode,
+            delta,
+            value: toNumber(updatedCell?.currentValue),
+            stateVersion: toNumber(updatedRoom?.stateVersion),
+          };
+          await enqueueRealtimeNotification(tx, {
+            type: "action:hit",
+            roomId: action.roomId,
+            event: hitEvent,
+          });
+          hitsWritten += 1;
         }
 
         const allHitsRecorded = recordedHitCount + (hitLimit - recordedHitCount) >= projectileCount;
@@ -1054,7 +1081,11 @@ async function processDueActions(): Promise<void> {
             updatedAt: now,
           })
           .where(eq(roomsTable.id, claimed.roomId));
-        changed = true;
+        await enqueueRealtimeNotification(tx, {
+          type: "action:completed",
+          roomId: claimed.roomId,
+          actionId: claimed.id,
+        });
 
         if (hitsWritten >= MAX_HITS_PER_TRANSACTION) break;
       }
@@ -1069,7 +1100,6 @@ async function processDueActions(): Promise<void> {
       }
     }
 
-    if (changed) await notifyStateChange(realtimeHitEvents);
   } catch (error) {
     const { logger } = await import("./logger");
     logger.error({ err: error }, "Failed to process PopPerson actions");
