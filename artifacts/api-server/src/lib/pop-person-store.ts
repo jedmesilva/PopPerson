@@ -57,6 +57,8 @@ export type PopPersonResolvedEvent = {
   targetName: string;
   previousValue: number;
   finalValue: number;
+  durationMs: number;
+  intervalMs: number;
   stateVersion: number;
   resolvedAt: number;
 };
@@ -911,6 +913,14 @@ async function processDueActions(): Promise<void> {
           toNumber(action.effectiveImpact) / hitCount,
         );
         const delta = growthPerHit * direction;
+        const durationMs = Math.max(
+          0,
+          snapshotNumber(action.ruleSnapshot, "durationMs", 0),
+        );
+        const intervalMs = Math.max(
+          0,
+          snapshotNumber(action.ruleSnapshot, "staggerMs", 0),
+        );
 
         const [cell] = await tx
           .select({
@@ -976,6 +986,8 @@ async function processDueActions(): Promise<void> {
           targetName: action.targetName,
           previousValue,
           finalValue: toNumber(updatedCell.currentValue),
+          durationMs,
+          intervalMs,
           stateVersion,
           resolvedAt: now.getTime(),
         };

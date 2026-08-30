@@ -2,3 +2,4 @@
 - [Efeitos em células móveis](realtime-canvas-effects.md) — projéteis e impactos devem seguir a posição atual da célula, nunca coordenadas capturadas apenas no disparo.
 - [Autoridade realtime versus exibição](realtime-authority-display.md) — snapshots atualizam a autoridade; hits confirmados controlam a progressão visual durante ações ativas.
 - [Sequenciamento de eventos de ação](action-event-sequencing.md) — o evento final precisa ocupar uma sequência após o último hit, sem reutilizar números fixos.
+- [Restart após build](workflow-restart-build-order.md) — o processo do workflow mantém o bundle carregado; um build posterior não atualiza o runtime sozinho.

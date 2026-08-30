@@ -620,8 +620,14 @@ export default function PopPersonCanvas() {
     }
 
     const count = Math.max(1, Number(resolvedEvent?.hitCount) || Number(serverAction.count) || 1);
-    const staggerMs = Math.max(0, Number(serverAction.staggerMs) || 0);
-    const duration = Math.max(0, Number(serverAction.duration) || 0);
+    const staggerMs = Math.max(
+      0,
+      Number(resolvedEvent?.intervalMs) || Number(serverAction.staggerMs) || 0,
+    );
+    const duration = Math.max(
+      0,
+      Number(resolvedEvent?.durationMs) || Number(serverAction.duration) || 0,
+    );
     const animationAction = {
       ...serverAction,
       status: "running",
