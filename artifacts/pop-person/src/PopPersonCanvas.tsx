@@ -441,6 +441,7 @@ export default function PopPersonCanvas() {
   const emittersRef = useRef([]);
   const projectilesRef = useRef([]);
   const hitQueueRef = useRef([]);
+  const pendingHitEventsRef = useRef(new Map());
   const queuedHitKeysRef = useRef(new Set());
   const visualHitCountsRef = useRef(new Map());
   const nextHitSpawnAtRef = useRef(0);
@@ -495,7 +496,7 @@ export default function PopPersonCanvas() {
     });
   }, [dataset]);
 
-  const executeAction = useCallback((serverAction, resumeElapsedMs = 0) => {
+  const executeAction = useCallback((serverAction) => {
     const actionId = serverAction.id;
     if (!actionId || activeActionIdsRef.current.includes(actionId)) return;
     activeActionIdsRef.current = [...activeActionIdsRef.current, actionId];
@@ -508,27 +509,31 @@ export default function PopPersonCanvas() {
     const startAtServer = Number(serverAction.executeAt) || serverNow;
     const staggerMs = Math.max(0, Number(serverAction.staggerMs) || 0);
     const elapsedMs = Math.max(0, serverNow - startAtServer);
-    const nextIndex = elapsedMs <= 0
+    const hitCount = Math.min(totalCount, Math.max(0, Number(serverAction.hitCount) || 0));
+    const timelineIndex = elapsedMs <= 0
       ? 0
       : staggerMs > 0
-        ? Math.min(totalCount, Math.ceil(elapsedMs / staggerMs))
+        ? Math.min(totalCount, Math.floor(elapsedMs / staggerMs))
         : totalCount;
-    // A running action is now only a HUD/animation identity. Individual
-    // projectiles are created from WebSocket hit events, never from a local
-    // timer based on the aggregate hitCount snapshot.
+    // The snapshot's hitCount is authoritative progress, while the timeline
+    // prevents a delayed/reconnected browser from replaying old projectiles.
+    const nextIndex = Math.max(hitCount, timelineIndex);
+    const firstHitAtServer = startAtServer + Math.max(0, Number(serverAction.duration) || 0);
+    const elapsedToFirstImpact = Math.max(0, serverNow - firstHitAtServer);
+    const impactTimelineIndex = elapsedToFirstImpact <= 0
+      ? 0
+      : staggerMs > 0
+        ? Math.min(totalCount, Math.floor(elapsedToFirstImpact / staggerMs) + 1)
+        : totalCount;
+    const nextImpactIndex = Math.max(hitCount, impactTimelineIndex);
     if (!visualHitCountsRef.current.has(actionId)) {
-      // On a reload/reconnect, the persisted server progress is already
-      // real progress. Hydrate the HUD from it instead of replaying the
-      // entire action from 0% as a new animation.
-      visualHitCountsRef.current.set(
-        actionId,
-        Math.min(totalCount, Math.max(0, Number(serverAction.hitCount) || 0)),
-      );
+      visualHitCountsRef.current.set(actionId, hitCount);
     }
     emittersRef.current.push({
       id: actionId,
       targetName: serverAction.targetName,
       nextIndex,
+      nextImpactIndex,
       count: totalCount,
       startAtServer,
       staggerMs,
@@ -561,16 +566,20 @@ export default function PopPersonCanvas() {
     if (!event?.actionId || !Number.isFinite(Number(event.hitIndex))) return;
     const hitIndex = Math.max(1, Number(event.hitIndex));
     const key = `${event.actionId}:${hitIndex}`;
-    // A snapshot may already contain this server progress before the
-    // corresponding realtime event arrives. That does not mean the browser
-    // displayed the hit, so only an actually visualized hit is a duplicate.
-    if (visualizedHitKeysRef.current.has(key) || queuedHitKeysRef.current.has(key)) return;
-    queuedHitKeysRef.current.add(key);
-    hitQueueRef.current.push({
+    const normalizedEvent = {
       ...event,
       hitIndex,
       sequence: Number(event.sequence) || hitIndex + 2,
-    });
+    };
+    // A late confirmation must still reconcile the authoritative cell, but
+    // can never create a second impact after the timeline already rendered it.
+    if (visualizedHitKeysRef.current.has(key)) {
+      pendingHitEventsRef.current.set(key, normalizedEvent);
+      return;
+    }
+    if (queuedHitKeysRef.current.has(key)) return;
+    queuedHitKeysRef.current.add(key);
+    pendingHitEventsRef.current.set(key, normalizedEvent);
   }, []);
   const queueAction = useCallback((serverAction) => {
     if (!serverAction?.id) return;
@@ -603,7 +612,9 @@ export default function PopPersonCanvas() {
       return;
     }
 
-    const localExecuteAt = performance.now() + Math.max(0, serverAction.executeAt - Date.now());
+    const serverNow = serverClockRef.current.serverTime
+      + (performance.now() - serverClockRef.current.clientPerfAt);
+    const localExecuteAt = performance.now() + Math.max(0, serverAction.executeAt - serverNow);
     setQueue((prev) => {
       if (prev.some((queuedAction) => queuedAction.id === serverAction.id)) return prev;
       return [...prev, { ...serverAction, localExecuteAt }];
@@ -618,6 +629,9 @@ export default function PopPersonCanvas() {
     hitQueueRef.current = hitQueueRef.current.filter((hit) => hit.actionId !== actionId);
     for (const key of queuedHitKeysRef.current) {
       if (key.startsWith(`${actionId}:`)) queuedHitKeysRef.current.delete(key);
+    }
+    for (const key of pendingHitEventsRef.current.keys()) {
+      if (key.startsWith(`${actionId}:`)) pendingHitEventsRef.current.delete(key);
     }
     setQueue((prev) => prev.filter((action) => action.id !== actionId));
     setActiveActions((prev) => {
@@ -652,11 +666,31 @@ export default function PopPersonCanvas() {
       person.name === targetName ? { ...person, value } : person
     )));
   }, []);
-  const reconcileServerState = useCallback((serverState) => {
+  const reconcileServerState = useCallback((serverState, options = {}) => {
     const incomingStateVersion = Number(serverState?.stateVersion);
     if (!Number.isFinite(incomingStateVersion)) return;
-    if (incomingStateVersion < latestServerStateVersionRef.current) return;
+    const resetVisuals = options.resetVisuals === true;
+    if (!resetVisuals && incomingStateVersion < latestServerStateVersionRef.current) return;
     latestServerStateVersionRef.current = incomingStateVersion;
+
+    if (resetVisuals) {
+      // A snapshot is the present, not a replay buffer. Drop every ephemeral
+      // object and rebuild only queued/running actions from current progress.
+      hitQueueRef.current = [];
+      pendingHitEventsRef.current.clear();
+      queuedHitKeysRef.current.clear();
+      visualizedHitKeysRef.current.clear();
+      visualHitCountsRef.current.clear();
+      emittersRef.current = [];
+      projectilesRef.current = [];
+      impactsRef.current = [];
+      deferredCompletedActionIdsRef.current.clear();
+      animationActionsRef.current.clear();
+      latestServerActionsRef.current.clear();
+      activeActionIdsRef.current = [];
+      setQueue([]);
+      setActiveActions([]);
+    }
 
     const incomingActions = (Array.isArray(serverState?.actions) ? serverState.actions : [])
       .map((serverAction) => {
@@ -738,7 +772,7 @@ export default function PopPersonCanvas() {
       setDataset(serverState.dataset);
     }
 
-    if (serverStateHydratedRef.current) {
+    if (serverStateHydratedRef.current && !resetVisuals) {
       setQueue((prev) => prev.filter((action) => incomingActionIds.has(action.id)));
       setActiveActions((prev) => {
         const next = prev.filter((action) => {
@@ -769,7 +803,7 @@ export default function PopPersonCanvas() {
   }, [queueAction]);
   useEffect(() => {
     if (bootstrapQuery.data?.state) {
-      reconcileServerState(bootstrapQuery.data.state);
+      reconcileServerState(bootstrapQuery.data.state, { resetVisuals: true });
     }
   }, [bootstrapQuery.data, reconcileServerState]);
   useEffect(() => {
@@ -821,6 +855,11 @@ export default function PopPersonCanvas() {
           }
           if (message?.type === "hit" && message.event) {
             enqueueHitEvent(message.event);
+            const hitIndex = Math.max(1, Number(message.event.hitIndex) || 0);
+            const hitKey = `${message.event.actionId}:${hitIndex}`;
+            if (visualizedHitKeysRef.current.has(hitKey)) {
+              applyLiveHitToDataset(message.event);
+            }
             return;
           }
           if (
@@ -839,6 +878,11 @@ export default function PopPersonCanvas() {
             } else {
               removeRealtimeAction(message.actionId);
             }
+            return;
+          }
+          if (message?.type === "snapshot") {
+            if (!message?.state?.dataset || !Array.isArray(message.state.actions)) return;
+            reconcileServerState(message.state, { resetVisuals: true });
             return;
           }
           if (!message?.state?.dataset || !Array.isArray(message.state.actions)) return;
@@ -1202,11 +1246,20 @@ export default function PopPersonCanvas() {
       const serverNow = serverClockRef.current.serverTime
         + (now - serverClockRef.current.clientPerfAt);
       let spawnedThisFrame = 0;
+
+      // Expire finished visual objects before scheduling new ones. This keeps
+      // the concurrency limit from becoming a hidden clock: a slow/late hit
+      // must never prevent the next planned projectile from being scheduled.
+      projectilesRef.current = projectilesRef.current.filter((p) => {
+        const hitKey = `${p.firingId}:${p.hitIndex}`;
+        if (visualizedHitKeysRef.current.has(hitKey)) return false;
+        return now - p.startTime < p.duration + PROJECTILE_MAX_LIFETIME_MS;
+      });
+
       emittersRef.current = emittersRef.current.filter((emitter) => {
         while (
           emitter.nextIndex < emitter.count
           && serverNow >= emitter.startAtServer + emitter.nextIndex * emitter.staggerMs
-          && projectilesRef.current.length < MAX_CONCURRENT_PROJECTILES
           && spawnedThisFrame < 4
         ) {
           const currentLeaves = leavesRef.current;
@@ -1222,97 +1275,82 @@ export default function PopPersonCanvas() {
           const plannedStartServer = emitter.startAtServer
             + emitter.nextIndex * emitter.staggerMs;
           const ageMs = Math.max(0, serverNow - plannedStartServer);
-          const spreadUnit = deterministicUnit(`${emitter.id}:${hitIndex}:spread`);
-          const heightUnit = deterministicUnit(`${emitter.id}:${hitIndex}:height`);
-          const arcUnit = deterministicUnit(`${emitter.id}:${hitIndex}:arc`);
-          const sideUnit = deterministicUnit(`${emitter.id}:${hitIndex}:side`);
-          const spreadX = Math.min(96, Math.max(4, target.x + (spreadUnit - 0.5) * 46));
-          const spreadY = -4 - heightUnit * 10;
-          const dx = target.x - spreadX;
-          const dy = target.y - spreadY;
-          const dist = Math.hypot(dx, dy) || 1;
-          const perpX = -dy / dist;
-          const perpY = dx / dist;
-          const arcMag = (0.18 + arcUnit * 0.22) * dist * (sideUnit < 0.5 ? -1 : 1);
-           projectilesRef.current.push({
-            id: `${emitter.id}:${hitIndex}`,
-            firingId: emitter.id,
-             hitIndex: hitIndex + 1,
-            targetName: target.name,
-            startX: spreadX,
-            startY: spreadY,
-            endX: target.x,
-            endY: target.y,
-            controlX: (spreadX + target.x) / 2 + perpX * arcMag,
-            controlY: (spreadY + target.y) / 2 + perpY * arcMag,
-            startTime: now - ageMs,
-            duration: emitter.duration,
-            growthPerHit: emitter.growthPerHit,
-            direction: emitter.direction,
-            emoji: emitter.emoji,
-            level: emitter.level,
-          });
+          // A dense action is still allowed to advance its schedule when the
+          // visual cap is full. Skipping a single decorative projectile is
+          // preferable to pausing the entire action until a network hit lands.
+          if (projectilesRef.current.length < MAX_CONCURRENT_PROJECTILES) {
+            const spreadUnit = deterministicUnit(`${emitter.id}:${hitIndex}:spread`);
+            const heightUnit = deterministicUnit(`${emitter.id}:${hitIndex}:height`);
+            const arcUnit = deterministicUnit(`${emitter.id}:${hitIndex}:arc`);
+            const sideUnit = deterministicUnit(`${emitter.id}:${hitIndex}:side`);
+            const spreadX = Math.min(96, Math.max(4, target.x + (spreadUnit - 0.5) * 46));
+            const spreadY = -4 - heightUnit * 10;
+            const dx = target.x - spreadX;
+            const dy = target.y - spreadY;
+            const dist = Math.hypot(dx, dy) || 1;
+            const perpX = -dy / dist;
+            const perpY = dx / dist;
+            const arcMag = (0.18 + arcUnit * 0.22) * dist * (sideUnit < 0.5 ? -1 : 1);
+            projectilesRef.current.push({
+              id: `${emitter.id}:${hitIndex}`,
+              firingId: emitter.id,
+              hitIndex: hitIndex + 1,
+              targetName: target.name,
+              startX: spreadX,
+              startY: spreadY,
+              endX: target.x,
+              endY: target.y,
+              controlX: (spreadX + target.x) / 2 + perpX * arcMag,
+              controlY: (spreadY + target.y) / 2 + perpY * arcMag,
+              startTime: now - ageMs,
+              duration: emitter.duration,
+              growthPerHit: emitter.growthPerHit,
+              direction: emitter.direction,
+              emoji: emitter.emoji,
+              level: emitter.level,
+            });
+          }
           emitter.nextIndex += 1;
           emitter.remaining = emitter.count - emitter.nextIndex;
           spawnedThisFrame += 1;
         }
-        return emitter.nextIndex < emitter.count;
-      });
+        while (
+          emitter.nextImpactIndex < emitter.count
+          && serverNow >= emitter.startAtServer
+            + emitter.duration
+            + emitter.nextImpactIndex * emitter.staggerMs
+        ) {
+          const hitIndex = emitter.nextImpactIndex + 1;
+          const hitKey = `${emitter.id}:${hitIndex}`;
+          const confirmation = pendingHitEventsRef.current.get(hitKey);
+          pendingHitEventsRef.current.delete(hitKey);
+          queuedHitKeysRef.current.delete(hitKey);
+          if (confirmation) applyLiveHitToDataset(confirmation);
 
-      // A hit event is the single visual commit point: it advances the HUD,
-      // updates the cell, and starts the impact at the same time. The
-      // projectile follows the server timeline until this authoritative event
-      // arrives, so it cannot disappear before its impact is displayed.
-      if (now >= nextHitSpawnAtRef.current) {
-        const nextHit = hitQueueRef.current.shift();
-        if (nextHit) {
-          queuedHitKeysRef.current.delete(`${nextHit.actionId}:${nextHit.hitIndex}`);
-          const nextAction = animationActionsRef.current.get(nextHit.actionId);
-          const hitKey = `${nextHit.actionId}:${nextHit.hitIndex}`;
           visualizedHitKeysRef.current.add(hitKey);
-          const projectile = projectilesRef.current.find((item) => item.id === hitKey);
-          if (projectile) projectile.startTime = now - projectile.duration;
-          const target = leavesRef.current.find((leaf) => leaf.name === nextHit.targetName);
+          const target = leavesRef.current.find((leaf) => leaf.name === emitter.targetName);
           if (target) {
             impactsRef.current.push({
-              actionId: nextHit.actionId,
-              targetName: nextHit.targetName,
+              actionId: emitter.id,
+              targetName: emitter.targetName,
               x: target.x,
               y: target.y,
               r: target.r,
-              color: nextHit.direction === "defender" ? "34, 197, 94" : "239, 68, 68",
+              color: emitter.direction > 0 ? "34, 197, 94" : "239, 68, 68",
               startTime: now,
               duration: IMPACT_DURATION_MS,
             });
           }
-          applyLiveHitToDataset(nextHit);
-          const displayedCount = visualHitCountsRef.current.get(nextHit.actionId) || 0;
-          const visualCount = Math.min(
-            Math.max(1, Number(nextAction?.count) || Number(nextHit.hitIndex) || 1),
-            Math.max(displayedCount, Number(nextHit.hitIndex) || 0),
-          );
-          visualHitCountsRef.current.set(nextHit.actionId, visualCount);
-          // The hit event is authoritative even if action:started arrived
-          // later. executeAction hydrates from this ref when the action is
-          // registered, keeping the HUD aligned with the visual hit.
-          if (nextAction) {
-            setActiveActions((prev) => prev.map((action) => action.id === nextHit.actionId
-              ? {
-                  ...action,
-                  hitCount: visualCount,
-                  lastHitAt: nextHit.occurredAt || action.lastHitAt,
-                }
-              : action));
-          }
-          nextHitSpawnAtRef.current = now + 16;
+
+          const displayedCount = visualHitCountsRef.current.get(emitter.id) || 0;
+          const visualCount = Math.min(emitter.count, Math.max(displayedCount, hitIndex));
+          visualHitCountsRef.current.set(emitter.id, visualCount);
+          setActiveActions((prev) => prev.map((action) => action.id === emitter.id
+            ? { ...action, hitCount: visualCount }
+            : action));
+          emitter.nextImpactIndex += 1;
         }
-      }
-      projectilesRef.current = projectilesRef.current.filter((p) => {
-        const hitKey = `${p.firingId}:${p.hitIndex}`;
-        if (visualizedHitKeysRef.current.has(hitKey)) return false;
-        // Never leave a projectile parked at the target forever if a
-        // confirmation event is lost during a reconnect or server failure.
-        return now - p.startTime < p.duration + PROJECTILE_MAX_LIFETIME_MS;
+        return emitter.nextIndex < emitter.count || emitter.nextImpactIndex < emitter.count;
       });
       impactsRef.current = impactsRef.current.filter((i) => now - i.startTime < i.duration);
       deferredCompletedActionIdsRef.current.forEach((actionId) => {

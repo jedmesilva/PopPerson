@@ -57,6 +57,8 @@ export const getPopPersonResponseStateActionsItemStartDelayMsMin = 0;
 
 export const getPopPersonResponseStateActionsItemExecuteAtMin = 0;
 
+export const getPopPersonResponseStateActionsItemCompletesAtMin = 0;
+
 export const getPopPersonResponseStateActionsItemStartedAtMin = 0;
 
 export const getPopPersonResponseStateActionsItemCompletedAtMin = 0;
@@ -160,6 +162,7 @@ export const GetPopPersonResponse = zod.object({
   "targetName": zod.string(),
   "status": zod.enum(['queued', 'running', 'completed']),
   "executeAt": zod.number().min(getPopPersonResponseStateActionsItemExecuteAtMin),
+  "completesAt": zod.number().min(getPopPersonResponseStateActionsItemCompletesAtMin),
   "startedAt": zod.number().min(getPopPersonResponseStateActionsItemStartedAtMin).nullable(),
   "completedAt": zod.number().min(getPopPersonResponseStateActionsItemCompletedAtMin).nullable(),
   "hitCount": zod.number().min(getPopPersonResponseStateActionsItemHitCountMin),
@@ -194,6 +197,8 @@ export const getPopPersonStateResponseStateVersionMin = 0;
 export const getPopPersonStateResponseActionsItemStartDelayMsMin = 0;
 
 export const getPopPersonStateResponseActionsItemExecuteAtMin = 0;
+
+export const getPopPersonStateResponseActionsItemCompletesAtMin = 0;
 
 export const getPopPersonStateResponseActionsItemStartedAtMin = 0;
 
@@ -248,6 +253,7 @@ export const GetPopPersonStateResponse = zod.object({
   "targetName": zod.string(),
   "status": zod.enum(['queued', 'running', 'completed']),
   "executeAt": zod.number().min(getPopPersonStateResponseActionsItemExecuteAtMin),
+  "completesAt": zod.number().min(getPopPersonStateResponseActionsItemCompletesAtMin),
   "startedAt": zod.number().min(getPopPersonStateResponseActionsItemStartedAtMin).nullable(),
   "completedAt": zod.number().min(getPopPersonStateResponseActionsItemCompletedAtMin).nullable(),
   "hitCount": zod.number().min(getPopPersonStateResponseActionsItemHitCountMin),
@@ -293,6 +299,8 @@ export const createPopPersonActionResponseStartDelayMsMin = 0;
 
 export const createPopPersonActionResponseExecuteAtMin = 0;
 
+export const createPopPersonActionResponseCompletesAtMin = 0;
+
 export const createPopPersonActionResponseStartedAtMin = 0;
 
 export const createPopPersonActionResponseCompletedAtMin = 0;
@@ -319,6 +327,7 @@ export const CreatePopPersonActionResponse = zod.object({
   "targetName": zod.string(),
   "status": zod.enum(['queued', 'running', 'completed']),
   "executeAt": zod.number().min(createPopPersonActionResponseExecuteAtMin),
+  "completesAt": zod.number().min(createPopPersonActionResponseCompletesAtMin),
   "startedAt": zod.number().min(createPopPersonActionResponseStartedAtMin).nullable(),
   "completedAt": zod.number().min(createPopPersonActionResponseCompletedAtMin).nullable(),
   "hitCount": zod.number().min(createPopPersonActionResponseHitCountMin),

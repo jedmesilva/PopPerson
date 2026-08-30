@@ -170,6 +170,8 @@ export interface PopPersonAction {
   status: PopPersonActionStatus;
   /** @minimum 0 */
   executeAt: number;
+  /** @minimum 0 */
+  completesAt: number;
   /**
      * @minimum 0
      * @nullable
