@@ -483,7 +483,13 @@ export default function PopPersonCanvas() {
     // projectiles are created from WebSocket hit events, never from a local
     // timer based on the aggregate hitCount snapshot.
     if (!visualHitCountsRef.current.has(actionId)) {
-      visualHitCountsRef.current.set(actionId, 0);
+      // On a reload/reconnect, the persisted server progress is already
+      // real progress. Hydrate the HUD from it instead of replaying the
+      // entire action from 0% as a new animation.
+      visualHitCountsRef.current.set(
+        actionId,
+        Math.min(totalCount, Math.max(0, Number(serverAction.hitCount) || 0)),
+      );
     }
     setActiveActions((prev) => [
       ...prev,
