@@ -607,16 +607,28 @@ export default function PopPersonCanvas() {
 
     const serverNow = serverClockRef.current.serverTime
       + (performance.now() - serverClockRef.current.clientPerfAt);
-    const finalValue = Number(resolvedEvent?.finalValue);
     const targetName = resolvedEvent?.targetName || serverAction.targetName;
+    const eventPreviousValue = Number(resolvedEvent?.previousValue);
+    const eventDelta = Number(resolvedEvent?.delta);
+    const eventFinalValue = Number(resolvedEvent?.finalValue);
+    const currentVisualValue = Number(
+      leavesRef.current.find((leaf) => leaf.name === targetName)?.value,
+    );
+    const previousValue = Number.isFinite(eventPreviousValue)
+      ? eventPreviousValue
+      : currentVisualValue;
+    const finalValue = Number.isFinite(eventFinalValue)
+      ? eventFinalValue
+      : Number.isFinite(previousValue) && Number.isFinite(eventDelta)
+        ? previousValue + eventDelta
+        : Number.NaN;
+
+    // Keep the server's resolved value separate from the value rendered by the
+    // canvas. The visual dataset advances only when each projectile lands.
     if (targetName && Number.isFinite(finalValue)) {
-      pendingRadiusAnimationsRef.current.add(targetName);
       serverDatasetRef.current = serverDatasetRef.current.map((person) => (
         person.name === targetName ? { ...person, value: finalValue } : person
       ));
-      setDataset((prev) => prev.map((person) => (
-        person.name === targetName ? { ...person, value: finalValue } : person
-      )));
     }
 
     const count = Math.max(1, Number(resolvedEvent?.hitCount) || Number(serverAction.count) || 1);
@@ -635,6 +647,10 @@ export default function PopPersonCanvas() {
       completesAt: serverNow + duration + Math.max(0, count - 1) * staggerMs,
       count,
       hitCount: 0,
+      resolvedPreviousValue: Number.isFinite(previousValue) ? previousValue : null,
+      resolvedFinalValue: Number.isFinite(finalValue) ? finalValue : null,
+      resolvedDelta: Number.isFinite(eventDelta) ? eventDelta : null,
+      resolvedStateVersion: Number(resolvedEvent?.stateVersion),
     };
     animationActionsRef.current.set(actionId, animationAction);
     deferredCompletedActionIdsRef.current.add(actionId);
@@ -644,6 +660,7 @@ export default function PopPersonCanvas() {
       targetName,
       hitCount: count,
       finalValue: Number.isFinite(finalValue) ? finalValue : null,
+      previousValue: Number.isFinite(previousValue) ? previousValue : null,
     });
     executeActionRef.current(animationAction);
   }, []);
@@ -768,8 +785,22 @@ export default function PopPersonCanvas() {
     if (!actionId || !hitIndex) return false;
     const hitKey = `${actionId}:${hitIndex}`;
     const action = animationActionsRef.current.get(event?.actionId);
-    const value = Number(event?.value);
     const targetName = event?.targetName || action?.targetName;
+    const totalCount = Math.max(1, Number(action?.count) || hitIndex);
+    const eventValue = Number(event?.value);
+    const resolvedPreviousValue = Number(action?.resolvedPreviousValue);
+    const resolvedFinalValue = Number(action?.resolvedFinalValue);
+    const resolvedDelta = Number(action?.resolvedDelta);
+    const resolvedValue = Number.isFinite(resolvedPreviousValue)
+      && Number.isFinite(resolvedFinalValue)
+      ? resolvedPreviousValue
+        + (resolvedFinalValue - resolvedPreviousValue)
+          * (Math.min(totalCount, hitIndex) / totalCount)
+      : Number.isFinite(resolvedPreviousValue) && Number.isFinite(resolvedDelta)
+        ? resolvedPreviousValue
+          + resolvedDelta * (Math.min(totalCount, hitIndex) / totalCount)
+        : Number.NaN;
+    const value = Number.isFinite(eventValue) ? eventValue : resolvedValue;
     const alreadyVisualized = visualizedHitKeysRef.current.has(hitKey);
     if (targetName && Number.isFinite(value)) {
       pendingRadiusAnimationsRef.current.add(targetName);
@@ -782,9 +813,6 @@ export default function PopPersonCanvas() {
       );
     }
     if (targetName && Number.isFinite(value)) {
-      serverDatasetRef.current = serverDatasetRef.current.map((person) => (
-        person.name === targetName ? { ...person, value } : person
-      ));
       setDataset((prev) => prev.map((person) => (
         person.name === targetName ? { ...person, value } : person
       )));
@@ -823,9 +851,9 @@ export default function PopPersonCanvas() {
     projectilesRef.current = projectilesRef.current.filter((projectile) => (
       projectile.firingId !== actionId || projectile.hitIndex !== hitIndex
     ));
-    const totalCount = Math.max(1, Number(action?.count) || Number(emitter?.count) || hitIndex);
+    const actionTotalCount = Math.max(1, Number(action?.count) || Number(emitter?.count) || hitIndex);
     const previousCount = visualHitCountsRef.current.get(actionId) || 0;
-    const visualCount = Math.min(totalCount, Math.max(previousCount, hitIndex));
+    const visualCount = Math.min(actionTotalCount, Math.max(previousCount, hitIndex));
     visualHitCountsRef.current.set(actionId, visualCount);
     setActiveActions((prev) => prev.map((activeAction) => activeAction.id === actionId
       ? {
