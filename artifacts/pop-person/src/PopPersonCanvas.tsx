@@ -32,6 +32,7 @@ function deterministicUnit(seed) {
 
 const MODE_LABEL = { atacar: "Ataque", defender: "Defesa" };
 const MAX_CONCURRENT_PROJECTILES = 24;
+const IMPACT_DURATION_MS = 350;
 const CIRCLE_GAP = 2.5;
 // Keep zoom effectively unbounded for users while avoiding browser floating-
 // point and canvas precision problems at the extreme ends of the scale.
@@ -447,6 +448,9 @@ export default function PopPersonCanvas() {
     clientPerfAt: performance.now(),
   });
   const impactsRef = useRef([]);
+  const pendingRadiusAnimationsRef = useRef(new Set());
+  const visualizedHitKeysRef = useRef(new Set());
+  const deferredCompletedActionIdsRef = useRef(new Set());
   const personImagesRef = useRef(new Map());
   const shakeActionIdsRef = useRef(new Set());
   const activeActionIdsRef = useRef([]);
@@ -605,20 +609,32 @@ export default function PopPersonCanvas() {
   const removeRealtimeAction = useCallback((actionId) => {
     if (!actionId) return;
     latestServerActionsRef.current.delete(actionId);
+    animationActionsRef.current.delete(actionId);
     locallyCreatedActionIdsRef.current.delete(actionId);
+    deferredCompletedActionIdsRef.current.delete(actionId);
+    hitQueueRef.current = hitQueueRef.current.filter((hit) => hit.actionId !== actionId);
+    for (const key of queuedHitKeysRef.current) {
+      if (key.startsWith(`${actionId}:`)) queuedHitKeysRef.current.delete(key);
+    }
     setQueue((prev) => prev.filter((action) => action.id !== actionId));
     setActiveActions((prev) => {
       const next = prev.filter((action) => action.id !== actionId);
       activeActionIdsRef.current = next.map((action) => action.id);
       return next;
     });
+    for (const key of visualizedHitKeysRef.current) {
+      if (key.startsWith(`${actionId}:`)) visualizedHitKeysRef.current.delete(key);
+    }
     emittersRef.current = emittersRef.current.filter((emitter) => emitter.id !== actionId);
+    impactsRef.current = impactsRef.current.filter((impact) => impact.actionId !== actionId);
     shakeActionIdsRef.current.delete(actionId);
   }, []);
   const applyLiveHitToDataset = useCallback((event) => {
     const action = animationActionsRef.current.get(event?.actionId);
     const value = Number(event?.value);
-    if (!action?.targetName || !Number.isFinite(value)) return;
+    const targetName = event?.targetName || action?.targetName;
+    if (!targetName || !Number.isFinite(value)) return;
+    pendingRadiusAnimationsRef.current.add(targetName);
     const eventVersion = Number(event?.stateVersion);
     if (Number.isFinite(eventVersion)) {
       latestServerStateVersionRef.current = Math.max(
@@ -627,7 +643,7 @@ export default function PopPersonCanvas() {
       );
     }
     setDataset((prev) => prev.map((person) => (
-      person.name === action.targetName ? { ...person, value } : person
+      person.name === targetName ? { ...person, value } : person
     )));
   }, []);
   const reconcileServerState = useCallback((serverState) => {
@@ -788,7 +804,6 @@ export default function PopPersonCanvas() {
           }
           if (message?.type === "hit" && message.event) {
             enqueueHitEvent(message.event);
-            applyLiveHitToDataset(message.event);
             return;
           }
           if (
@@ -802,7 +817,11 @@ export default function PopPersonCanvas() {
             (message?.type === "action:completed" || message?.type === "action:cancelled") &&
             message.actionId
           ) {
-            removeRealtimeAction(message.actionId);
+            if (message.type === "action:completed") {
+              deferredCompletedActionIdsRef.current.add(message.actionId);
+            } else {
+              removeRealtimeAction(message.actionId);
+            }
             return;
           }
           if (!message?.state?.dataset || !Array.isArray(message.state.actions)) return;
@@ -966,13 +985,43 @@ export default function PopPersonCanvas() {
     }
   }, [leaves.length, fitToView]);
   const clampScale = (s) => Math.min(Math.max(s, MIN_ZOOM), MAX_ZOOM);
-  const seedMissingRects = useCallback(() => {
+  const seedMissingRects = useCallback((now = performance.now()) => {
     const names = new Set();
     leavesRef.current.forEach((l) => {
       names.add(l.name);
-      if (!animatedCirclesRef.current.has(l.name)) animatedCirclesRef.current.set(l.name, { x: l.x, y: l.y, r: l.r });
+      const current = animatedCirclesRef.current.get(l.name);
+      if (!current) {
+        animatedCirclesRef.current.set(l.name, {
+          x: l.x,
+          y: l.y,
+          r: l.r,
+          radiusTarget: l.r,
+          radiusFrom: l.r,
+          radiusStartedAt: null,
+        });
+        return;
+      }
+
+      if (Math.abs(current.radiusTarget - l.r) < 0.001) {
+        pendingRadiusAnimationsRef.current.delete(l.name);
+        return;
+      }
+      const shouldAnimate = pendingRadiusAnimationsRef.current.has(l.name);
+      pendingRadiusAnimationsRef.current.delete(l.name);
+      current.radiusTarget = l.r;
+      if (shouldAnimate) {
+        current.radiusFrom = current.r;
+        current.radiusStartedAt = now;
+      } else {
+        current.r = l.r;
+        current.radiusFrom = l.r;
+        current.radiusStartedAt = null;
+      }
     });
     for (const key of animatedCirclesRef.current.keys()) if (!names.has(key)) animatedCirclesRef.current.delete(key);
+    for (const key of pendingRadiusAnimationsRef.current) {
+      if (!names.has(key)) pendingRadiusAnimationsRef.current.delete(key);
+    }
   }, []);
 
   const draw = useCallback(() => {
@@ -1154,9 +1203,10 @@ export default function PopPersonCanvas() {
           const perpX = -dy / dist;
           const perpY = dx / dist;
           const arcMag = (0.18 + arcUnit * 0.22) * dist * (sideUnit < 0.5 ? -1 : 1);
-          projectilesRef.current.push({
+           projectilesRef.current.push({
             id: `${emitter.id}:${hitIndex}`,
             firingId: emitter.id,
+             hitIndex: hitIndex + 1,
             targetName: target.name,
             startX: spreadX,
             startY: spreadY,
@@ -1178,14 +1228,32 @@ export default function PopPersonCanvas() {
         return emitter.nextIndex < emitter.count;
       });
 
-      // Hit events confirm the server-side impact and advance the HUD one
-      // event at a time. The projectile itself follows the server timeline
-      // above, so network delivery jitter cannot move the animation clock.
+      // A hit event is the single visual commit point: it advances the HUD,
+      // updates the cell, and starts the impact at the same time. The
+      // projectile follows the server timeline until this authoritative event
+      // arrives, so it cannot disappear before its impact is displayed.
       if (now >= nextHitSpawnAtRef.current) {
         const nextHit = hitQueueRef.current.shift();
         if (nextHit) {
           queuedHitKeysRef.current.delete(`${nextHit.actionId}:${nextHit.hitIndex}`);
           const nextAction = animationActionsRef.current.get(nextHit.actionId);
+          const hitKey = `${nextHit.actionId}:${nextHit.hitIndex}`;
+          visualizedHitKeysRef.current.add(hitKey);
+          const projectile = projectilesRef.current.find((item) => item.id === hitKey);
+          if (projectile) projectile.startTime = now - projectile.duration;
+          const target = leavesRef.current.find((leaf) => leaf.name === nextHit.targetName);
+          if (target) {
+            impactsRef.current.push({
+              actionId: nextHit.actionId,
+              x: target.x,
+              y: target.y,
+              r: target.r,
+              color: nextHit.direction === "defender" ? "34, 197, 94" : "239, 68, 68",
+              startTime: now,
+              duration: IMPACT_DURATION_MS,
+            });
+          }
+          applyLiveHitToDataset(nextHit);
           if (nextAction) {
             const displayedCount = visualHitCountsRef.current.get(nextHit.actionId) || 0;
             const visualCount = Math.min(
@@ -1204,17 +1272,20 @@ export default function PopPersonCanvas() {
           nextHitSpawnAtRef.current = now + 16;
         }
       }
-      const finished = [];
       projectilesRef.current = projectilesRef.current.filter((p) => {
-        const complete = now - p.startTime >= p.duration;
-        if (complete) finished.push(p);
-        return !complete;
-      });
-      finished.forEach((f) => {
-        const target = leavesRef.current.find((l) => l.name === f.targetName);
-        if (target) impactsRef.current.push({ x: target.x, y: target.y, r: target.r, color: f.direction === 1 ? "34, 197, 94" : "239, 68, 68", startTime: now, duration: 350 });
+        return !visualizedHitKeysRef.current.has(`${p.firingId}:${p.hitIndex}`);
       });
       impactsRef.current = impactsRef.current.filter((i) => now - i.startTime < i.duration);
+      deferredCompletedActionIdsRef.current.forEach((actionId) => {
+        const hasQueuedHit = hitQueueRef.current.some((hit) => hit.actionId === actionId);
+        const hasProjectile = projectilesRef.current.some(
+          (projectile) => projectile.firingId === actionId,
+        );
+        const hasImpact = impactsRef.current.some((impact) => impact.actionId === actionId);
+        if (!hasQueuedHit && !hasProjectile && !hasImpact) {
+          removeRealtimeAction(actionId);
+        }
+      });
       // The local projectile animation is only visual feedback. Keep each
       // action in the HUD until the server removes it from the live state;
       // otherwise the browser looks finished while the API is still recording
@@ -1226,13 +1297,27 @@ export default function PopPersonCanvas() {
         }
       });
       seedMissingRects();
+      animatedCirclesRef.current.forEach((circle) => {
+        if (circle.radiusStartedAt === null) return;
+        const progress = Math.min(
+          1,
+          Math.max(0, (now - circle.radiusStartedAt) / IMPACT_DURATION_MS),
+        );
+        const eased = easeOutQuad(progress);
+        circle.r = circle.radiusFrom
+          + (circle.radiusTarget - circle.radiusFrom) * eased;
+        if (progress >= 1) {
+          circle.r = circle.radiusTarget;
+          circle.radiusFrom = circle.radiusTarget;
+          circle.radiusStartedAt = null;
+        }
+      });
       const lerpFactor = 1 - Math.pow(0.001, dt / 1000);
       leavesRef.current.forEach((target) => {
         const a = animatedCirclesRef.current.get(target.name);
         if (a) {
           a.x += (target.x - a.x) * lerpFactor;
           a.y += (target.y - a.y) * lerpFactor;
-          a.r += (target.r - a.r) * lerpFactor;
         }
       });
       keepCirclesSeparated(
@@ -1245,7 +1330,7 @@ export default function PopPersonCanvas() {
     }
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [draw, seedMissingRects]);
+  }, [applyLiveHitToDataset, draw, removeRealtimeAction, seedMissingRects]);
 
   useEffect(() => {
     function resize() {
