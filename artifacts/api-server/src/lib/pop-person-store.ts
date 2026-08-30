@@ -31,13 +31,14 @@ import type {
   PopPersonConfig,
   PopPersonState,
 } from "@workspace/api-zod";
+import {
+  dueHitCountAt,
+  hitAtForIndex,
+  isTimelineComplete,
+} from "@workspace/api-zod";
 import { logger } from "./logger";
 
 const PROCESS_INTERVAL_MS = 500;
-// An action should finish within its persisted `completesAt` timestamp. If a
-// process was offline or failed while it was running, do not resume an old
-// action indefinitely on the next tick or restart.
-const STALE_ACTION_GRACE_MS = 60_000;
 // Keep each worker transaction short. A single action can contain thousands of
 // projectiles, and processing all due hits at once holds cell/room locks long
 // enough to block new action requests and other worker instances.
@@ -63,6 +64,7 @@ export type PopPersonRealtimeNotification =
       type: "action:queued" | "action:started";
       roomId: string;
       actionId: string;
+      stateVersion?: number;
     }
   | {
       type: "action:hit";
@@ -73,6 +75,7 @@ export type PopPersonRealtimeNotification =
       type: "action:completed" | "action:cancelled";
       roomId: string;
       actionId: string;
+      stateVersion?: number;
     };
 type Snapshot = Record<string, unknown>;
 
@@ -687,7 +690,7 @@ export async function createPopPersonAction(
           ),
         )
         .limit(1);
-      if (existing) return { action: existing, created: false };
+      if (existing) return { action: existing, created: false, stateVersion: null };
     }
 
     const [target] = await tx
@@ -808,21 +811,41 @@ export async function createPopPersonAction(
       deltaValue: "0",
       payload: { targetName: target.targetName, itemCode: item.code, levelCode: level.code },
     });
-    await tx
+    const [queuedRoom] = await tx
       .update(roomsTable)
       .set({
         stateVersion: sql`${roomsTable.stateVersion} + 1`,
         updatedAt: now,
       })
-      .where(eq(roomsTable.id, roomId));
+      .where(eq(roomsTable.id, roomId))
+      .returning({ stateVersion: roomsTable.stateVersion });
     await enqueueRealtimeNotification(tx, {
       type: "action:queued",
       roomId,
       actionId: action.id,
+      stateVersion: toNumber(queuedRoom?.stateVersion),
     });
-    return { action, created: true };
+    return {
+      action,
+      created: true,
+      stateVersion: toNumber(queuedRoom?.stateVersion),
+    };
   });
 
+  if (result.created) {
+    logger.info(
+      {
+        actionId: result.action.id,
+        roomId: result.action.roomId,
+        state: result.action.status,
+        executeAt: result.action.scheduledFor.getTime(),
+        completesAt: result.action.completesAt.getTime(),
+        hitCount: snapshotNumber(result.action.ruleSnapshot, "count", 0),
+        stateVersion: result.stateVersion,
+      },
+      "PopPerson action queued",
+    );
+  }
   const [response] = await getActions(roomId, result.action.id);
   if (!response) throw new Error("Ação criada, mas não pôde ser carregada.");
   return response;
@@ -832,9 +855,11 @@ async function processDueActions(): Promise<void> {
   if (processing) return;
   processing = true;
   let hitsWritten = 0;
+  let persistedHitEvents: PopPersonHitEvent[] = [];
   try {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       hitsWritten = 0;
+      persistedHitEvents = [];
       const now = new Date();
       try {
         await db.transaction(async (tx) => {
@@ -846,46 +871,6 @@ async function processDueActions(): Promise<void> {
       ).rows?.[0];
       const lockAcquired = lockRow?.locked === true || lockRow?.locked === "t";
       if (!lockAcquired) return;
-
-      const staleBefore = new Date(now.getTime() - STALE_ACTION_GRACE_MS);
-      const staleActions = await tx
-        .update(actionsTable)
-        .set({
-          status: "cancelled",
-          cancelledAt: now,
-          updatedAt: now,
-          failureReason: "Ação expirada antes de ser concluída.",
-        })
-        .where(
-          and(
-            inArray(actionsTable.status, ["queued", "running"]),
-            lte(actionsTable.completesAt, staleBefore),
-          ),
-        )
-        .returning({
-          id: actionsTable.id,
-          roomId: actionsTable.roomId,
-        });
-
-      if (staleActions.length > 0) {
-        const roomIds = new Set(staleActions.map((action) => action.roomId));
-        for (const roomId of roomIds) {
-          await tx
-            .update(roomsTable)
-            .set({
-              stateVersion: sql`${roomsTable.stateVersion} + 1`,
-              updatedAt: now,
-            })
-            .where(eq(roomsTable.id, roomId));
-        }
-        for (const staleAction of staleActions) {
-          await enqueueRealtimeNotification(tx, {
-            type: "action:cancelled",
-            roomId: staleAction.roomId,
-            actionId: staleAction.id,
-          });
-        }
-      }
 
       const activated = await tx
         .update(actionsTable)
@@ -913,17 +898,19 @@ async function processDueActions(): Promise<void> {
           deltaValue: "0",
           payload: { startedAt: now.toISOString() },
         });
-        await tx
+        const [startedRoom] = await tx
           .update(roomsTable)
           .set({
             stateVersion: sql`${roomsTable.stateVersion} + 1`,
             updatedAt: now,
           })
-          .where(eq(roomsTable.id, action.roomId));
+          .where(eq(roomsTable.id, action.roomId))
+          .returning({ stateVersion: roomsTable.stateVersion });
         await enqueueRealtimeNotification(tx, {
           type: "action:started",
           roomId: action.roomId,
           actionId: action.id,
+          stateVersion: toNumber(startedRoom?.stateVersion),
         });
       }
 
@@ -978,14 +965,13 @@ async function processDueActions(): Promise<void> {
           0,
           snapshotNumber(action.ruleSnapshot, "durationMs", 0),
         );
-        const firstHitAt = action.scheduledFor.getTime() + durationMs;
-        const hitIntervalMs = Math.max(1, staggerMs);
-        const dueHitCount = now.getTime() >= firstHitAt
-          ? Math.min(
-              projectileCount,
-              Math.floor((now.getTime() - firstHitAt) / hitIntervalMs) + 1,
-            )
-          : 0;
+        const timeline = {
+          executeAt: action.scheduledFor.getTime(),
+          duration: durationMs,
+          staggerMs,
+          count: projectileCount,
+        };
+        const dueHitCount = dueHitCountAt(timeline, now.getTime());
         const direction = action.mode === "defender" ? 1 : -1;
         const growthPerHit = snapshotNumber(
           action.ruleSnapshot,
@@ -1011,7 +997,7 @@ async function processDueActions(): Promise<void> {
           recordedHitCount + fairActionQuota,
         );
         for (let hitIndex = recordedHitCount; hitIndex < hitLimit; hitIndex += 1) {
-          const hitAt = new Date(firstHitAt + hitIndex * staggerMs);
+          const hitAt = new Date(hitAtForIndex(timeline, hitIndex + 1));
           const [insertedHit] = await tx
             .insert(actionEventsTable)
             .values({
@@ -1056,6 +1042,9 @@ async function processDueActions(): Promise<void> {
             })
             .where(eq(roomsTable.id, action.roomId))
             .returning({ stateVersion: roomsTable.stateVersion });
+          if (!updatedCell || !updatedRoom) {
+            throw new Error(`Ação ${action.id} perdeu seu alvo durante o hit.`);
+          }
           const hitEvent: PopPersonHitEvent = {
             actionId: action.id,
             hitIndex: hitIndex + 1,
@@ -1068,16 +1057,29 @@ async function processDueActions(): Promise<void> {
             value: toNumber(updatedCell?.currentValue),
             stateVersion: toNumber(updatedRoom?.stateVersion),
           };
+          await tx
+            .update(actionEventsTable)
+            .set({
+              payload: {
+                hitIndex: hitEvent.hitIndex,
+                hitAt: new Date(hitEvent.hitAt).toISOString(),
+                direction: hitEvent.direction,
+                value: hitEvent.value,
+                stateVersion: hitEvent.stateVersion,
+              },
+            })
+            .where(eq(actionEventsTable.id, insertedHit.id));
           await enqueueRealtimeNotification(tx, {
             type: "action:hit",
             roomId: action.roomId,
             event: hitEvent,
           });
+          persistedHitEvents.push(hitEvent);
           hitsWritten += 1;
         }
 
-        const allHitsRecorded = recordedHitCount + (hitLimit - recordedHitCount) >= projectileCount;
-        if (!allHitsRecorded || now.getTime() < action.completesAt.getTime()) continue;
+        const recordedAfterThisPass = recordedHitCount + (hitLimit - recordedHitCount);
+        if (!isTimelineComplete(timeline, recordedAfterThisPass, now.getTime())) continue;
 
         const [claimed] = await tx
           .update(actionsTable)
@@ -1109,22 +1111,36 @@ async function processDueActions(): Promise<void> {
             direction: claimed.mode,
           },
         });
-        await tx
+        const [completedRoom] = await tx
           .update(roomsTable)
           .set({
             stateVersion: sql`${roomsTable.stateVersion} + 1`,
             updatedAt: now,
           })
-          .where(eq(roomsTable.id, claimed.roomId));
+          .where(eq(roomsTable.id, claimed.roomId))
+          .returning({ stateVersion: roomsTable.stateVersion });
         await enqueueRealtimeNotification(tx, {
           type: "action:completed",
           roomId: claimed.roomId,
           actionId: claimed.id,
+          stateVersion: toNumber(completedRoom?.stateVersion),
         });
 
         if (hitsWritten >= MAX_HITS_PER_TRANSACTION) break;
       }
         });
+        for (const hitEvent of persistedHitEvents) {
+          logger.info(
+            {
+              actionId: hitEvent.actionId,
+              hitIndex: hitEvent.hitIndex,
+              stateVersion: hitEvent.stateVersion,
+              hitAt: hitEvent.hitAt,
+              occurredAt: hitEvent.occurredAt,
+            },
+            "PopPerson hit persisted",
+          );
+        }
         break;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

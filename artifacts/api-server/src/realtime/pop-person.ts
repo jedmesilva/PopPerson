@@ -27,6 +27,7 @@ type PopPersonRealtimeMessage = {
   event?: PopPersonHitEvent;
   serverTime?: number;
   clientTime?: number;
+  stateVersion?: number;
 };
 
 function sendMessage(socket: WebSocket, message: PopPersonRealtimeMessage): void {
@@ -63,7 +64,19 @@ async function handleNotification(
       type: notification.type,
       action,
       serverTime,
+      stateVersion: notification.stateVersion,
     });
+    logger.info(
+      {
+        actionId: action.id,
+        state: action.status,
+        serverTime,
+        executeAt: action.executeAt,
+        completesAt: action.completesAt,
+        stateVersion: notification.stateVersion,
+      },
+      `PopPerson ${notification.type} published`,
+    );
     return;
   }
 
@@ -73,6 +86,16 @@ async function handleNotification(
       event: notification.event,
       serverTime,
     });
+    logger.info(
+      {
+        actionId: notification.event.actionId,
+        hitIndex: notification.event.hitIndex,
+        stateVersion: notification.event.stateVersion,
+        hitAt: notification.event.hitAt,
+        serverTime,
+      },
+      "PopPerson hit published",
+    );
     return;
   }
 
@@ -80,7 +103,17 @@ async function handleNotification(
     type: notification.type,
     actionId: notification.actionId,
     serverTime,
+    stateVersion: notification.stateVersion,
   });
+  logger.info(
+    {
+      actionId: notification.actionId,
+      type: notification.type,
+      serverTime,
+      stateVersion: notification.stateVersion,
+    },
+    `PopPerson ${notification.type} published`,
+  );
 }
 
 export async function registerPopPersonRealtime(
