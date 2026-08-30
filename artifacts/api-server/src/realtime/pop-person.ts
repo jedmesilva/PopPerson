@@ -87,15 +87,23 @@ export async function registerPopPersonRealtime(
   webSocketServer: WebSocketServer,
 ): Promise<void> {
   const listener = await pool.connect();
+  // PostgreSQL delivers notifications in commit order, but handling every
+  // notification in a detached promise can reorder messages at the browser.
+  // In particular, action:started performs a database read while hit can be
+  // broadcast immediately. Keep one delivery chain so the client always
+  // registers the action before consuming its hit events.
+  let notificationChain = Promise.resolve();
   listener.on("notification", (message) => {
     if (message.channel !== POP_PERSON_REALTIME_CHANNEL || !message.payload) return;
     try {
       const notification = JSON.parse(
         message.payload,
       ) as PopPersonRealtimeNotification;
-      void handleNotification(webSocketServer, notification).catch((error) => {
-        logger.error({ err: error }, "Failed to deliver PopPerson realtime event");
-      });
+      notificationChain = notificationChain
+        .then(() => handleNotification(webSocketServer, notification))
+        .catch((error) => {
+          logger.error({ err: error }, "Failed to deliver PopPerson realtime event");
+        });
     } catch (error) {
       logger.warn({ err: error }, "Ignoring malformed PopPerson realtime event");
     }
