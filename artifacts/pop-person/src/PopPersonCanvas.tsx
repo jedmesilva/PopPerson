@@ -560,8 +560,10 @@ export default function PopPersonCanvas() {
     if (!event?.actionId || !Number.isFinite(Number(event.hitIndex))) return;
     const hitIndex = Math.max(1, Number(event.hitIndex));
     const key = `${event.actionId}:${hitIndex}`;
-    const displayedCount = visualHitCountsRef.current.get(event.actionId) || 0;
-    if (hitIndex <= displayedCount || queuedHitKeysRef.current.has(key)) return;
+    // A snapshot may already contain this server progress before the
+    // corresponding realtime event arrives. That does not mean the browser
+    // displayed the hit, so only an actually visualized hit is a duplicate.
+    if (visualizedHitKeysRef.current.has(key) || queuedHitKeysRef.current.has(key)) return;
     queuedHitKeysRef.current.add(key);
     hitQueueRef.current.push({
       ...event,
@@ -626,6 +628,9 @@ export default function PopPersonCanvas() {
       if (key.startsWith(`${actionId}:`)) visualizedHitKeysRef.current.delete(key);
     }
     emittersRef.current = emittersRef.current.filter((emitter) => emitter.id !== actionId);
+    projectilesRef.current = projectilesRef.current.filter(
+      (projectile) => projectile.firingId !== actionId,
+    );
     impactsRef.current = impactsRef.current.filter((impact) => impact.actionId !== actionId);
     shakeActionIdsRef.current.delete(actionId);
   }, []);
@@ -1254,13 +1259,16 @@ export default function PopPersonCanvas() {
             });
           }
           applyLiveHitToDataset(nextHit);
+          const displayedCount = visualHitCountsRef.current.get(nextHit.actionId) || 0;
+          const visualCount = Math.min(
+            Math.max(1, Number(nextAction?.count) || Number(nextHit.hitIndex) || 1),
+            Math.max(displayedCount, Number(nextHit.hitIndex) || 0),
+          );
+          visualHitCountsRef.current.set(nextHit.actionId, visualCount);
+          // The hit event is authoritative even if action:started arrived
+          // later. executeAction hydrates from this ref when the action is
+          // registered, keeping the HUD aligned with the visual hit.
           if (nextAction) {
-            const displayedCount = visualHitCountsRef.current.get(nextHit.actionId) || 0;
-            const visualCount = Math.min(
-              Math.max(1, Number(nextAction.count) || 1),
-              Math.max(displayedCount, Number(nextHit.hitIndex) || 0),
-            );
-            visualHitCountsRef.current.set(nextHit.actionId, visualCount);
             setActiveActions((prev) => prev.map((action) => action.id === nextHit.actionId
               ? {
                   ...action,
