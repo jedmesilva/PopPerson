@@ -9,6 +9,6 @@ export {
   POP_PERSON_REALTIME_CHANNEL,
 } from "./pop-person-store";
 export type {
-  PopPersonHitEvent,
+  PopPersonResolvedEvent,
   PopPersonRealtimeNotification,
 } from "./pop-person-store";

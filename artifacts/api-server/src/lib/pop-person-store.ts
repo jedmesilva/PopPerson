@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   and,
   asc,
+  desc,
   eq,
   inArray,
   lte,
@@ -47,29 +48,24 @@ const MAX_HITS_PER_TRANSACTION = 50;
 // action worker at the database level so two workers cannot lock the same
 // action/cell/room rows in different orders and deadlock each other.
 const POP_PERSON_WORKER_LOCK_KEY = 29184731;
-export type PopPersonHitEvent = {
+export type PopPersonResolvedEvent = {
+  eventId: string;
   actionId: string;
-  hitIndex: number;
-  sequence: number;
-  hitAt: number;
-  occurredAt: number;
+  hitCount: number;
   direction: PopPersonAction["mode"];
   delta: number;
   targetName: string;
-  value: number;
+  previousValue: number;
+  finalValue: number;
   stateVersion: number;
+  resolvedAt: number;
 };
 export type PopPersonRealtimeNotification =
   | {
-      type: "action:queued" | "action:started";
+      type: "action:resolved";
       roomId: string;
       actionId: string;
-      stateVersion?: number;
-    }
-  | {
-      type: "action:hit";
-      roomId: string;
-      event: PopPersonHitEvent;
+      event: PopPersonResolvedEvent;
     }
   | {
       type: "action:completed" | "action:cancelled";
@@ -801,34 +797,10 @@ export async function createPopPersonAction(
     }
     if (!action) throw new Error("Não foi possível criar a ação.");
 
-    await tx.insert(actionEventsTable).values({
-      actionId: action.id,
-      roomId,
-      cellId: target.cellId,
-      sequence: "1",
-      eventType: "queued",
-      status: "queued",
-      deltaValue: "0",
-      payload: { targetName: target.targetName, itemCode: item.code, levelCode: level.code },
-    });
-    const [queuedRoom] = await tx
-      .update(roomsTable)
-      .set({
-        stateVersion: sql`${roomsTable.stateVersion} + 1`,
-        updatedAt: now,
-      })
-      .where(eq(roomsTable.id, roomId))
-      .returning({ stateVersion: roomsTable.stateVersion });
-    await enqueueRealtimeNotification(tx, {
-      type: "action:queued",
-      roomId,
-      actionId: action.id,
-      stateVersion: toNumber(queuedRoom?.stateVersion),
-    });
     return {
       action,
       created: true,
-      stateVersion: toNumber(queuedRoom?.stateVersion),
+      stateVersion: null,
     };
   });
 
@@ -851,7 +823,207 @@ export async function createPopPersonAction(
   return response;
 }
 
+async function nextActionEventSequence(
+  tx: any,
+  actionId: string,
+): Promise<string> {
+  const [lastEvent] = await tx
+    .select({ sequence: actionEventsTable.sequence })
+    .from(actionEventsTable)
+    .where(eq(actionEventsTable.actionId, actionId))
+    .orderBy(desc(actionEventsTable.sequence))
+    .limit(1);
+  return String(toNumber(lastEvent?.sequence, 0) + 1);
+}
+
 async function processDueActions(): Promise<void> {
+  if (processing) return;
+  processing = true;
+
+  try {
+    await db.transaction(async (tx) => {
+      const lockResult = await tx.execute(
+        sql`SELECT pg_try_advisory_xact_lock(${POP_PERSON_WORKER_LOCK_KEY}) AS locked`,
+      );
+      const lockRow = (
+        lockResult as unknown as { rows?: Array<{ locked?: boolean | string }> }
+      ).rows?.[0];
+      const lockAcquired = lockRow?.locked === true || lockRow?.locked === "t";
+      if (!lockAcquired) return;
+
+      const now = new Date();
+      const dueActions = await tx
+        .select({
+          id: actionsTable.id,
+          roomId: actionsTable.roomId,
+          cellId: actionsTable.cellId,
+          mode: actionsTable.mode,
+          status: actionsTable.status,
+          scheduledFor: actionsTable.scheduledFor,
+          effectiveImpact: actionsTable.effectiveImpact,
+          ruleSnapshot: actionsTable.ruleSnapshot,
+          targetName: peopleTable.name,
+        })
+        .from(actionsTable)
+        .innerJoin(cellsTable, eq(actionsTable.cellId, cellsTable.id))
+        .innerJoin(peopleTable, eq(cellsTable.personId, peopleTable.id))
+        .where(
+          and(
+            inArray(actionsTable.status, ["queued", "running"]),
+            lte(actionsTable.scheduledFor, now),
+          ),
+        )
+        .orderBy(asc(actionsTable.scheduledFor))
+        .limit(100);
+
+      for (const action of dueActions) {
+        const previousEvents = await tx
+          .select({ eventType: actionEventsTable.eventType })
+          .from(actionEventsTable)
+          .where(eq(actionEventsTable.actionId, action.id));
+        const alreadyResolved = previousEvents.some(
+          (event) => event.eventType === "completed",
+        );
+        if (alreadyResolved) {
+          await tx
+            .update(actionsTable)
+            .set({
+              status: "completed",
+              completedAt: now,
+              updatedAt: now,
+            })
+            .where(eq(actionsTable.id, action.id));
+          continue;
+        }
+
+        const previousHitCount = previousEvents.filter(
+          (event) => event.eventType === "hit",
+        ).length;
+        const hitCount = Math.max(
+          1,
+          Math.floor(snapshotNumber(action.ruleSnapshot, "count", 1)),
+        );
+        const remainingHitCount = Math.max(0, hitCount - previousHitCount);
+        const direction = action.mode === "defender" ? 1 : -1;
+        const growthPerHit = snapshotNumber(
+          action.ruleSnapshot,
+          "growthPerHit",
+          toNumber(action.effectiveImpact) / hitCount,
+        );
+        const delta = growthPerHit * direction;
+
+        const [cell] = await tx
+          .select({
+            currentValue: cellsTable.currentValue,
+            minimumValue: cellsTable.minimumValue,
+          })
+          .from(cellsTable)
+          .where(eq(cellsTable.id, action.cellId))
+          .limit(1);
+        if (!cell) {
+          throw new Error(`Ação ${action.id} perdeu seu alvo durante a resolução.`);
+        }
+
+        const previousValue = toNumber(cell.currentValue);
+        const finalValue = Math.max(
+          toNumber(cell.minimumValue),
+          previousValue + delta * remainingHitCount,
+        );
+        const [updatedCell] = await tx
+          .update(cellsTable)
+          .set({
+            currentValue: String(finalValue),
+            stateVersion: sql`${cellsTable.stateVersion} + 1`,
+            updatedAt: now,
+          })
+          .where(eq(cellsTable.id, action.cellId))
+          .returning({ currentValue: cellsTable.currentValue });
+        if (!updatedCell) {
+          throw new Error(`Ação ${action.id} não conseguiu atualizar sua célula.`);
+        }
+
+        const [claimed] = await tx
+          .update(actionsTable)
+          .set({
+            status: "completed",
+            completedAt: now,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(actionsTable.id, action.id),
+              inArray(actionsTable.status, ["queued", "running"]),
+            ),
+          )
+          .returning();
+        if (!claimed) continue;
+
+        const [completedRoom] = await tx
+          .update(roomsTable)
+          .set({
+            stateVersion: sql`${roomsTable.stateVersion} + 1`,
+            updatedAt: now,
+          })
+          .where(eq(roomsTable.id, action.roomId))
+          .returning({ stateVersion: roomsTable.stateVersion });
+        const stateVersion = toNumber(completedRoom?.stateVersion);
+        const resolvedEvent: PopPersonResolvedEvent = {
+          eventId: action.id,
+          actionId: action.id,
+          hitCount,
+          direction: action.mode,
+          delta,
+          targetName: action.targetName,
+          previousValue,
+          finalValue: toNumber(updatedCell.currentValue),
+          stateVersion,
+          resolvedAt: now.getTime(),
+        };
+
+        await tx.insert(actionEventsTable).values({
+          actionId: claimed.id,
+          roomId: claimed.roomId,
+          cellId: claimed.cellId,
+          sequence: await nextActionEventSequence(tx, claimed.id),
+          eventType: "completed",
+          status: "completed",
+          deltaValue: String(resolvedEvent.finalValue - resolvedEvent.previousValue),
+          payload: {
+            kind: "action:resolved",
+            ...resolvedEvent,
+            resolvedAt: now.toISOString(),
+          },
+        });
+        await enqueueRealtimeNotification(tx, {
+          type: "action:resolved",
+          roomId: claimed.roomId,
+          actionId: claimed.id,
+          event: resolvedEvent,
+        });
+        logger.info(
+          {
+            actionId: claimed.id,
+            targetName: resolvedEvent.targetName,
+            hitCount: resolvedEvent.hitCount,
+            previousValue: resolvedEvent.previousValue,
+            finalValue: resolvedEvent.finalValue,
+            stateVersion,
+          },
+          "PopPerson action resolved",
+        );
+      }
+    });
+  } catch (error) {
+    logger.error({ err: error }, "Failed to resolve PopPerson actions");
+  } finally {
+    processing = false;
+  }
+}
+
+async function processDueActionsLegacy(): Promise<void> {
+  // Kept only as a migration marker for source-map compatibility. The
+  // resolved-event worker above is the sole action processor.
+  return;
   if (processing) return;
   processing = true;
   let hitsWritten = 0;

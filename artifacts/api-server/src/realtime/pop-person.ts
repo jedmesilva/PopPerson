@@ -2,7 +2,7 @@ import type { WebSocketServer, WebSocket } from "ws";
 import type { PopPersonState } from "@workspace/api-zod";
 import { pool } from "@workspace/db";
 import type {
-  PopPersonHitEvent,
+  PopPersonResolvedEvent,
   PopPersonRealtimeNotification,
 } from "../lib/pop-person-store";
 import {
@@ -15,16 +15,13 @@ import { logger } from "../lib/logger";
 type PopPersonRealtimeMessage = {
   type:
     | "snapshot"
-    | "action:queued"
-    | "action:started"
-    | "action:completed"
+    | "action:resolved"
     | "action:cancelled"
-    | "hit"
     | "clock:pong";
   state?: PopPersonState;
   action?: Awaited<ReturnType<typeof getPopPersonAction>>;
   actionId?: string;
-  event?: PopPersonHitEvent;
+  event?: PopPersonResolvedEvent;
   serverTime?: number;
   clientTime?: number;
   stateVersion?: number;
@@ -54,53 +51,43 @@ async function handleNotification(
   notification: PopPersonRealtimeNotification,
 ): Promise<void> {
   const serverTime = Date.now();
-  if (notification.type === "action:queued" || notification.type === "action:started") {
+  if (notification.type === "action:resolved") {
     const action = await getPopPersonAction(
       notification.roomId,
       notification.actionId,
     );
     if (!action) return;
     broadcast(webSocketServer, {
-      type: notification.type,
+      type: "action:resolved",
       action,
+      event: notification.event,
       serverTime,
-      stateVersion: notification.stateVersion,
+      stateVersion: notification.event.stateVersion,
     });
     logger.info(
       {
         actionId: action.id,
         state: action.status,
+        hitCount: notification.event.hitCount,
         serverTime,
         executeAt: action.executeAt,
         completesAt: action.completesAt,
-        stateVersion: notification.stateVersion,
+        stateVersion: notification.event.stateVersion,
       },
       `PopPerson ${notification.type} published`,
     );
     return;
   }
 
-  if (notification.type === "action:hit") {
-    broadcast(webSocketServer, {
-      type: "hit",
-      event: notification.event,
-      serverTime,
-    });
-    logger.info(
-      {
-        actionId: notification.event.actionId,
-        hitIndex: notification.event.hitIndex,
-        stateVersion: notification.event.stateVersion,
-        hitAt: notification.event.hitAt,
-        serverTime,
-      },
-      "PopPerson hit published",
+  if (notification.type !== "action:cancelled") {
+    logger.warn(
+      { notificationType: notification.type },
+      "Ignoring deprecated PopPerson realtime notification",
     );
     return;
   }
-
   broadcast(webSocketServer, {
-    type: notification.type,
+    type: "action:cancelled",
     actionId: notification.actionId,
     serverTime,
     stateVersion: notification.stateVersion,
@@ -122,9 +109,8 @@ export async function registerPopPersonRealtime(
   const listener = await pool.connect();
   // PostgreSQL delivers notifications in commit order, but handling every
   // notification in a detached promise can reorder messages at the browser.
-  // In particular, action:started performs a database read while hit can be
-  // broadcast immediately. Keep one delivery chain so the client always
-  // registers the action before consuming its hit events.
+  // Keep one delivery chain so each resolved action is broadcast as one
+  // complete visual event.
   let notificationChain = Promise.resolve();
   listener.on("notification", (message) => {
     if (message.channel !== POP_PERSON_REALTIME_CHANNEL || !message.payload) return;

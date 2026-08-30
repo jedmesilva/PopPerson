@@ -475,6 +475,7 @@ export default function PopPersonCanvas() {
   const activeActionIdsRef = useRef([]);
   const latestServerActionsRef = useRef(new Map());
   const animationActionsRef = useRef(new Map());
+  const processedRealtimeEventIdsRef = useRef(new Set());
   const locallyCreatedActionIdsRef = useRef(new Set());
   const latestServerStateVersionRef = useRef(-1);
   const serverStateHydratedRef = useRef(false);
@@ -593,6 +594,55 @@ export default function PopPersonCanvas() {
   }, []);
   const executeActionRef = useRef(executeAction);
   useEffect(() => { executeActionRef.current = executeAction; }, [executeAction]);
+  const startResolvedAction = useCallback((serverAction, resolvedEvent) => {
+    const actionId = serverAction?.id || resolvedEvent?.actionId;
+    const eventId = resolvedEvent?.eventId || actionId;
+    if (!actionId || !eventId || processedRealtimeEventIdsRef.current.has(eventId)) return;
+    processedRealtimeEventIdsRef.current.add(eventId);
+    if (processedRealtimeEventIdsRef.current.size > 1000) {
+      const oldestEventId = processedRealtimeEventIdsRef.current.values().next().value;
+      processedRealtimeEventIdsRef.current.delete(oldestEventId);
+    }
+    if (activeActionIdsRef.current.includes(actionId)) return;
+
+    const serverNow = serverClockRef.current.serverTime
+      + (performance.now() - serverClockRef.current.clientPerfAt);
+    const finalValue = Number(resolvedEvent?.finalValue);
+    const targetName = resolvedEvent?.targetName || serverAction.targetName;
+    if (targetName && Number.isFinite(finalValue)) {
+      pendingRadiusAnimationsRef.current.add(targetName);
+      serverDatasetRef.current = serverDatasetRef.current.map((person) => (
+        person.name === targetName ? { ...person, value: finalValue } : person
+      ));
+      setDataset((prev) => prev.map((person) => (
+        person.name === targetName ? { ...person, value: finalValue } : person
+      )));
+    }
+
+    const count = Math.max(1, Number(resolvedEvent?.hitCount) || Number(serverAction.count) || 1);
+    const staggerMs = Math.max(0, Number(serverAction.staggerMs) || 0);
+    const duration = Math.max(0, Number(serverAction.duration) || 0);
+    const animationAction = {
+      ...serverAction,
+      status: "running",
+      executeAt: serverNow,
+      completesAt: serverNow + duration + Math.max(0, count - 1) * staggerMs,
+      count,
+      hitCount: 0,
+    };
+    animationActionsRef.current.set(actionId, animationAction);
+    deferredCompletedActionIdsRef.current.add(actionId);
+    realtimeDebug("action:resolved", {
+      eventId,
+      actionId,
+      targetName,
+      hitCount: count,
+      finalValue: Number.isFinite(finalValue) ? finalValue : null,
+    });
+    executeActionRef.current(animationAction);
+  }, []);
+  const startResolvedActionRef = useRef(startResolvedAction);
+  useEffect(() => { startResolvedActionRef.current = startResolvedAction; }, [startResolvedAction]);
   const enqueueHitEvent = useCallback((event) => {
     if (!event?.actionId || !Number.isFinite(Number(event.hitIndex))) return;
     const hitIndex = Math.max(1, Number(event.hitIndex));
@@ -797,8 +847,8 @@ export default function PopPersonCanvas() {
     latestServerStateVersionRef.current = incomingStateVersion;
 
     if (resetVisuals) {
-      // A snapshot is the present, not a replay buffer. Drop every ephemeral
-      // object and rebuild only queued/running actions from current progress.
+      // A snapshot is the present, not a replay buffer. It updates the board
+      // and never starts an old animation.
       pendingHitEventsRef.current.clear();
       queuedHitKeysRef.current.clear();
       visualizedHitKeysRef.current.clear();
@@ -813,6 +863,18 @@ export default function PopPersonCanvas() {
       setQueue([]);
       setActiveActions([]);
     }
+    if (Array.isArray(serverState?.dataset)) {
+      serverDatasetRef.current = serverState.dataset;
+      setDataset(serverState.dataset);
+    }
+    serverStateHydratedRef.current = true;
+    realtimeDebug("snapshot:applied", {
+      stateVersion: incomingStateVersion,
+      actionCount: 0,
+      resetVisuals,
+      activeProjectiles: projectilesRef.current.length,
+    });
+    return;
 
     const incomingActions = (Array.isArray(serverState?.actions) ? serverState.actions : [])
       .map((serverAction) => {
@@ -961,7 +1023,7 @@ export default function PopPersonCanvas() {
       resetVisuals,
       activeProjectiles: projectilesRef.current.length,
     });
-  }, [queueAction]);
+  }, []);
   useEffect(() => {
     if (bootstrapQuery.data?.state) {
       reconcileServerState(bootstrapQuery.data.state, { resetVisuals: true });
@@ -1014,33 +1076,17 @@ export default function PopPersonCanvas() {
           if (Number.isFinite(Number(message?.serverTime))) {
             syncServerClock(message.serverTime);
           }
-          if (message?.type === "hit" && message.event) {
-            enqueueHitEvent(message.event);
-            const hitIndex = Math.max(1, Number(message.event.hitIndex) || 0);
-            const hitKey = `${message.event.actionId}:${hitIndex}`;
-            if (visualizedHitKeysRef.current.has(hitKey)) {
-              commitVisualHit(message.event);
-            }
+          if (
+            message?.type === "action:resolved"
+            && message.action
+            && message.event
+          ) {
+            startResolvedActionRef.current(message.action, message.event);
             return;
           }
-          if (
-            (message?.type === "action:queued" || message?.type === "action:started") &&
-            message.action
-          ) {
-            queueAction(message.action);
-            return;
-          }
-          if (
-            (message?.type === "action:completed" || message?.type === "action:cancelled") &&
-            message.actionId
-          ) {
-            if (message.type === "action:completed") {
-              deferredCompletedActionIdsRef.current.add(message.actionId);
-              realtimeDebug("action:completed", { actionId: message.actionId });
-            } else {
-              removeRealtimeAction(message.actionId, { preserveImpacts: true });
-              realtimeDebug("action:cancelled", { actionId: message.actionId });
-            }
+          if (message?.type === "action:cancelled" && message.actionId) {
+            removeRealtimeAction(message.actionId, { preserveImpacts: true });
+            realtimeDebug("action:cancelled", { actionId: message.actionId });
             return;
           }
           if (message?.type === "snapshot") {
@@ -1074,9 +1120,6 @@ export default function PopPersonCanvas() {
     };
   }, [
     config,
-    enqueueHitEvent,
-    commitVisualHit,
-    queueAction,
     removeRealtimeAction,
     reconcileServerState,
     syncServerClock,
@@ -1146,12 +1189,10 @@ export default function PopPersonCanvas() {
           submittingActionRef.current = false;
           idempotencyKeyRef.current = null;
           idempotencyPayloadRef.current = "";
-          // Register the server response immediately. The following polling
-          // or WebSocket snapshot must reconcile this same action, not enqueue
-          // a second local copy.
-          locallyCreatedActionIdsRef.current.add(action.id);
-          latestServerActionsRef.current.set(action.id, action);
-          queueAction(action);
+           // The POST only acknowledges persistence. The animation starts
+           // exclusively from the single action:resolved realtime event.
+           // If this browser misses that event, the next snapshot provides the
+           // authoritative final cell value without replaying old effects.
           closeModal();
           setSelectedCell(null);
         },
