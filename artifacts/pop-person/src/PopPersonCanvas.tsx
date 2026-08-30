@@ -429,6 +429,10 @@ export default function PopPersonCanvas() {
   const animatedCirclesRef = useRef(new Map());
   const emittersRef = useRef([]);
   const projectilesRef = useRef([]);
+  const hitQueueRef = useRef([]);
+  const queuedHitKeysRef = useRef(new Set());
+  const visualHitCountsRef = useRef(new Map());
+  const nextHitSpawnAtRef = useRef(0);
   const impactsRef = useRef([]);
   const personImagesRef = useRef(new Map());
   const shakeActionIdsRef = useRef(new Set());
@@ -472,52 +476,29 @@ export default function PopPersonCanvas() {
     activeActionIdsRef.current = [...activeActionIdsRef.current, actionId];
     const direction = serverAction.mode === "defender" ? 1 : -1;
     const actionElement = serverAction.element;
-    // The database action ID is the identity of the animation. A random
-    // client-side firing ID made reconnects and state updates look like new
-    // actions, which caused duplicate projectiles and duplicate queue rows.
-    const firingId = actionId;
     const animationStartedAt = performance.now();
     const totalCount = Math.max(1, Number(serverAction.count) || 1);
-    const staggerMs = Math.max(0, Number(serverAction.staggerMs) || 0);
-    const elapsedMs = Math.max(0, Number(resumeElapsedMs) || 0);
-    const firedCount = elapsedMs <= 0
-      ? 0
-      : staggerMs > 0
-        ? Math.min(totalCount, Math.floor(elapsedMs / staggerMs) + 1)
-        : totalCount;
-    emittersRef.current.push({
-      id: firingId,
-      targetName: serverAction.targetName,
-      remaining: totalCount - firedCount,
-      staggerMs,
-      duration: serverAction.duration,
-      growthPerHit: serverAction.growthPerHit,
-      impactMultiplier: serverAction.impactMultiplier,
-      direction,
-      emoji: actionElement.emoji,
-      level: serverAction.level,
-      nextSpawnTime: animationStartedAt + Math.max(0, firedCount * staggerMs - elapsedMs),
-      resumeElapsedMs: elapsedMs > 0 ? elapsedMs : null,
-      resumeStartedAt: elapsedMs > 0 ? animationStartedAt : null,
-      resumeUntil: elapsedMs > 0
-        ? animationStartedAt + Math.max(0, (totalCount - 1) * staggerMs + serverAction.duration - elapsedMs)
-        : null,
-    });
+    // A running action is now only a HUD/animation identity. Individual
+    // projectiles are created from WebSocket hit events, never from a local
+    // timer based on the aggregate hitCount snapshot.
+    if (!visualHitCountsRef.current.has(actionId)) {
+      visualHitCountsRef.current.set(actionId, 0);
+    }
     setActiveActions((prev) => [
       ...prev,
       {
-        id: firingId,
+        id: actionId,
         mode: serverAction.mode,
         level: serverAction.level,
         element: actionElement,
         targetName: serverAction.targetName,
         count: totalCount,
-        hitCount: Math.min(totalCount, Math.max(0, Number(serverAction.hitCount) || 0)),
+        hitCount: Math.min(totalCount, visualHitCountsRef.current.get(actionId) || 0),
         lastHitAt: serverAction.lastHitAt ?? null,
         firedAt: animationStartedAt,
       },
     ]);
-    if (serverAction.shake) shakeActionIdsRef.current.add(firingId);
+    if (serverAction.shake) shakeActionIdsRef.current.add(actionId);
   }, []);
   const executeActionRef = useRef(executeAction);
   useEffect(() => { executeActionRef.current = executeAction; }, [executeAction]);
