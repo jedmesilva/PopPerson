@@ -1,7 +1,7 @@
 kind = "web"
 previewPath = "/"
 title = "InstaPop"
-description = "InstaPop — popularidade em movimento. Descubra quem está em alta agora e movimente a conversa entre pessoas, criadores e marcas, com filtros, categorias e ações visuais."
+description = "InstaPop — popularidade em movimento. Descubra quem está em alta agora e participe das disputas de popularidade entre pessoas, criadores e marcas, com filtros, categorias e ações visuais."
 version = "1.0.0"
 id = "artifacts/pop-person"
 router = "path"
