@@ -1,6 +1,6 @@
 # InstaPop
 
-Aplicativo interativo para visualizar pessoas públicas e executar ações de ataque ou defesa com níveis de intensidade.
+InstaPop — popularidade em movimento. Um aplicativo interativo para descobrir quem está em alta e executar ações sobre pessoas públicas, criadores e marcas.
 
 ## Run & Operate
 
