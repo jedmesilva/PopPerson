@@ -9,6 +9,8 @@
 export * from './accessLocation';
 export * from './accessLocationSource';
 export * from './authenticatedUser';
+export * from './citySearchResponse';
+export * from './citySearchResult';
 export * from './errorResponse';
 export * from './getAuthenticatedUser200';
 export * from './healthStatus';
@@ -34,4 +36,5 @@ export * from './popPersonElementGender';
 export * from './popPersonLevel';
 export * from './popPersonState';
 export * from './popPersonStatus';
+export * from './searchCitiesParams';
 export * from './startXAuthenticationParams';

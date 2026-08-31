@@ -21,6 +21,7 @@ import type {
 
 import type {
   AccessLocation,
+  CitySearchResponse,
   ErrorResponse,
   GetAuthenticatedUser200,
   HealthStatus,
@@ -31,6 +32,7 @@ import type {
   PopPersonActionInput,
   PopPersonBootstrap,
   PopPersonState,
+  SearchCitiesParams,
   StartXAuthenticationParams
 } from './api.schemas';
 
@@ -205,6 +207,91 @@ export function useGetAccessLocation<TData = Awaited<ReturnType<typeof getAccess
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetAccessLocationQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSearchCitiesUrl = (params: SearchCitiesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/access/location/search?${stringifiedParams}` : `/api/access/location/search`
+}
+
+/**
+ * Returns cities matching a search term, including the corresponding region and country.
+ * @summary Search cities and their administrative regions
+ */
+export const searchCities = async (params: SearchCitiesParams, options?: Parameters<typeof customFetch>[1]): Promise<CitySearchResponse> => {
+
+  return customFetch<CitySearchResponse>(getSearchCitiesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getSearchCitiesQueryKey = (params?: SearchCitiesParams,) => {
+    return [
+    `/api/access/location/search`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getSearchCitiesQueryOptions = <TData = Awaited<ReturnType<typeof searchCities>>, TError = ErrorType<ErrorResponse>>(params: SearchCitiesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchCities>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getSearchCitiesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof searchCities>>> = ({ signal }) => searchCities(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof searchCities>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type SearchCitiesQueryResult = NonNullable<Awaited<ReturnType<typeof searchCities>>>
+export type SearchCitiesQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Search cities and their administrative regions
+ */
+
+export function useSearchCities<TData = Awaited<ReturnType<typeof searchCities>>, TError = ErrorType<ErrorResponse>>(
+ params: SearchCitiesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchCities>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getSearchCitiesQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

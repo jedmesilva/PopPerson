@@ -33,6 +33,32 @@ export const GetAccessLocationResponse = zod.object({
 
 
 /**
+ * Returns cities matching a search term, including the corresponding region and country.
+ * @summary Search cities and their administrative regions
+ */
+export const searchCitiesQueryQMin = 2;
+export const searchCitiesQueryQMax = 80;
+
+
+
+export const SearchCitiesQueryParams = zod.object({
+  "q": zod.coerce.string().min(searchCitiesQueryQMin).max(searchCitiesQueryQMax)
+})
+
+export const SearchCitiesResponse = zod.object({
+  "results": zod.array(zod.object({
+  "id": zod.string(),
+  "city": zod.string(),
+  "region": zod.string(),
+  "country": zod.string(),
+  "countryCode": zod.string(),
+  "latitude": zod.number(),
+  "longitude": zod.number()
+}))
+})
+
+
+/**
  * @summary Get PopPerson configuration and state
  */
 export const getPopPersonResponseConfigLevelsItemStartDelayMsMin = 0;

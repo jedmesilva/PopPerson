@@ -41,6 +41,39 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AccessLocation"
+  /access/location/search:
+    get:
+      operationId: searchCities
+      tags: [access]
+      summary: Search cities and their administrative regions
+      description: Returns cities matching a search term, including the corresponding region and country.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 80
+      responses:
+        "200":
+          description: Matching cities
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CitySearchResponse"
+        "400":
+          description: Invalid search query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Geocoding service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /pop-person:
     get:
       operationId: getPopPerson
@@ -209,6 +242,32 @@ components:
           type: string
         timezone:
           type: string
+    CitySearchResponse:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/CitySearchResult"
+    CitySearchResult:
+      type: object
+      required: [id, city, region, country, countryCode, latitude, longitude]
+      properties:
+        id:
+          type: string
+        city:
+          type: string
+        region:
+          type: string
+        country:
+          type: string
+        countryCode:
+          type: string
+        latitude:
+          type: number
+        longitude:
+          type: number
     PopPerson:
       type: object
       required: [name, category, categoryPath, gender, cidade, estado, estadoCodigo, pais, paisCodigo, status, value, color, imageUrl]

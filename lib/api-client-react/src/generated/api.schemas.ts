@@ -28,6 +28,20 @@ export interface AccessLocation {
   timezone: string;
 }
 
+export interface CitySearchResult {
+  id: string;
+  city: string;
+  region: string;
+  country: string;
+  countryCode: string;
+  latitude: number;
+  longitude: number;
+}
+
+export interface CitySearchResponse {
+  results: CitySearchResult[];
+}
+
 export type PopPersonStatus = typeof PopPersonStatus[keyof typeof PopPersonStatus];
 
 
@@ -298,6 +312,14 @@ export interface PopPersonActionInput {
 export interface ErrorResponse {
   error: string;
 }
+
+export type SearchCitiesParams = {
+/**
+ * @minLength 2
+ * @maxLength 80
+ */
+q: string;
+};
 
 export type StartXAuthenticationParams = {
 returnTo?: string;

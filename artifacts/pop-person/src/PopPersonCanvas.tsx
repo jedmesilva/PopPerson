@@ -6,6 +6,7 @@ import {
   useGetAccessLocation,
   useGetPopPerson,
   useGetPopPersonState,
+  searchCities,
 } from "@workspace/api-client-react";
 
 function easeOutQuad(t) {
@@ -355,6 +356,11 @@ export default function PopPersonCanvas() {
   const [expandedPlayerCategoryIds, setExpandedPlayerCategoryIds] = useState(new Set());
   const [playerLocation, setPlayerLocation] = useState(EMPTY_PLAYER_LOCATION);
   const [isEditingPlayerLocation, setIsEditingPlayerLocation] = useState(false);
+  const [isPlayerLocationPickerOpen, setIsPlayerLocationPickerOpen] = useState(false);
+  const [playerLocationSearch, setPlayerLocationSearch] = useState("");
+  const [playerLocationResults, setPlayerLocationResults] = useState([]);
+  const [isSearchingPlayerLocation, setIsSearchingPlayerLocation] = useState(false);
+  const [playerLocationSearchError, setPlayerLocationSearchError] = useState(null);
   const [, forceTick] = useState(0);
   const submittingActionRef = useRef(false);
   const idempotencyKeyRef = useRef(null);
@@ -1367,6 +1373,37 @@ export default function PopPersonCanvas() {
     playerLocation.country.trim(),
   );
   useEffect(() => {
+    if (!isEditingPlayerLocation || !isPlayerLocationPickerOpen) return undefined;
+    const query = playerLocationSearch.trim();
+    if (query.length < 2) {
+      setPlayerLocationResults([]);
+      setIsSearchingPlayerLocation(false);
+      setPlayerLocationSearchError(null);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(async () => {
+      setIsSearchingPlayerLocation(true);
+      setPlayerLocationSearchError(null);
+      try {
+        const data = await searchCities({ q: query }, { signal: controller.signal });
+        setPlayerLocationResults(data.results ?? []);
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        setPlayerLocationResults([]);
+        setPlayerLocationSearchError("Não foi possível buscar cidades agora.");
+      } finally {
+        if (!controller.signal.aborted) setIsSearchingPlayerLocation(false);
+      }
+    }, 280);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [isEditingPlayerLocation, isPlayerLocationPickerOpen, playerLocationSearch]);
+  useEffect(() => {
     if (!showPlayerSignup || playerLocationEditedRef.current) return;
     const suggestedLocation = getSuggestedPlayerLocation(accessLocationQuery.data);
     if (suggestedLocation.city && suggestedLocation.region && suggestedLocation.country) {
@@ -2284,7 +2321,14 @@ export default function PopPersonCanvas() {
                     <button
                       data-testid="button-edit-player-location"
                       type="button"
-                      onClick={() => setIsEditingPlayerLocation((isEditing) => !isEditing)}
+                      onClick={() => {
+                        const nextIsEditing = !isEditingPlayerLocation;
+                        setIsEditingPlayerLocation(nextIsEditing);
+                        setIsPlayerLocationPickerOpen(nextIsEditing);
+                        setPlayerLocationSearch(nextIsEditing ? playerLocation.city : "");
+                        setPlayerLocationResults([]);
+                        setPlayerLocationSearchError(null);
+                      }}
                       disabled={isJoiningPlayer}
                       aria-label={playerLocationComplete ? "Editar localidade" : "Informar localidade"}
                       title={playerLocationComplete ? "Editar localidade" : "Informar localidade"}
@@ -2296,53 +2340,80 @@ export default function PopPersonCanvas() {
 
                   {isEditingPlayerLocation && (
                     <>
-                      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: "8px", marginTop: "10px" }}>
-                        <label style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-                          <span style={{ color: "#d4d4d4", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>País</span>
+                      <label style={{ display: "flex", flexDirection: "column", gap: "5px", marginTop: "10px" }}>
+                        <span style={{ color: "#d4d4d4", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Buscar cidade</span>
+                        <div style={{ position: "relative" }}>
+                          <Search size={14} aria-hidden="true" style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#737373", pointerEvents: "none" }} />
                           <input
-                            data-testid="input-player-country"
-                            value={playerLocation.country}
-                            onChange={(e) => {
-                              playerLocationEditedRef.current = true;
-                              setPlayerLocation((location) => ({ ...location, country: e.target.value }));
+                            data-testid="input-player-city-search"
+                            type="search"
+                            value={playerLocationSearch}
+                            onChange={(event) => {
+                              setPlayerLocationSearch(event.target.value);
+                              setIsPlayerLocationPickerOpen(true);
                             }}
-                            placeholder="Ex.: Brasil"
-                            autoComplete="country-name"
-                            style={{ width: "100%", boxSizing: "border-box", padding: "10px 11px", borderRadius: "9px", backgroundColor: "#292929", color: "#f5f5f5", border: "1px solid #484848", fontSize: "13px", outline: "none" }}
+                            onFocus={() => setIsPlayerLocationPickerOpen(true)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Escape") {
+                                setIsPlayerLocationPickerOpen(false);
+                                setPlayerLocationSearch("");
+                                setPlayerLocationResults([]);
+                              }
+                            }}
+                            placeholder="Digite o nome da cidade"
+                            autoComplete="address-level2"
+                            aria-label="Buscar cidade"
+                            style={{ width: "100%", boxSizing: "border-box", padding: "10px 10px 10px 30px", borderRadius: "9px", backgroundColor: "#292929", color: "#f5f5f5", border: "1px solid #484848", fontSize: "13px", outline: "none" }}
                           />
-                        </label>
-                        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 0.7fr) minmax(0, 1.3fr)", gap: "8px" }}>
-                          <label style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-                            <span style={{ color: "#d4d4d4", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Estado</span>
-                            <input
-                              data-testid="input-player-region"
-                              value={playerLocation.region}
-                              onChange={(e) => {
-                                playerLocationEditedRef.current = true;
-                                setPlayerLocation((location) => ({ ...location, region: e.target.value }));
-                              }}
-                              placeholder="Ex.: SP"
-                              autoComplete="address-level1"
-                              style={{ width: "100%", boxSizing: "border-box", padding: "10px 11px", borderRadius: "9px", backgroundColor: "#292929", color: "#f5f5f5", border: "1px solid #484848", fontSize: "13px", outline: "none" }}
-                            />
-                          </label>
-                          <label style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-                            <span style={{ color: "#d4d4d4", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Cidade</span>
-                            <input
-                              data-testid="input-player-city"
-                              value={playerLocation.city}
-                              onChange={(e) => {
-                                playerLocationEditedRef.current = true;
-                                setPlayerLocation((location) => ({ ...location, city: e.target.value }));
-                              }}
-                              placeholder="Ex.: São Paulo"
-                              autoComplete="address-level2"
-                              style={{ width: "100%", boxSizing: "border-box", padding: "10px 11px", borderRadius: "9px", backgroundColor: "#292929", color: "#f5f5f5", border: "1px solid #484848", fontSize: "13px", outline: "none" }}
-                            />
-                          </label>
                         </div>
-                      </div>
-                      <span style={{ display: "block", marginTop: "8px", color: "#737373", fontSize: "11px", lineHeight: 1.35 }}>Use o país, o estado e a cidade onde você está.</span>
+                      </label>
+
+                      {isPlayerLocationPickerOpen && (
+                        <div role="listbox" aria-label="Resultados de cidades" style={{ display: "flex", flexDirection: "column", gap: "2px", maxHeight: "190px", overflowY: "auto", padding: "6px", borderRadius: "10px", backgroundColor: "#202020", border: "1px solid #3a3a3a", boxShadow: "0 8px 22px rgba(0,0,0,0.28)" }}>
+                          {isSearchingPlayerLocation ? (
+                            <span style={{ padding: "12px 10px", color: "#a3a3a3", fontSize: "12px", textAlign: "center" }}>Buscando cidades…</span>
+                          ) : playerLocationSearchError ? (
+                            <span style={{ padding: "12px 10px", color: "#fca5a5", fontSize: "12px", textAlign: "center" }}>{playerLocationSearchError}</span>
+                          ) : playerLocationSearch.trim().length < 2 ? (
+                            <span style={{ padding: "12px 10px", color: "#737373", fontSize: "12px", textAlign: "center" }}>Digite pelo menos 2 caracteres.</span>
+                          ) : playerLocationResults.length === 0 ? (
+                            <span style={{ padding: "12px 10px", color: "#737373", fontSize: "12px", textAlign: "center" }}>Nenhuma cidade encontrada.</span>
+                          ) : (
+                            playerLocationResults.map((result) => (
+                              <button
+                                key={result.id}
+                                type="button"
+                                role="option"
+                                aria-selected={result.city === playerLocation.city && result.region === playerLocation.region && result.country === playerLocation.country}
+                                onClick={() => {
+                                  playerLocationEditedRef.current = true;
+                                  setPlayerLocation({
+                                    city: result.city,
+                                    region: result.region,
+                                    country: result.country,
+                                  });
+                                  setPlayerLocationSearch(result.city);
+                                  setIsPlayerLocationPickerOpen(false);
+                                  setPlayerLocationResults([]);
+                                  setPlayerLocationSearchError(null);
+                                }}
+                                style={{ width: "100%", padding: "9px 10px", display: "flex", flexDirection: "column", gap: "3px", border: "none", borderRadius: "7px", backgroundColor: result.city === playerLocation.city && result.region === playerLocation.region && result.country === playerLocation.country ? "#363636" : "transparent", color: "#f5f5f5", textAlign: "left", cursor: "pointer" }}
+                              >
+                                <span style={{ fontSize: "12px", fontWeight: 700, lineHeight: 1.25 }}>{result.city}</span>
+                                <span style={{ color: "#a3a3a3", fontSize: "11px", lineHeight: 1.25 }}>{result.region} — {result.country}</span>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      )}
+
+                      {playerLocationComplete && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "3px", padding: "9px 10px", borderRadius: "9px", backgroundColor: "#222", border: "1px solid #333" }}>
+                          <span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Localidade selecionada</span>
+                          <span data-testid="text-selected-player-location" style={{ color: "#f5f5f5", fontSize: "13px", fontWeight: 700 }}>{playerLocation.city}, {playerLocation.region} — {playerLocation.country}</span>
+                        </div>
+                      )}
+                      <span style={{ display: "block", marginTop: "3px", color: "#737373", fontSize: "11px", lineHeight: 1.35 }}>Selecione uma cidade para preencher o estado e o país automaticamente.</span>
                       <button
                         data-testid="button-save-player-location"
                         type="button"

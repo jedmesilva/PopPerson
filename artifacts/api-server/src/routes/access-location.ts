@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request } from "express";
-import { GetAccessLocationResponse } from "@workspace/api-zod";
+import { GetAccessLocationResponse, SearchCitiesResponse } from "@workspace/api-zod";
 import { accessEventsTable, db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
@@ -11,6 +11,19 @@ type IpWhoResponse = {
   country?: string;
   country_code?: string;
   timezone?: { id?: string } | string;
+};
+
+type OpenMeteoGeocodingResponse = {
+  results?: Array<{
+    id?: number;
+    name?: string;
+    admin1?: string;
+    admin2?: string;
+    country?: string;
+    country_code?: string;
+    latitude?: number;
+    longitude?: number;
+  }>;
 };
 
 const router: IRouter = Router();
@@ -154,6 +167,56 @@ router.get("/access/location", async (req, res): Promise<void> => {
 
   res.set("Cache-Control", "no-store");
   res.json(GetAccessLocationResponse.parse(location));
+});
+
+router.get("/access/location/search", async (req, res): Promise<void> => {
+  const query = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  if (query.length < 2 || query.length > 80) {
+    res.status(400).json({ error: "Digite entre 2 e 80 caracteres para buscar uma cidade." });
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=10&language=pt&format=json`,
+      {
+        signal: AbortSignal.timeout(5000),
+        headers: { Accept: "application/json" },
+      },
+    );
+
+    if (!response.ok) {
+      req.log.warn({ statusCode: response.status }, "City geocoding service returned an error");
+      res.status(502).json({ error: "Não foi possível buscar cidades agora." });
+      return;
+    }
+
+    const data = (await response.json()) as OpenMeteoGeocodingResponse;
+    const results = (data.results ?? [])
+      .filter((result) =>
+        result.id &&
+        result.name &&
+        result.country &&
+        result.country_code &&
+        Number.isFinite(result.latitude) &&
+        Number.isFinite(result.longitude),
+      )
+      .map((result) => ({
+        id: String(result.id),
+        city: result.name as string,
+        region: result.admin1 || result.admin2 || result.country as string,
+        country: result.country as string,
+        countryCode: (result.country_code as string).toUpperCase(),
+        latitude: result.latitude as number,
+        longitude: result.longitude as number,
+      }));
+
+    res.set("Cache-Control", "public, max-age=300");
+    res.json(SearchCitiesResponse.parse({ results }));
+  } catch (error) {
+    req.log.warn({ err: error }, "City geocoding lookup failed");
+    res.status(502).json({ error: "Não foi possível buscar cidades agora." });
+  }
 });
 
 export default router;
