@@ -263,7 +263,6 @@ function FilterSearchPicker({
   selected,
   onSelect,
   disabled = false,
-  disabledHint,
   open,
   onToggle,
   search,
@@ -296,7 +295,6 @@ function FilterSearchPicker({
         <span style={{ display: "flex", flexDirection: "column", gap: "3px", minWidth: 0 }}>
           <span style={{ color: disabled ? "#737373" : "#d4d4d4", fontSize: "11px", fontWeight: 700, letterSpacing: "0.04em", lineHeight: 1.2, textTransform: "uppercase" }}>{label}</span>
           <span style={{ color: selected !== "Todos" ? "#c7d2fe" : "#a3a3a3", fontSize: "12px", fontWeight: 700, lineHeight: 1.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedLabel}</span>
-          {disabled && disabledHint && <span style={{ color: "#737373", fontSize: "10px", lineHeight: 1.25 }}>{disabledHint}</span>}
         </span>
         {open ? <ChevronDown size={16} aria-hidden="true" style={{ flexShrink: 0, color: "#c7d2fe" }} /> : <ChevronRight size={16} aria-hidden="true" style={{ flexShrink: 0, color: disabled ? "#525252" : "#737373" }} />}
       </button>
@@ -2508,7 +2506,6 @@ export default function PopPersonCanvas() {
                     selected={filters.estado}
                     onSelect={(value) => selectFilterLevel("estado", value)}
                     disabled={filters.pais === "Todos"}
-                    disabledHint="Escolha um país primeiro"
                     open={isFilterStatePickerOpen}
                     onToggle={(next) => {
                       setIsFilterStatePickerOpen((isOpen) => typeof next === "boolean" ? next : !isOpen);
