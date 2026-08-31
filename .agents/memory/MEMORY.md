@@ -4,3 +4,4 @@
 - [Sequenciamento de eventos de ação](action-event-sequencing.md) — o evento final precisa ocupar uma sequência após o último hit, sem reutilizar números fixos.
 - [Restart após build](workflow-restart-build-order.md) — o processo do workflow mantém o bundle carregado; um build posterior não atualiza o runtime sozinho.
 - [Diagnóstico de deployment externo](external-deployment-checks.md) — Railway/Vercel precisam ser validados por endpoints e banco quando os logs de deployment não estão disponíveis no workspace.
+- [Modos de cliente OAuth do X](x-oauth-client-modes.md) — Web App usa Basic Auth sem client_id no corpo; clientes públicos usam client_id no corpo sem segredo.
