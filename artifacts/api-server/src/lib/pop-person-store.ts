@@ -650,7 +650,7 @@ async function getPlayerMembership(
 }
 
 function playerDisplayName(user: AuthenticatedPopPersonUser): string {
-  return `${user.name.trim()} (@${user.username.trim()})`;
+  return user.name.trim();
 }
 
 function playerColor(xUserId: string): string {
