@@ -12,6 +12,8 @@ export * from './authenticatedUser';
 export * from './errorResponse';
 export * from './getAuthenticatedUser200';
 export * from './healthStatus';
+export * from './joinPopPersonResponse';
+export * from './playerMembership';
 export * from './popPerson';
 export * from './popPersonAction';
 export * from './popPersonActionInput';

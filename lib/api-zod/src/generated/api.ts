@@ -192,7 +192,43 @@ export const GetPopPersonResponse = zod.object({
   "name": zod.string(),
   "avatarUrl": zod.string().nullable(),
   "email": zod.string().nullable()
-}),zod.null()])
+}),zod.null()]),
+  "player": zod.object({
+  "isPlayer": zod.boolean(),
+  "name": zod.string().nullable()
+})
+})
+
+
+/**
+ * @summary Add the authenticated user as a player
+ */
+export const JoinPopPersonAsPlayerResponse = zod.object({
+  "player": zod.object({
+  "name": zod.string(),
+  "category": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "slug": zod.string(),
+  "parentId": zod.string().nullable()
+}),
+  "categoryPath": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "slug": zod.string(),
+  "parentId": zod.string().nullable()
+})),
+  "gender": zod.string().nullable().describe('Gender recorded for the person, when known.'),
+  "cidade": zod.string(),
+  "estado": zod.string(),
+  "estadoCodigo": zod.string(),
+  "pais": zod.string(),
+  "paisCodigo": zod.string(),
+  "status": zod.enum(['titular', 'candidato']),
+  "value": zod.number(),
+  "color": zod.string(),
+  "imageUrl": zod.string().nullable().describe('Optional person image URL. The client keeps the cell color as the fallback background.')
+})
 })
 
 

@@ -79,6 +79,20 @@ async function handleNotification(
     return;
   }
 
+  if (notification.type === "state:changed") {
+    broadcast(webSocketServer, {
+      type: "snapshot",
+      state: await getPopPersonState(),
+      serverTime,
+      stateVersion: notification.stateVersion,
+    });
+    logger.info(
+      { roomId: notification.roomId, stateVersion: notification.stateVersion, serverTime },
+      "PopPerson player state published",
+    );
+    return;
+  }
+
   if (notification.type !== "action:cancelled") {
     logger.warn(
       { notificationType: notification.type },

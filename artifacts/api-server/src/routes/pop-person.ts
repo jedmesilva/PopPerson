@@ -4,11 +4,13 @@ import {
   CreatePopPersonActionResponse,
   GetPopPersonResponse,
   GetPopPersonStateResponse,
+  JoinPopPersonAsPlayerResponse,
 } from "@workspace/api-zod";
 import {
   createPopPersonAction,
   getPopPersonBootstrap,
   getPopPersonState,
+  joinPopPersonAsPlayer,
 } from "../lib/pop-person";
 import { actionRateLimit } from "../middlewares/rate-limit";
 
@@ -29,6 +31,23 @@ router.get("/pop-person/state", async (req, res): Promise<void> => {
   // clients cannot reconcile action progress from it after a reload.
   res.set("Cache-Control", "no-store");
   res.json(GetPopPersonStateResponse.parse(data));
+});
+
+router.post("/pop-person/player", async (req, res): Promise<void> => {
+  const user = res.locals.authenticatedUser;
+  if (!user) {
+    res.status(401).json({ error: "Faça login para entrar como player." });
+    return;
+  }
+
+  try {
+    const player = await joinPopPersonAsPlayer(user, res.locals.anonymousSessionId);
+    res.status(201).json(JoinPopPersonAsPlayerResponse.parse({ player }));
+  } catch (error) {
+    res.status(400).json({
+      error: error instanceof Error ? error.message : "Não foi possível entrar como player.",
+    });
+  }
 });
 
 router.post("/pop-person/actions", actionRateLimit, async (req, res): Promise<void> => {

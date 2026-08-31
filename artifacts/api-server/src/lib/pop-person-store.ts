@@ -22,6 +22,7 @@ import {
   peopleTable,
   roomMembersTable,
   roomsTable,
+  usersTable,
 } from "@workspace/db";
 import type {
   PopPerson,
@@ -74,8 +75,16 @@ export type PopPersonRealtimeNotification =
       roomId: string;
       actionId: string;
       stateVersion?: number;
+    }
+  | {
+      type: "state:changed";
+      roomId: string;
+      stateVersion: number;
     };
 type Snapshot = Record<string, unknown>;
+type AuthenticatedPopPersonUser = NonNullable<PopPersonBootstrap["user"]> & {
+  id: string;
+};
 
 export const POP_PERSON_REALTIME_CHANNEL = "pop_person_live";
 
@@ -597,15 +606,16 @@ async function getPopPersonConfig(): Promise<PopPersonConfig> {
 
 export async function getPopPersonBootstrap(
   sessionId?: string,
-  user: PopPersonBootstrap["user"] = null,
+  user: AuthenticatedPopPersonUser | null = null,
 ): Promise<PopPersonBootstrap> {
   const roomId = await getRoomId();
   await ensureRoomMembership(roomId, sessionId);
-  const [config, state] = await Promise.all([
+  const [config, state, player] = await Promise.all([
     getPopPersonConfig(),
     currentState(roomId),
+    getPlayerMembership(roomId, user?.id),
   ]);
-  return { config, state, user };
+  return { config, state, user, player };
 }
 
 export async function getPopPersonState(
@@ -614,6 +624,159 @@ export async function getPopPersonState(
   const roomId = await getRoomId();
   await ensureRoomMembership(roomId, sessionId);
   return currentState(roomId);
+}
+
+async function getPlayerMembership(
+  roomId: string,
+  userId?: string,
+): Promise<PopPersonBootstrap["player"]> {
+  if (!userId) return { isPlayer: false, name: null };
+
+  const [player] = await db
+    .select({ name: peopleTable.name })
+    .from(peopleTable)
+    .innerJoin(cellsTable, eq(cellsTable.personId, peopleTable.id))
+    .where(
+      and(
+        eq(peopleTable.playerUserId, userId),
+        eq(cellsTable.roomId, roomId),
+        eq(cellsTable.active, true),
+        eq(peopleTable.active, true),
+      ),
+    )
+    .limit(1);
+
+  return { isPlayer: Boolean(player), name: player?.name ?? null };
+}
+
+function playerDisplayName(user: AuthenticatedPopPersonUser): string {
+  return `${user.name.trim()} (@${user.username.trim()})`;
+}
+
+function playerColor(xUserId: string): string {
+  const palette = [
+    "#7c3aed",
+    "#2563eb",
+    "#0891b2",
+    "#059669",
+    "#ca8a04",
+    "#ea580c",
+    "#db2777",
+  ];
+  let hash = 0;
+  for (const character of xUserId) {
+    hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+  }
+  return palette[hash % palette.length];
+}
+
+export async function joinPopPersonAsPlayer(
+  user: AuthenticatedPopPersonUser,
+  sessionId?: string,
+): Promise<PopPerson> {
+  const roomId = await getRoomId();
+  await ensureRoomMembership(roomId, sessionId);
+  const now = new Date();
+  const displayName = playerDisplayName(user);
+  const slug = `player-${user.xUserId}`;
+
+  await db.transaction(async (tx) => {
+    const [category] = await tx
+      .insert(categoriesTable)
+      .values({
+        name: "Players",
+        slug: "players",
+        parentId: null,
+        active: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: categoriesTable.slug,
+        set: { active: true, updatedAt: now },
+      })
+      .returning({ id: categoriesTable.id });
+    if (!category) throw new Error("Não foi possível configurar a categoria de players.");
+
+    const [existing] = await tx
+      .select({ id: peopleTable.id })
+      .from(peopleTable)
+      .where(eq(peopleTable.playerUserId, user.id))
+      .limit(1);
+
+    let personId = existing?.id;
+    if (personId) {
+      await tx
+        .update(peopleTable)
+        .set({
+          name: displayName,
+          slug,
+          categoryId: category.id,
+          gender: null,
+          color: playerColor(user.xUserId),
+          status: "candidato",
+          imageUrl: user.avatarUrl,
+          active: true,
+          updatedAt: now,
+        })
+        .where(eq(peopleTable.id, personId));
+    } else {
+      const [created] = await tx
+        .insert(peopleTable)
+        .values({
+          name: displayName,
+          slug,
+          categoryId: category.id,
+          gender: null,
+          color: playerColor(user.xUserId),
+          status: "candidato",
+          imageUrl: user.avatarUrl,
+          locationId: null,
+          playerUserId: user.id,
+          active: true,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning({ id: peopleTable.id });
+      personId = created?.id;
+    }
+    if (!personId) throw new Error("Não foi possível criar o player.");
+
+    await tx
+      .insert(cellsTable)
+      .values({
+        roomId,
+        personId,
+        currentValue: "10",
+        minimumValue: "2",
+        active: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [cellsTable.roomId, cellsTable.personId],
+        set: { active: true, updatedAt: now },
+      });
+
+    const [updatedRoom] = await tx
+      .update(roomsTable)
+      .set({
+        stateVersion: sql`${roomsTable.stateVersion} + 1`,
+        updatedAt: now,
+      })
+      .where(eq(roomsTable.id, roomId))
+      .returning({ stateVersion: roomsTable.stateVersion });
+    await enqueueRealtimeNotification(tx, {
+      type: "state:changed",
+      roomId,
+      stateVersion: toNumber(updatedRoom?.stateVersion),
+    });
+  });
+
+  const dataset = await getDataset(roomId);
+  const player = dataset.find((person) => person.name === displayName);
+  if (!player) throw new Error("Player criado, mas não pôde ser carregado.");
+  return player;
 }
 
 function calculateActionValues(

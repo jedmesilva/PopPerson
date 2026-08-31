@@ -8,11 +8,13 @@ import {
   text,
   timestamp,
   uuid,
+  uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
 import { z } from "zod/v4";
 import { categoriesTable } from "./categories";
 import { locationsTable } from "./locations";
+import { usersTable } from "./users";
 
 export const peopleTable = pgTable(
   "people",
@@ -34,6 +36,10 @@ export const peopleTable = pgTable(
       onDelete: "restrict",
       onUpdate: "cascade",
     }),
+    playerUserId: uuid("player_user_id").references(() => usersTable.id, {
+      onDelete: "cascade",
+      onUpdate: "cascade",
+    }),
     active: boolean("active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -47,6 +53,7 @@ export const peopleTable = pgTable(
     }),
     index("people_category_idx").on(table.categoryId),
     index("people_location_idx").on(table.locationId),
+    uniqueIndex("people_player_user_idx").on(table.playerUserId),
   ],
 );
 

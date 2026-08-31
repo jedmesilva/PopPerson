@@ -223,10 +223,21 @@ export interface AuthenticatedUser {
   email: string | null;
 }
 
+export interface PlayerMembership {
+  isPlayer: boolean;
+  /** @nullable */
+  name: string | null;
+}
+
 export interface PopPersonBootstrap {
   config: PopPersonConfig;
   state: PopPersonState;
   user: AuthenticatedUser | null;
+  player: PlayerMembership;
+}
+
+export interface JoinPopPersonResponse {
+  player: PopPerson;
 }
 
 export type PopPersonActionInputMode = typeof PopPersonActionInputMode[keyof typeof PopPersonActionInputMode];

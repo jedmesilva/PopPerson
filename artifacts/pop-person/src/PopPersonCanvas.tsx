@@ -42,6 +42,7 @@ const MAX_ZOOM = 100000;
 const CELL_TEXT_MIN_SCREEN_SIZE = 9;
 const CELL_TEXT_MAX_SCREEN_SIZE = 15;
 const CELL_TEXT_RADIUS_RATIO = 0.42;
+const ADD_PLAYER_CELL_NAME = "__instapop_add_player__";
 
 function getWebSocketUrl() {
   const configuredUrl = import.meta.env.DEV
@@ -327,12 +328,17 @@ export default function PopPersonCanvas() {
   const [queue, setQueue] = useState([]);
   const [activeActions, setActiveActions] = useState([]);
   const [showRecenter, setShowRecenter] = useState(false);
+  const [isJoiningPlayer, setIsJoiningPlayer] = useState(false);
+  const [joinPlayerError, setJoinPlayerError] = useState(null);
   const [, forceTick] = useState(0);
   const submittingActionRef = useRef(false);
   const idempotencyKeyRef = useRef(null);
   const idempotencyPayloadRef = useRef("");
   const locationDefaultsAppliedRef = useRef(false);
   const config = bootstrapQuery.data?.config;
+  const canJoinAsPlayer = Boolean(
+    bootstrapQuery.data?.user && !bootstrapQuery.data?.player?.isPlayer,
+  );
   const elements = config?.elements ?? { atacar: [], defender: [] };
   const levels = config?.levels ?? [];
   const levelByKey = useMemo(() => Object.fromEntries(levels.map((level) => [level.key, level])), [levels]);
@@ -421,7 +427,19 @@ export default function PopPersonCanvas() {
   const clearFilters = useCallback(() => setFilters({ pais: "Todos", estado: "Todos", cidade: "Todos", categoria: "Todos" }), []);
   const activeFilterCount = (filters.pais !== "Todos" ? 1 : 0) + (filters.estado !== "Todos" ? 1 : 0) + (filters.cidade !== "Todos" ? 1 : 0) + (filters.categoria !== "Todos" ? 1 : 0);
   const filteredDataset = useMemo(() => dataset.filter((d) => (filters.pais === "Todos" || d.pais === filters.pais) && (filters.estado === "Todos" || d.estado === filters.estado) && (filters.cidade === "Todos" || d.cidade === filters.cidade) && (filters.categoria === "Todos" || d.categoryPath.some((category) => category.id === filters.categoria))), [dataset, filters]);
-  const leaves = useMemo(() => computeLeaves(filteredDataset), [filteredDataset]);
+  const leaves = useMemo(() => {
+    if (!canJoinAsPlayer) return computeLeaves(filteredDataset);
+    return computeLeaves([
+      ...filteredDataset,
+      {
+        name: ADD_PLAYER_CELL_NAME,
+        value: 16,
+        color: "#262626",
+        imageUrl: null,
+        isAddCell: true,
+      },
+    ]);
+  }, [filteredDataset, canJoinAsPlayer]);
 
   useEffect(() => {
     const location = accessLocationQuery.data;
@@ -1226,7 +1244,33 @@ export default function PopPersonCanvas() {
   }, [queue.length > 0, activeActions.length > 0]);
   useEffect(() => { if (queue.length === 0 && activeActions.length === 0) setShowQueueModal(false); }, [queue.length, activeActions.length]);
 
-  const selectCell = useCallback((name) => setSelectedCell((prev) => prev === name ? null : name), []);
+  const joinPlayer = useCallback(async () => {
+    if (!canJoinAsPlayer || isJoiningPlayer) return;
+    setIsJoiningPlayer(true);
+    setJoinPlayerError(null);
+    try {
+      const response = await fetch(getApiEndpoint("/api/pop-person/player"), {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || "Não foi possível entrar como player.");
+      }
+      await Promise.all([bootstrapQuery.refetch(), stateQuery.refetch()]);
+    } catch (error) {
+      setJoinPlayerError(error instanceof Error ? error.message : "Não foi possível entrar como player.");
+    } finally {
+      setIsJoiningPlayer(false);
+    }
+  }, [bootstrapQuery.refetch, canJoinAsPlayer, isJoiningPlayer, stateQuery.refetch]);
+  const selectCell = useCallback((name) => {
+    if (name === ADD_PLAYER_CELL_NAME) {
+      void joinPlayer();
+      return;
+    }
+    setSelectedCell((prev) => prev === name ? null : name);
+  }, [joinPlayer]);
   const openModal = useCallback((mode) => {
     setPendingMode(mode);
     setModalStep("elemento");
@@ -1337,11 +1381,11 @@ export default function PopPersonCanvas() {
   }, [getFitTransform]);
   const initialFitAppliedRef = useRef(false);
   useEffect(() => {
-    if (!initialFitAppliedRef.current && leaves.length > 0) {
+    if (!initialFitAppliedRef.current && dataset.length > 0 && leaves.length > 0) {
       initialFitAppliedRef.current = true;
       fitToView();
     }
-  }, [leaves.length, fitToView]);
+  }, [dataset.length, leaves.length, fitToView]);
   const clampScale = (s) => Math.min(Math.max(s, MIN_ZOOM), MAX_ZOOM);
   const seedMissingRects = useCallback((now = performance.now()) => {
     const names = new Set();
@@ -1404,6 +1448,26 @@ export default function PopPersonCanvas() {
       ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
       ctx.fillStyle = node.color;
       ctx.fill();
+      if (node.isAddCell) {
+        ctx.save();
+        ctx.lineWidth = 1.5 / t.scale;
+        ctx.strokeStyle = "rgba(255,255,255,0.28)";
+        ctx.setLineDash([5 / t.scale, 5 / t.scale]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        const plusSize = Math.max(10 / t.scale, Math.min(c.r * 0.72, 24 / t.scale));
+        ctx.lineWidth = 2.2 / t.scale;
+        ctx.lineCap = "round";
+        ctx.strokeStyle = "rgba(255,255,255,0.92)";
+        ctx.beginPath();
+        ctx.moveTo(c.x - plusSize, c.y);
+        ctx.lineTo(c.x + plusSize, c.y);
+        ctx.moveTo(c.x, c.y - plusSize);
+        ctx.lineTo(c.x, c.y + plusSize);
+        ctx.stroke();
+        ctx.restore();
+        return;
+      }
       const personImage = personImagesRef.current.get(node.name);
       if (personImage?.complete && personImage.naturalWidth > 0) {
         ctx.save();
@@ -1960,6 +2024,12 @@ export default function PopPersonCanvas() {
 
       <div ref={boardWrapRef} style={{ position: "fixed", top: 0, bottom: 0, left: 0, right: 0, zIndex: 1, overflow: "hidden" }}>
         <canvas data-testid="canvas-people" ref={canvasRef} style={{ display: "block", width: "100%", height: "100%", touchAction: "none", cursor: "grab" }} />
+        {joinPlayerError && (
+          <div role="alert" style={{ position: "absolute", left: "50%", bottom: "24px", transform: "translateX(-50%)", zIndex: 5, display: "flex", alignItems: "center", gap: "10px", maxWidth: "calc(100% - 32px)", padding: "10px 12px", borderRadius: "12px", backgroundColor: "rgba(69, 10, 10, 0.94)", border: "1px solid rgba(248, 113, 113, 0.45)", color: "#fecaca", fontSize: "12px", fontWeight: 600, boxShadow: "0 8px 24px rgba(0,0,0,0.35)" }}>
+            <span>{joinPlayerError}</span>
+            <button type="button" onClick={() => setJoinPlayerError(null)} aria-label="Fechar aviso" style={{ border: "none", background: "transparent", color: "#fecaca", cursor: "pointer", padding: "2px" }}><X size={14} /></button>
+          </div>
+        )}
         {leaves.length === 0 && (
           <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "10px", padding: "24px", textAlign: "center" }}>
             <Search size={28} strokeWidth={1.8} aria-hidden="true" style={{ color: "#737373" }} />

@@ -53,6 +53,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PopPersonBootstrap"
+  /pop-person/player:
+    post:
+      operationId: joinPopPersonAsPlayer
+      tags: [pop-person]
+      summary: Add the authenticated user as a player
+      responses:
+        "201":
+          description: Player cell created or restored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JoinPopPersonResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /auth/x/start:
     get:
       operationId: startXAuthentication
@@ -397,7 +415,7 @@ components:
             $ref: "#/components/schemas/PopPersonAction"
     PopPersonBootstrap:
       type: object
-      required: [config, state, user]
+      required: [config, state, user, player]
       properties:
         config:
           $ref: "#/components/schemas/PopPersonConfig"
@@ -407,6 +425,22 @@ components:
           oneOf:
             - $ref: "#/components/schemas/AuthenticatedUser"
             - type: "null"
+        player:
+          $ref: "#/components/schemas/PlayerMembership"
+    PlayerMembership:
+      type: object
+      required: [isPlayer, name]
+      properties:
+        isPlayer:
+          type: boolean
+        name:
+          type: ["string", "null"]
+    JoinPopPersonResponse:
+      type: object
+      required: [player]
+      properties:
+        player:
+          $ref: "#/components/schemas/PopPerson"
     AuthenticatedUser:
       type: object
       required: [xUserId, username, name, avatarUrl, email]

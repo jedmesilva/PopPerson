@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { AuthenticatedUser } from './authenticatedUser';
+import type { PlayerMembership } from './playerMembership';
 import type { PopPersonConfig } from './popPersonConfig';
 import type { PopPersonState } from './popPersonState';
 
@@ -13,4 +14,5 @@ export interface PopPersonBootstrap {
   config: PopPersonConfig;
   state: PopPersonState;
   user: AuthenticatedUser | null;
+  player: PlayerMembership;
 }

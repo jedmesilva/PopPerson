@@ -4,6 +4,7 @@ export {
   getPopPersonBootstrap,
   getPopPersonState,
   initializePopPersonStore,
+  joinPopPersonAsPlayer,
 } from "./pop-person-store";
 export {
   POP_PERSON_REALTIME_CHANNEL,

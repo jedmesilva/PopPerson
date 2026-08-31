@@ -24,6 +24,7 @@ import type {
   ErrorResponse,
   GetAuthenticatedUser200,
   HealthStatus,
+  JoinPopPersonResponse,
   PopPersonAction,
   PopPersonActionInput,
   PopPersonBootstrap,
@@ -290,6 +291,77 @@ export function useGetPopPerson<TData = Awaited<ReturnType<typeof getPopPerson>>
 
 
 
+
+export const getJoinPopPersonAsPlayerUrl = () => {
+
+
+
+
+  return `/api/pop-person/player`
+}
+
+/**
+ * @summary Add the authenticated user as a player
+ */
+export const joinPopPersonAsPlayer = async ( options?: Parameters<typeof customFetch>[1]): Promise<JoinPopPersonResponse> => {
+
+  return customFetch<JoinPopPersonResponse>(getJoinPopPersonAsPlayerUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getJoinPopPersonAsPlayerMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinPopPersonAsPlayer>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof joinPopPersonAsPlayer>>, TError,void, TContext> => {
+
+const mutationKey = ['joinPopPersonAsPlayer'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof joinPopPersonAsPlayer>>, void> = () => {
+
+
+          return  joinPopPersonAsPlayer(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type JoinPopPersonAsPlayerMutationResult = NonNullable<Awaited<ReturnType<typeof joinPopPersonAsPlayer>>>
+
+    export type JoinPopPersonAsPlayerMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Add the authenticated user as a player
+ */
+export const useJoinPopPersonAsPlayer = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinPopPersonAsPlayer>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof joinPopPersonAsPlayer>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getJoinPopPersonAsPlayerMutationOptions(options));
+    }
 
 export const getStartXAuthenticationUrl = (params?: StartXAuthenticationParams,) => {
   const normalizedParams = new URLSearchParams();
