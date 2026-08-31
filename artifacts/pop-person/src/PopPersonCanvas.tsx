@@ -259,8 +259,8 @@ function keepCirclesSeparated(circles) {
 function FilterSection({ label, options, selected, onSelect, disabled, disabledHint }) {
   const isActive = selected !== "Todos";
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "8px", flex: 1, minWidth: 0 }}>
-      <span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>{label}</span>
+    <div style={{ display: "flex", flexDirection: "column", gap: "6px", minWidth: 0 }}>
+      <span style={{ color: "#d4d4d4", fontSize: "10px", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>{label}</span>
       <div style={{ position: "relative" }}>
         <select
           data-testid={`select-filter-${label.toLowerCase()}`}
@@ -268,11 +268,11 @@ function FilterSection({ label, options, selected, onSelect, disabled, disabledH
           onChange={(e) => onSelect(e.target.value)}
           disabled={disabled}
           style={{
-            width: "100%", appearance: "none", WebkitAppearance: "none", padding: "10px 30px 10px 10px",
-            borderRadius: "10px", border: isActive ? "1px solid #6366f1" : "1px solid #333",
-            backgroundColor: disabled ? "#1a1a1a" : isActive ? "rgba(99, 102, 241, 0.12)" : "#262626",
+            width: "100%", boxSizing: "border-box", appearance: "none", WebkitAppearance: "none", padding: "9px 32px 9px 10px",
+            borderRadius: "8px", border: isActive ? "1px solid rgba(99, 102, 241, 0.8)" : "1px solid #454545",
+            backgroundColor: disabled ? "#202020" : isActive ? "rgba(99, 102, 241, 0.14)" : "#2a2a2a",
             color: disabled ? "#525252" : isActive ? "#c7d2fe" : "#f5f5f5", fontSize: "12px",
-            fontWeight: isActive ? 700 : 500, cursor: disabled ? "not-allowed" : "pointer",
+            fontWeight: isActive ? 700 : 600, cursor: disabled ? "not-allowed" : "pointer",
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
           }}
         >
@@ -282,9 +282,9 @@ function FilterSection({ label, options, selected, onSelect, disabled, disabledH
             return <option key={value} value={value} style={{ backgroundColor: "#171717", color: "#f5f5f5" }}>{label}</option>;
           })}
         </select>
-        <ChevronDown size={14} style={{ position: "absolute", right: "9px", top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: disabled ? "#404040" : isActive ? "#c7d2fe" : "#737373" }} />
+        <ChevronDown size={14} aria-hidden="true" style={{ position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: disabled ? "#404040" : isActive ? "#c7d2fe" : "#737373" }} />
       </div>
-      {disabled && disabledHint && <span style={{ color: "#525252", fontSize: "10px" }}>{disabledHint}</span>}
+      {disabled && disabledHint && <span style={{ color: "#737373", fontSize: "10px", lineHeight: 1.35 }}>{disabledHint}</span>}
     </div>
   );
 }
@@ -2341,21 +2341,39 @@ export default function PopPersonCanvas() {
       )}
 
       {showFiltersModal && (
-        <div onClick={() => setShowFiltersModal(false)} style={{ position: "fixed", inset: 0, zIndex: 100, backgroundColor: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: "380px", maxHeight: "80vh", backgroundColor: "#171717", border: "1px solid #333", borderRadius: "16px", padding: "20px", display: "flex", flexDirection: "column", gap: "18px", overflowY: "auto" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ color: "#fff", fontWeight: 800, fontSize: "18px", letterSpacing: "-0.01em" }}>Filtros</span>
-              <button data-testid="button-close-filters" onClick={() => setShowFiltersModal(false)} style={closeButtonStyle}><X size={13} /></button>
+        <div onClick={() => setShowFiltersModal(false)} style={{ position: "fixed", inset: 0, zIndex: 100, backgroundColor: "rgba(0,0,0,0.72)", display: "flex", alignItems: "center", justifyContent: "center", padding: "16px", backdropFilter: "blur(2px)" }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="filters-title" onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: "360px", maxHeight: "88vh", backgroundColor: "#171717", border: "1px solid #292929", borderRadius: "14px", padding: "18px", display: "flex", flexDirection: "column", gap: "16px", overflowY: "auto", boxShadow: "0 8px 28px rgba(0,0,0,0.42)" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
+              <div style={{ minWidth: 0 }}>
+                <span id="filters-title" style={{ display: "block", color: "#fff", fontWeight: 800, fontSize: "18px", lineHeight: 1.2, letterSpacing: "-0.02em" }}>Filtros</span>
+                <span style={{ display: "block", marginTop: "4px", color: "#a3a3a3", fontSize: "12px", lineHeight: 1.4 }}>Refine as pessoas exibidas no mapa.</span>
+              </div>
+              <button data-testid="button-close-filters" type="button" onClick={() => setShowFiltersModal(false)} aria-label="Fechar" title="Fechar" style={{ ...closeButtonStyle, flexShrink: 0 }}><X size={13} aria-hidden="true" /></button>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "10px" }}>
-              <FilterSection label="País" options={paisOptions} selected={filters.pais} onSelect={(v) => setFilterLevel("pais", v)} />
-              <FilterSection label="Estado" options={estadoOptions} selected={filters.estado} onSelect={(v) => setFilterLevel("estado", v)} disabled={filters.pais === "Todos"} disabledHint="Escolha um país" />
-              <FilterSection label="Cidade" options={cidadeOptions} selected={filters.cidade} onSelect={(v) => setFilterLevel("cidade", v)} disabled={filters.estado === "Todos"} disabledHint="Escolha um estado" />
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              <div style={{ paddingBottom: "14px", borderBottom: "1px solid #292929" }}>
+                <FilterSection label="País" options={paisOptions} selected={filters.pais} onSelect={(v) => setFilterLevel("pais", v)} />
+              </div>
+              <div style={{ paddingBottom: "14px", borderBottom: "1px solid #292929" }}>
+                <FilterSection label="Estado" options={estadoOptions} selected={filters.estado} onSelect={(v) => setFilterLevel("estado", v)} disabled={filters.pais === "Todos"} disabledHint="Escolha um país primeiro" />
+              </div>
+              <div style={{ paddingBottom: "14px", borderBottom: "1px solid #292929" }}>
+                <FilterSection label="Cidade" options={cidadeOptions} selected={filters.cidade} onSelect={(v) => setFilterLevel("cidade", v)} disabled={filters.estado === "Todos"} disabledHint="Escolha um estado primeiro" />
+              </div>
               <FilterSection label="Categoria" options={categoriaOptions} selected={filters.categoria} onSelect={(v) => setFilterLevel("categoria", v)} />
             </div>
-            <div style={{ display: "flex", gap: "10px", marginTop: "4px" }}>
-              <button data-testid="button-clear-filters" onClick={clearFilters} disabled={activeFilterCount === 0} style={{ flex: 1, padding: "10px", borderRadius: "9999px", backgroundColor: "#262626", color: activeFilterCount === 0 ? "#525252" : "#f5f5f5", fontWeight: 700, fontSize: "13px", border: "1px solid #333", cursor: activeFilterCount === 0 ? "default" : "pointer" }}>Limpar filtros</button>
-              <button data-testid="button-apply-filters" onClick={() => setShowFiltersModal(false)} style={{ flex: 1, padding: "10px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", fontWeight: 700, fontSize: "13px", border: "none", cursor: "pointer" }}>Aplicar</button>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px", borderTop: "1px solid #292929", paddingTop: "16px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", padding: "10px 12px", borderRadius: "10px", backgroundColor: "#202020", border: "1px solid #2d2d2d" }}>
+                <div style={{ minWidth: 0 }}>
+                  <span style={{ display: "block", color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>Estado da busca</span>
+                  <span style={{ display: "block", marginTop: "3px", color: "#f5f5f5", fontSize: "12px", fontWeight: 700 }}>{activeFilterCount === 0 ? "Todas as pessoas" : `${activeFilterCount} filtro${activeFilterCount === 1 ? "" : "s"} ativo${activeFilterCount === 1 ? "" : "s"}`}</span>
+                </div>
+                <span aria-hidden="true" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "22px", height: "22px", padding: "0 6px", borderRadius: "9999px", backgroundColor: activeFilterCount > 0 ? "#6366f1" : "#333", color: "#fff", fontSize: "11px", fontWeight: 800 }}>{activeFilterCount}</span>
+              </div>
+              <button data-testid="button-clear-filters" type="button" onClick={clearFilters} disabled={activeFilterCount === 0} style={{ width: "100%", padding: "10px", borderRadius: "9999px", backgroundColor: "#262626", color: activeFilterCount === 0 ? "#525252" : "#f5f5f5", fontWeight: 700, fontSize: "13px", border: "1px solid #333", cursor: activeFilterCount === 0 ? "default" : "pointer", opacity: activeFilterCount === 0 ? 0.7 : 1 }}>Limpar filtros</button>
+              <button data-testid="button-apply-filters" type="button" onClick={() => setShowFiltersModal(false)} style={{ width: "100%", padding: "11px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", fontWeight: 700, fontSize: "13px", border: "none", cursor: "pointer" }}>Aplicar filtros</button>
             </div>
           </div>
         </div>
