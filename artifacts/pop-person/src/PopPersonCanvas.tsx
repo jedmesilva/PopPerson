@@ -2395,10 +2395,10 @@ export default function PopPersonCanvas() {
                                 setIsPlayerCategoryPickerOpen(false);
                                 setPlayerCategorySearch("");
                               }}
-                              style={{ width: "100%", padding: "9px 10px", paddingLeft: `${10 + category.depth * 16}px`, display: "block", border: "none", borderRadius: "7px", backgroundColor: category.id === playerCategoryId ? "#363636" : "transparent", color: category.id === playerCategoryId ? "#fff" : category.depth === 0 ? "#f5f5f5" : "#d4d4d4", fontSize: "12px", fontWeight: category.depth === 0 ? 700 : 600, textAlign: "left", cursor: "pointer" }}
+                              style={{ width: "100%", padding: "9px 10px", paddingLeft: `${10 + category.depth * 18}px`, display: "block", border: "none", borderRadius: "7px", backgroundColor: category.id === playerCategoryId ? "#363636" : "transparent", color: category.id === playerCategoryId ? "#fff" : category.depth === 0 ? "#f5f5f5" : "#d4d4d4", fontSize: "12px", fontWeight: category.depth === 0 ? 700 : 600, textAlign: "left", cursor: "pointer" }}
                             >
-                              <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                {category.depth > 0 && <span aria-hidden="true" style={{ color: "#737373" }}>↳</span>}
+                              <span style={{ position: "relative", display: "flex", alignItems: "center", gap: "6px" }}>
+                                {category.depth > 0 && <span aria-hidden="true" style={{ position: "absolute", left: "-10px", width: "2px", height: "16px", borderRadius: "999px", backgroundColor: category.id === playerCategoryId ? "#a3a3a3" : "#4a4a4a" }} />}
                                 <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{category.name}</span>
                               </span>
                             </button>
