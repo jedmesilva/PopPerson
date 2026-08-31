@@ -15,7 +15,10 @@ import { actionRateLimit } from "../middlewares/rate-limit";
 const router: IRouter = Router();
 
 router.get("/pop-person", async (req, res): Promise<void> => {
-  const data = await getPopPersonBootstrap(res.locals.anonymousSessionId);
+  const data = await getPopPersonBootstrap(
+    res.locals.anonymousSessionId,
+    res.locals.authenticatedUser ?? null,
+  );
   res.set("Cache-Control", "no-store");
   res.json(GetPopPersonResponse.parse(data));
 });

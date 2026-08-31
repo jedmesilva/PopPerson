@@ -5,6 +5,7 @@ import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { anonymousIdentity } from "./middlewares/anonymous-identity";
+import { authenticatedIdentity } from "./middlewares/authenticated-identity";
 import { generalApiRateLimit } from "./middlewares/rate-limit";
 
 const app: Express = express();
@@ -54,7 +55,7 @@ app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.use("/api", anonymousIdentity, generalApiRateLimit);
+app.use("/api", anonymousIdentity, authenticatedIdentity, generalApiRateLimit);
 app.use("/api", router);
 
 export default app;

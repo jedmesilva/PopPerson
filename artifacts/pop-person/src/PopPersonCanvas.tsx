@@ -65,6 +65,13 @@ function getWebSocketUrl() {
   return `${protocol}//${window.location.host}/ws`;
 }
 
+function getApiEndpoint(path) {
+  const configuredApiUrl = import.meta.env.DEV
+    ? ""
+    : import.meta.env.VITE_API_URL?.trim() || "";
+  return `${configuredApiUrl.replace(/\/+$/, "")}${path}`;
+}
+
 function realtimeDebug(event, details = {}) {
   if (import.meta.env.DEV) {
     console.debug(`[InstaPop realtime] ${event}`, {
@@ -1901,6 +1908,10 @@ export default function PopPersonCanvas() {
             data-testid="button-account"
             aria-label="Abrir conta"
             title="Abrir conta"
+            onClick={async () => {
+              await fetch(getApiEndpoint("/api/auth/logout"), { method: "POST", credentials: "include" });
+              window.location.reload();
+            }}
             style={{ flexShrink: 0, width: "36px", height: "36px", padding: 0, overflow: "hidden", borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.72)", backdropFilter: "blur(6px)", border: "1px solid rgba(255, 255, 255, 0.12)", color: "#f5f5f5", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 4px 14px rgba(0,0,0,0.25)" }}
           >
             {authenticatedUser.avatarUrl ? (
@@ -1915,6 +1926,9 @@ export default function PopPersonCanvas() {
             data-testid="button-auth"
             aria-label="Fazer autenticação"
             title="Fazer autenticação"
+            onClick={() => {
+              window.location.assign(getApiEndpoint("/api/auth/x/start?returnTo=/"));
+            }}
             style={{ flexShrink: 0, width: "36px", height: "36px", borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.72)", backdropFilter: "blur(6px)", border: "1px solid rgba(255, 255, 255, 0.12)", color: "#f5f5f5", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 4px 14px rgba(0,0,0,0.25)" }}
           >
             <Plus size={18} strokeWidth={2.4} aria-hidden="true" />

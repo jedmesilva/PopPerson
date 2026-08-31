@@ -6,11 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { AuthenticatedUser } from './authenticatedUser';
-import type { PopPersonConfig } from './popPersonConfig';
-import type { PopPersonState } from './popPersonState';
 
-export interface PopPersonBootstrap {
-  config: PopPersonConfig;
-  state: PopPersonState;
+export type GetAuthenticatedUser200 = {
   user: AuthenticatedUser | null;
-}
+};

@@ -597,6 +597,7 @@ async function getPopPersonConfig(): Promise<PopPersonConfig> {
 
 export async function getPopPersonBootstrap(
   sessionId?: string,
+  user: PopPersonBootstrap["user"] = null,
 ): Promise<PopPersonBootstrap> {
   const roomId = await getRoomId();
   await ensureRoomMembership(roomId, sessionId);
@@ -604,7 +605,7 @@ export async function getPopPersonBootstrap(
     getPopPersonConfig(),
     currentState(roomId),
   ]);
-  return { config, state };
+  return { config, state, user };
 }
 
 export async function getPopPersonState(

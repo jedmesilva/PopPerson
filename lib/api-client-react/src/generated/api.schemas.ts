@@ -213,9 +213,20 @@ export interface PopPersonState {
   actions: PopPersonAction[];
 }
 
+export interface AuthenticatedUser {
+  xUserId: string;
+  username: string;
+  name: string;
+  /** @nullable */
+  avatarUrl: string | null;
+  /** @nullable */
+  email: string | null;
+}
+
 export interface PopPersonBootstrap {
   config: PopPersonConfig;
   state: PopPersonState;
+  user: AuthenticatedUser | null;
 }
 
 export type PopPersonActionInputMode = typeof PopPersonActionInputMode[keyof typeof PopPersonActionInputMode];
@@ -242,4 +253,12 @@ export interface PopPersonActionInput {
 export interface ErrorResponse {
   error: string;
 }
+
+export type StartXAuthenticationParams = {
+returnTo?: string;
+};
+
+export type GetAuthenticatedUser200 = {
+  user: AuthenticatedUser | null;
+};
 

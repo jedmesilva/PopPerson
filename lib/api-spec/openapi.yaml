@@ -53,6 +53,56 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PopPersonBootstrap"
+  /auth/x/start:
+    get:
+      operationId: startXAuthentication
+      tags: [auth]
+      summary: Start X OAuth authentication
+      parameters:
+        - name: returnTo
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirects to X authorization.
+        "503":
+          description: X authentication is not configured.
+  /auth/x/callback:
+    get:
+      operationId: completeXAuthentication
+      tags: [auth]
+      summary: Complete X OAuth authentication
+      responses:
+        "303":
+          description: Redirects back to the app.
+  /auth/me:
+    get:
+      operationId: getAuthenticatedUser
+      tags: [auth]
+      summary: Get the authenticated X user
+      responses:
+        "200":
+          description: Current authenticated user, if any.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user]
+                properties:
+                  user:
+                    oneOf:
+                      - $ref: "#/components/schemas/AuthenticatedUser"
+                      - type: "null"
+  /auth/logout:
+    post:
+      operationId: logoutAuthenticatedUser
+      tags: [auth]
+      summary: Clear the authenticated X session
+      responses:
+        "204":
+          description: Session cleared.
   /pop-person/state:
     get:
       operationId: getPopPersonState
@@ -347,12 +397,30 @@ components:
             $ref: "#/components/schemas/PopPersonAction"
     PopPersonBootstrap:
       type: object
-      required: [config, state]
+      required: [config, state, user]
       properties:
         config:
           $ref: "#/components/schemas/PopPersonConfig"
         state:
           $ref: "#/components/schemas/PopPersonState"
+        user:
+          oneOf:
+            - $ref: "#/components/schemas/AuthenticatedUser"
+            - type: "null"
+    AuthenticatedUser:
+      type: object
+      required: [xUserId, username, name, avatarUrl, email]
+      properties:
+        xUserId:
+          type: string
+        username:
+          type: string
+        name:
+          type: string
+        avatarUrl:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
     PopPersonActionInput:
       type: object
       required: [mode, elementId, level, targetName]

@@ -22,11 +22,13 @@ import type {
 import type {
   AccessLocation,
   ErrorResponse,
+  GetAuthenticatedUser200,
   HealthStatus,
   PopPersonAction,
   PopPersonActionInput,
   PopPersonBootstrap,
-  PopPersonState
+  PopPersonState,
+  StartXAuthenticationParams
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -288,6 +290,315 @@ export function useGetPopPerson<TData = Awaited<ReturnType<typeof getPopPerson>>
 
 
 
+
+export const getStartXAuthenticationUrl = (params?: StartXAuthenticationParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/auth/x/start?${stringifiedParams}` : `/api/auth/x/start`
+}
+
+/**
+ * @summary Start X OAuth authentication
+ */
+export const startXAuthentication = async (params?: StartXAuthenticationParams, options?: Parameters<typeof customFetch>[1]): Promise<unknown> => {
+
+  return customFetch<unknown>(getStartXAuthenticationUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getStartXAuthenticationQueryKey = (params?: StartXAuthenticationParams,) => {
+    return [
+    `/api/auth/x/start`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getStartXAuthenticationQueryOptions = <TData = Awaited<ReturnType<typeof startXAuthentication>>, TError = ErrorType<void>>(params?: StartXAuthenticationParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof startXAuthentication>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getStartXAuthenticationQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof startXAuthentication>>> = ({ signal }) => startXAuthentication(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof startXAuthentication>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type StartXAuthenticationQueryResult = NonNullable<Awaited<ReturnType<typeof startXAuthentication>>>
+export type StartXAuthenticationQueryError = ErrorType<void>
+
+
+/**
+ * @summary Start X OAuth authentication
+ */
+
+export function useStartXAuthentication<TData = Awaited<ReturnType<typeof startXAuthentication>>, TError = ErrorType<void>>(
+ params?: StartXAuthenticationParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof startXAuthentication>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getStartXAuthenticationQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCompleteXAuthenticationUrl = () => {
+
+
+
+
+  return `/api/auth/x/callback`
+}
+
+/**
+ * @summary Complete X OAuth authentication
+ */
+export const completeXAuthentication = async ( options?: Parameters<typeof customFetch>[1]): Promise<unknown> => {
+
+  return customFetch<unknown>(getCompleteXAuthenticationUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getCompleteXAuthenticationQueryKey = () => {
+    return [
+    `/api/auth/x/callback`
+    ] as const;
+    }
+
+
+export const getCompleteXAuthenticationQueryOptions = <TData = Awaited<ReturnType<typeof completeXAuthentication>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof completeXAuthentication>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getCompleteXAuthenticationQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof completeXAuthentication>>> = ({ signal }) => completeXAuthentication({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof completeXAuthentication>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type CompleteXAuthenticationQueryResult = NonNullable<Awaited<ReturnType<typeof completeXAuthentication>>>
+export type CompleteXAuthenticationQueryError = ErrorType<void>
+
+
+/**
+ * @summary Complete X OAuth authentication
+ */
+
+export function useCompleteXAuthentication<TData = Awaited<ReturnType<typeof completeXAuthentication>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof completeXAuthentication>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getCompleteXAuthenticationQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetAuthenticatedUserUrl = () => {
+
+
+
+
+  return `/api/auth/me`
+}
+
+/**
+ * @summary Get the authenticated X user
+ */
+export const getAuthenticatedUser = async ( options?: Parameters<typeof customFetch>[1]): Promise<GetAuthenticatedUser200> => {
+
+  return customFetch<GetAuthenticatedUser200>(getGetAuthenticatedUserUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAuthenticatedUserQueryKey = () => {
+    return [
+    `/api/auth/me`
+    ] as const;
+    }
+
+
+export const getGetAuthenticatedUserQueryOptions = <TData = Awaited<ReturnType<typeof getAuthenticatedUser>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAuthenticatedUser>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAuthenticatedUserQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAuthenticatedUser>>> = ({ signal }) => getAuthenticatedUser({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAuthenticatedUser>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAuthenticatedUserQueryResult = NonNullable<Awaited<ReturnType<typeof getAuthenticatedUser>>>
+export type GetAuthenticatedUserQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the authenticated X user
+ */
+
+export function useGetAuthenticatedUser<TData = Awaited<ReturnType<typeof getAuthenticatedUser>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAuthenticatedUser>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAuthenticatedUserQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getLogoutAuthenticatedUserUrl = () => {
+
+
+
+
+  return `/api/auth/logout`
+}
+
+/**
+ * @summary Clear the authenticated X session
+ */
+export const logoutAuthenticatedUser = async ( options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getLogoutAuthenticatedUserUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getLogoutAuthenticatedUserMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logoutAuthenticatedUser>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof logoutAuthenticatedUser>>, TError,void, TContext> => {
+
+const mutationKey = ['logoutAuthenticatedUser'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof logoutAuthenticatedUser>>, void> = () => {
+
+
+          return  logoutAuthenticatedUser(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LogoutAuthenticatedUserMutationResult = NonNullable<Awaited<ReturnType<typeof logoutAuthenticatedUser>>>
+
+    export type LogoutAuthenticatedUserMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Clear the authenticated X session
+ */
+export const useLogoutAuthenticatedUser = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logoutAuthenticatedUser>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof logoutAuthenticatedUser>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getLogoutAuthenticatedUserMutationOptions(options));
+    }
 
 export const getGetPopPersonStateUrl = () => {
 

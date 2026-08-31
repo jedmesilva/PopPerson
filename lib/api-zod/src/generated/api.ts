@@ -185,8 +185,51 @@ export const GetPopPersonResponse = zod.object({
   "gender": zod.enum(['m', 'f'])
 })
 }))
+}),
+  "user": zod.union([zod.object({
+  "xUserId": zod.string(),
+  "username": zod.string(),
+  "name": zod.string(),
+  "avatarUrl": zod.string().nullable(),
+  "email": zod.string().nullable()
+}),zod.null()])
 })
+
+
+/**
+ * @summary Start X OAuth authentication
+ */
+export const StartXAuthenticationQueryParams = zod.object({
+  "returnTo": zod.coerce.string().optional()
 })
+
+export const StartXAuthenticationResponse = zod.void()
+
+
+/**
+ * @summary Complete X OAuth authentication
+ */
+export const CompleteXAuthenticationResponse = zod.void()
+
+
+/**
+ * @summary Get the authenticated X user
+ */
+export const GetAuthenticatedUserResponse = zod.object({
+  "user": zod.union([zod.object({
+  "xUserId": zod.string(),
+  "username": zod.string(),
+  "name": zod.string(),
+  "avatarUrl": zod.string().nullable(),
+  "email": zod.string().nullable()
+}),zod.null()])
+})
+
+
+/**
+ * @summary Clear the authenticated X session
+ */
+export const LogoutAuthenticatedUserResponse = zod.void()
 
 
 /**

@@ -8,7 +8,9 @@
 
 export * from './accessLocation';
 export * from './accessLocationSource';
+export * from './authenticatedUser';
 export * from './errorResponse';
+export * from './getAuthenticatedUser200';
 export * from './healthStatus';
 export * from './popPerson';
 export * from './popPersonAction';
@@ -26,3 +28,4 @@ export * from './popPersonElementGender';
 export * from './popPersonLevel';
 export * from './popPersonState';
 export * from './popPersonStatus';
+export * from './startXAuthenticationParams';
