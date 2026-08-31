@@ -43,6 +43,11 @@ const CELL_TEXT_MIN_SCREEN_SIZE = 9;
 const CELL_TEXT_MAX_SCREEN_SIZE = 15;
 const CELL_TEXT_RADIUS_RATIO = 0.42;
 const ADD_PLAYER_CELL_NAME = "__instapop_add_player__";
+const ADD_PLAYER_CELL_SCREEN_RADIUS = 30;
+
+function getAddPlayerCellWorldRadius(scale) {
+  return ADD_PLAYER_CELL_SCREEN_RADIUS / Math.max(Number(scale) || 1, MIN_ZOOM);
+}
 
 function getWebSocketUrl() {
   const configuredUrl = import.meta.env.DEV
@@ -1391,32 +1396,35 @@ export default function PopPersonCanvas() {
     const names = new Set();
     leavesRef.current.forEach((l) => {
       names.add(l.name);
+      const radius = l.isAddCell
+        ? getAddPlayerCellWorldRadius(transformRef.current.scale)
+        : l.r;
       const current = animatedCirclesRef.current.get(l.name);
       if (!current) {
         animatedCirclesRef.current.set(l.name, {
           x: l.x,
           y: l.y,
-          r: l.r,
-          radiusTarget: l.r,
-          radiusFrom: l.r,
+          r: radius,
+          radiusTarget: radius,
+          radiusFrom: radius,
           radiusStartedAt: null,
         });
         return;
       }
 
-      if (Math.abs(current.radiusTarget - l.r) < 0.001) {
+      if (Math.abs(current.radiusTarget - radius) < 0.001) {
         pendingRadiusAnimationsRef.current.delete(l.name);
         return;
       }
       const shouldAnimate = pendingRadiusAnimationsRef.current.has(l.name);
       pendingRadiusAnimationsRef.current.delete(l.name);
-      current.radiusTarget = l.r;
+      current.radiusTarget = radius;
       if (shouldAnimate) {
         current.radiusFrom = current.r;
         current.radiusStartedAt = now;
       } else {
-        current.r = l.r;
-        current.radiusFrom = l.r;
+        current.r = radius;
+        current.radiusFrom = radius;
         current.radiusStartedAt = null;
       }
     });
@@ -1443,9 +1451,12 @@ export default function PopPersonCanvas() {
     leavesRef.current.forEach((node) => {
       const c = animatedCirclesRef.current.get(node.name);
       if (!c) return;
-      const screenR = c.r * t.scale;
+      const renderRadius = node.isAddCell
+        ? getAddPlayerCellWorldRadius(t.scale)
+        : c.r;
+      const screenR = renderRadius * t.scale;
       ctx.beginPath();
-      ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+      ctx.arc(c.x, c.y, renderRadius, 0, Math.PI * 2);
       ctx.fillStyle = node.color;
       ctx.fill();
       if (node.isAddCell) {
@@ -1455,7 +1466,7 @@ export default function PopPersonCanvas() {
         ctx.setLineDash([5 / t.scale, 5 / t.scale]);
         ctx.stroke();
         ctx.setLineDash([]);
-        const plusSize = Math.max(10 / t.scale, Math.min(c.r * 0.72, 24 / t.scale));
+        const plusSize = Math.min(renderRadius * 0.72, 24 / t.scale);
         ctx.lineWidth = 2.2 / t.scale;
         ctx.lineCap = "round";
         ctx.strokeStyle = "rgba(255,255,255,0.92)";
@@ -1920,7 +1931,10 @@ export default function PopPersonCanvas() {
           const t = transformRef.current;
           const worldX = (px - t.x) / t.scale;
           const worldY = (py - t.y) / t.scale;
-          const hit = leavesRef.current.find((l) => Math.hypot(worldX - l.x, worldY - l.y) <= l.r);
+           const hit = leavesRef.current.find((l) => {
+             const circle = animatedCirclesRef.current.get(l.name);
+             return Math.hypot(worldX - l.x, worldY - l.y) <= (circle?.r ?? l.r);
+           });
           if (hit) selectCell(hit.name);
         }
       }
