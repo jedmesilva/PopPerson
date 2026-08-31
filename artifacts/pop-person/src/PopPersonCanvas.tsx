@@ -372,6 +372,9 @@ export default function PopPersonCanvas() {
   const canJoinAsPlayer = Boolean(
     bootstrapQuery.data?.user && !bootstrapQuery.data?.player?.isPlayer,
   );
+  const playerName = bootstrapQuery.data?.player?.isPlayer
+    ? bootstrapQuery.data.player.name?.trim() || bootstrapQuery.data.user?.name?.trim() || null
+    : null;
   const elements = config?.elements ?? { atacar: [], defender: [] };
   const levels = config?.levels ?? [];
   const levelByKey = useMemo(() => Object.fromEntries(levels.map((level) => [level.key, level])), [levels]);
@@ -588,6 +591,7 @@ export default function PopPersonCanvas() {
   });
   const impactsRef = useRef([]);
   const pendingRadiusAnimationsRef = useRef(new Set());
+  const pendingPlayerFocusRef = useRef(false);
   const visualizedHitKeysRef = useRef(new Set());
   const deferredCompletedActionIdsRef = useRef(new Set());
   const personImagesRef = useRef(new Map());
@@ -1417,6 +1421,7 @@ export default function PopPersonCanvas() {
     if (!canJoinAsPlayer || isJoiningPlayer || !playerCategoryId || !playerLocationComplete || !hasAcceptedPlayerTerms) return;
     setIsJoiningPlayer(true);
     setJoinPlayerError(null);
+    pendingPlayerFocusRef.current = true;
     try {
       const response = await fetch(getApiEndpoint("/api/pop-person/player"), {
         method: "POST",
@@ -1439,6 +1444,7 @@ export default function PopPersonCanvas() {
       await Promise.all([bootstrapQuery.refetch(), stateQuery.refetch()]);
       setShowPlayerSignup(false);
     } catch (error) {
+      pendingPlayerFocusRef.current = false;
       setJoinPlayerError(error instanceof Error ? error.message : "Não foi possível entrar na disputa. Tente novamente.");
     } finally {
       setIsJoiningPlayer(false);
@@ -1567,6 +1573,48 @@ export default function PopPersonCanvas() {
     }
   }, [dataset.length, leaves.length, fitToView]);
   const clampScale = (s) => Math.min(Math.max(s, MIN_ZOOM), MAX_ZOOM);
+  const focusPlayer = useCallback(() => {
+    if (!playerName || !boardWrapRef.current) return false;
+
+    const player = leavesRef.current.find((leaf) => leaf.name === playerName);
+    if (!player) {
+      // A location/category filter can hide the player. Clearing it makes
+      // "Eu" reliable instead of silently doing nothing.
+      if (activeFilterCount > 0) {
+        pendingPlayerFocusRef.current = true;
+        clearFilters();
+      }
+      return false;
+    }
+
+    const circle = animatedCirclesRef.current.get(playerName);
+    const centerX = circle?.x ?? player.x;
+    const centerY = circle?.y ?? player.y;
+    const radius = Math.max(1, circle?.r ?? player.r);
+    const { w, h } = cssSize();
+    const targetScreenRadius = Math.min(92, Math.max(56, Math.min(w, h) * 0.16));
+    const targetScale = clampScale(targetScreenRadius / radius);
+    const targetTransform = {
+      scale: targetScale,
+      x: w / 2 - centerX * targetScale,
+      y: h / 2 - centerY * targetScale,
+    };
+
+    pendingPlayerFocusRef.current = false;
+    recenterAnimRef.current = {
+      from: { ...transformRef.current },
+      to: targetTransform,
+      startTime: performance.now(),
+      duration: 480,
+    };
+    return true;
+  }, [activeFilterCount, clearFilters, playerName]);
+
+  useEffect(() => {
+    if (!pendingPlayerFocusRef.current || !playerName) return;
+    focusPlayer();
+  }, [focusPlayer, leaves, playerName]);
+
   const seedMissingRects = useCallback((now = performance.now()) => {
     const names = new Set();
     leavesRef.current.forEach((l) => {
@@ -2237,7 +2285,35 @@ export default function PopPersonCanvas() {
           </div>
         )}
       </div>
-      {showRecenter && <button data-testid="button-recenter" onClick={recenterView} aria-label="Centralizar visualização" style={{ position: "fixed", zIndex: 55, bottom: "calc(env(safe-area-inset-bottom, 0px) + 20px)", right: "calc(env(safe-area-inset-right, 0px) + 16px)", width: "42px", height: "42px", borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.75)", backdropFilter: "blur(6px)", border: "1px solid rgba(255, 255, 255, 0.12)", color: "#f5f5f5", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 4px 14px rgba(0,0,0,0.35)" }}><Locate size={18} /></button>}
+      {(playerName || showRecenter) && (
+        <div style={{ position: "fixed", zIndex: 55, bottom: "calc(env(safe-area-inset-bottom, 0px) + 20px)", right: "calc(env(safe-area-inset-right, 0px) + 16px)", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "10px" }}>
+          {playerName && (
+            <button
+              data-testid="button-focus-player"
+              type="button"
+              onClick={focusPlayer}
+              aria-label="Encontrar meu perfil"
+              title="Encontrar meu perfil"
+              style={{ width: "42px", height: "42px", padding: 0, borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.82)", backdropFilter: "blur(6px)", border: "1px solid rgba(129, 140, 248, 0.65)", color: "#c7d2fe", display: "flex", alignItems: "center", justifyContent: "center", gap: "3px", cursor: "pointer", boxShadow: "0 4px 14px rgba(0,0,0,0.35)" }}
+            >
+              <CircleUserRound size={15} strokeWidth={2} aria-hidden="true" />
+              <span style={{ fontSize: "11px", fontWeight: 800, lineHeight: 1 }}>Eu</span>
+            </button>
+          )}
+          {showRecenter && (
+            <button
+              data-testid="button-recenter"
+              type="button"
+              onClick={recenterView}
+              aria-label="Centralizar visualização"
+              title="Centralizar visualização"
+              style={{ width: "42px", height: "42px", borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.75)", backdropFilter: "blur(6px)", border: "1px solid rgba(255, 255, 255, 0.12)", color: "#f5f5f5", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 4px 14px rgba(0,0,0,0.35)" }}
+            >
+              <Locate size={18} />
+            </button>
+          )}
+        </div>
+      )}
 
       {showFiltersModal && (
         <div onClick={() => setShowFiltersModal(false)} style={{ position: "fixed", inset: 0, zIndex: 100, backgroundColor: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
