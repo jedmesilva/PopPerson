@@ -40,7 +40,7 @@ router.get("/pop-person/state", async (req, res): Promise<void> => {
 router.get("/pop-person/player/registration", async (req, res): Promise<void> => {
   const user = res.locals.authenticatedUser;
   if (!user) {
-    res.status(401).json({ error: "Faça login para obter sua célula." });
+    res.status(401).json({ error: "Faça login para entrar na disputa." });
     return;
   }
 
@@ -57,7 +57,7 @@ router.get("/pop-person/player/registration", async (req, res): Promise<void> =>
 router.post("/pop-person/player", async (req, res): Promise<void> => {
   const user = res.locals.authenticatedUser;
   if (!user) {
-    res.status(401).json({ error: "Faça login para obter sua célula." });
+    res.status(401).json({ error: "Faça login para entrar na disputa." });
     return;
   }
 
@@ -77,7 +77,7 @@ router.post("/pop-person/player", async (req, res): Promise<void> => {
     res.status(201).json(JoinPopPersonAsPlayerResponse.parse({ player }));
   } catch (error) {
     res.status(400).json({
-      error: error instanceof Error ? error.message : "Não foi possível obter sua célula. Tente novamente.",
+      error: error instanceof Error ? error.message : "Não foi possível entrar na disputa. Tente novamente.",
     });
   }
 });

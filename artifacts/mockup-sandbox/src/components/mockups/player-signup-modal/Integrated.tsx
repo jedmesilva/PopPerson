@@ -10,8 +10,8 @@ export function Integrated() {
       <section style={{ position: "relative", width: "100%", maxWidth: 360, background: "var(--app-surface)", border: "1px solid #292929", borderRadius: 14, padding: 16, display: "flex", flexDirection: "column", gap: 14, boxShadow: "0 8px 28px rgba(0,0,0,.42)" }}>
         <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
           <div style={{ minWidth: 0 }}>
-            <strong style={{ display: "block", fontSize: 18, letterSpacing: "-.02em" }}>Obter minha célula</strong>
-            <span style={{ display: "block", marginTop: 4, color: "var(--app-muted)", fontSize: 12, lineHeight: 1.4 }}>Escolha sua localidade e categoria.</span>
+            <strong style={{ display: "block", fontSize: 18, letterSpacing: "-.02em" }}>Entrar na disputa popular</strong>
+            <span style={{ display: "block", marginTop: 4, color: "var(--app-muted)", fontSize: 12, lineHeight: 1.4 }}>Coloque sua popularidade em jogo e escolha onde quer competir.</span>
           </div>
           <button aria-label="Fechar" style={{ width: 26, height: 26, flexShrink: 0, border: 0, borderRadius: 999, background: "#262626", color: "var(--app-muted)" }}><X size={13} /></button>
         </header>
@@ -45,7 +45,10 @@ export function Integrated() {
         </div>
 
         <label style={{ display: "grid", gap: 7 }}>
-          <span style={{ color: "var(--app-faint)", fontSize: 10, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase" }}>Categoria</span>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            <span style={{ color: "var(--app-faint)", fontSize: 10, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase" }}>Categoria de popularidade</span>
+            <span style={{ color: "var(--app-faint)", fontSize: 11, lineHeight: 1.35 }}>Selecione a categoria em que deseja competir.</span>
+          </div>
           <select style={{ width: "100%", padding: "10px 11px", borderRadius: 9, background: "#262626", color: "var(--app-text)", border: "1px solid #3b3b3b" }}>
             <option>Creator</option>
             <option>Marca</option>
@@ -53,7 +56,7 @@ export function Integrated() {
         </label>
 
         <footer style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 2 }}>
-          <button style={{ width: "100%", padding: 10, borderRadius: 999, border: 0, background: "var(--app-text)", color: "#0a0a0a", fontWeight: 700, fontSize: 13 }}>Obter minha célula</button>
+          <button style={{ width: "100%", padding: 10, borderRadius: 999, border: 0, background: "var(--app-text)", color: "#0a0a0a", fontWeight: 700, fontSize: 13 }}>Entrar na disputa</button>
         </footer>
       </section>
     </main>

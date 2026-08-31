@@ -1325,12 +1325,12 @@ export default function PopPersonCanvas() {
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
-        throw new Error(payload?.error || "Não foi possível obter sua célula. Tente novamente.");
+        throw new Error(payload?.error || "Não foi possível entrar na disputa. Tente novamente.");
       }
       await Promise.all([bootstrapQuery.refetch(), stateQuery.refetch()]);
       setShowPlayerSignup(false);
     } catch (error) {
-      setJoinPlayerError(error instanceof Error ? error.message : "Não foi possível obter sua célula. Tente novamente.");
+      setJoinPlayerError(error instanceof Error ? error.message : "Não foi possível entrar na disputa. Tente novamente.");
     } finally {
       setIsJoiningPlayer(false);
     }
@@ -2181,14 +2181,14 @@ export default function PopPersonCanvas() {
           <div role="dialog" aria-modal="true" aria-labelledby="player-signup-title" onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: "360px", maxHeight: "88vh", backgroundColor: "#171717", border: "1px solid #292929", borderRadius: "14px", padding: "16px", display: "flex", flexDirection: "column", gap: "14px", overflowY: "auto", boxShadow: "0 8px 28px rgba(0,0,0,0.42)" }}>
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
               <div style={{ minWidth: 0 }}>
-                <span id="player-signup-title" style={{ display: "block", color: "#fff", fontWeight: 800, fontSize: "18px", lineHeight: 1.2, letterSpacing: "-0.02em" }}>Obter minha célula</span>
-                <span style={{ display: "block", marginTop: "4px", color: "#a3a3a3", fontSize: "12px", lineHeight: 1.4 }}>Escolha sua localidade e categoria.</span>
+                <span id="player-signup-title" style={{ display: "block", color: "#fff", fontWeight: 800, fontSize: "18px", lineHeight: 1.2, letterSpacing: "-0.02em" }}>Entrar na disputa popular</span>
+                <span style={{ display: "block", marginTop: "4px", color: "#a3a3a3", fontSize: "12px", lineHeight: 1.4 }}>Coloque sua popularidade em jogo e escolha onde quer competir.</span>
               </div>
               <button data-testid="button-close-player-signup" type="button" onClick={() => setShowPlayerSignup(false)} disabled={isJoiningPlayer} aria-label="Fechar" style={{ ...closeButtonStyle, width: "26px", height: "26px", flexShrink: 0, opacity: isJoiningPlayer ? 0.45 : 1 }}><X size={13} /></button>
             </div>
 
             {isLoadingPlayerRegistration ? (
-              <div style={{ padding: "28px 8px", textAlign: "center", color: "#a3a3a3", fontSize: "13px" }}>Carregando seus dados…</div>
+              <div style={{ padding: "28px 8px", textAlign: "center", color: "#a3a3a3", fontSize: "13px" }}>Carregando sua inscrição…</div>
             ) : playerRegistration ? (
               <>
                 <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -2289,7 +2289,10 @@ export default function PopPersonCanvas() {
                 </div>
 
                 <label style={{ display: "flex", flexDirection: "column", gap: "7px" }}>
-                  <span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>Categoria</span>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                    <span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>Categoria de popularidade</span>
+                    <span style={{ color: "#737373", fontSize: "11px", lineHeight: 1.35 }}>Selecione a categoria em que deseja competir.</span>
+                  </div>
                   <select data-testid="select-player-category" value={playerCategoryId} onChange={(e) => setPlayerCategoryId(e.target.value)} style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: "10px", backgroundColor: "#262626", color: "#f5f5f5", border: "1px solid #444", fontSize: "13px", outline: "none" }}>
                     {playerRegistration.categories.map((category) => (
                       <option key={category.id} value={category.id}>{category.parentId ? "↳ " : ""}{category.name}</option>
@@ -2298,7 +2301,7 @@ export default function PopPersonCanvas() {
                 </label>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px", paddingTop: "2px" }}>
-                  <button data-testid="button-confirm-player-signup" type="button" onClick={() => void joinPlayer()} disabled={isJoiningPlayer || !playerCategoryId || !playerLocationComplete} style={{ width: "100%", padding: "10px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", fontWeight: 700, fontSize: "13px", border: "none", cursor: isJoiningPlayer ? "default" : "pointer", opacity: isJoiningPlayer || !playerLocationComplete ? 0.6 : 1 }}>{isJoiningPlayer ? "Obtendo sua célula…" : "Obter minha célula"}</button>
+                  <button data-testid="button-confirm-player-signup" type="button" onClick={() => void joinPlayer()} disabled={isJoiningPlayer || !playerCategoryId || !playerLocationComplete} style={{ width: "100%", padding: "10px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", fontWeight: 700, fontSize: "13px", border: "none", cursor: isJoiningPlayer ? "default" : "pointer", opacity: isJoiningPlayer || !playerLocationComplete ? 0.6 : 1 }}>{isJoiningPlayer ? "Entrando na disputa…" : "Entrar na disputa"}</button>
                 </div>
               </>
             ) : null}
