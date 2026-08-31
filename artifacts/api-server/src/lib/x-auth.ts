@@ -298,7 +298,8 @@ export function getPublicAuthErrorReason(error: unknown): string {
     return "missing_code";
   }
   if (message.includes("token exchange")) return "token_exchange";
-  if (message.includes("user lookup")) return "profile_lookup";
+  if (message.includes("user lookup failed")) return "profile_http";
+  if (message.includes("incomplete profile")) return "profile_incomplete";
   if (message.includes("profile")) return "profile";
   return "unknown";
 }
@@ -326,11 +327,8 @@ export async function completeXAuthorization(
       signal: AbortSignal.timeout(10_000),
     },
   );
-  if (!response.ok) {
-    throw new Error(`X user lookup failed with status ${response.status}.`);
-  }
-
-  const data = (await response.json()) as {
+  const rawProfileResponse = await response.text();
+  let profileResponse: {
     data?: {
       id?: unknown;
       username?: unknown;
@@ -338,8 +336,32 @@ export async function completeXAuthorization(
       profile_image_url?: unknown;
       email?: unknown;
     };
+    error?: unknown;
+    detail?: unknown;
+    title?: unknown;
   };
-  const profile = data.data;
+  try {
+    profileResponse = JSON.parse(rawProfileResponse) as typeof profileResponse;
+  } catch {
+    profileResponse = {};
+  }
+  if (!response.ok) {
+    const providerError =
+      typeof profileResponse.title === "string"
+        ? profileResponse.title
+        : typeof profileResponse.error === "string"
+          ? profileResponse.error
+          : "unknown_provider_error";
+    const detail =
+      typeof profileResponse.detail === "string"
+        ? ` ${profileResponse.detail}`
+        : "";
+    throw new Error(
+      `X user lookup failed with status ${response.status}: ${providerError}.${detail}`,
+    );
+  }
+
+  const profile = profileResponse.data;
   if (
     typeof profile?.id !== "string" ||
     typeof profile.username !== "string" ||
