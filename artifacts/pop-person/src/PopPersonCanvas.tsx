@@ -601,6 +601,7 @@ export default function PopPersonCanvas() {
   const serverStateHydratedRef = useRef(false);
   const lastRealtimeMetricsAtRef = useRef(0);
   const transformRef = useRef({ x: 0, y: 0, scale: 1 });
+  const canvasShakeOffsetRef = useRef({ x: 0, y: 0 });
   const fitTransformRef = useRef({ x: 0, y: 0, scale: 1 });
   const recenterAnimRef = useRef(null);
   const showRecenterRef = useRef(false);
@@ -1618,8 +1619,12 @@ export default function PopPersonCanvas() {
     ctx.clearRect(0, 0, cw, ch);
     const t = transformRef.current;
     const shaking = shakeActionIdsRef.current.size > 0;
+    const shakeOffset = shaking
+      ? { x: (Math.random() - 0.5) * 1.4, y: (Math.random() - 0.5) * 1.4 }
+      : { x: 0, y: 0 };
+    canvasShakeOffsetRef.current = shakeOffset;
     ctx.save();
-    ctx.translate(t.x + (shaking ? (Math.random() - 0.5) * 1.4 : 0), t.y + (shaking ? (Math.random() - 0.5) * 1.4 : 0));
+    ctx.translate(t.x + shakeOffset.x, t.y + shakeOffset.y);
     ctx.scale(t.scale, t.scale);
     const selName = selectedCellRef.current;
     leavesRef.current.forEach((node) => {
@@ -2102,12 +2107,17 @@ export default function PopPersonCanvas() {
         dragging = false;
         multiPointerGesture = false;
         if (wasClick) {
-          const t = transformRef.current;
-          const worldX = (px - t.x) / t.scale;
-          const worldY = (py - t.y) / t.scale;
+           const t = transformRef.current;
+           const shakeOffset = canvasShakeOffsetRef.current;
+           const worldX = (px - t.x - shakeOffset.x) / t.scale;
+           const worldY = (py - t.y - shakeOffset.y) / t.scale;
            const hit = leavesRef.current.find((l) => {
              const circle = animatedCirclesRef.current.get(l.name);
-             return Math.hypot(worldX - l.x, worldY - l.y) <= (circle?.r ?? l.r);
+             if (!circle) return false;
+             const renderRadius = l.isAddCell
+               ? getAddPlayerCellWorldRadius(t.scale)
+               : circle.r;
+             return Math.hypot(worldX - circle.x, worldY - circle.y) <= renderRadius;
            });
           if (hit) selectCell(hit.name);
         }
