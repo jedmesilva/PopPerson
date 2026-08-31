@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { SlidersHorizontal, ArrowLeft, X, ChevronDown, Locate, Search, Plus, CircleUserRound, MapPin, Pencil, Trophy } from "lucide-react";
+import { SlidersHorizontal, ArrowLeft, X, ChevronDown, Locate, Search, Plus, CircleUserRound, Pencil } from "lucide-react";
 import {
   useCreatePopPersonAction,
   useGetAccessLocation,
@@ -2180,14 +2180,9 @@ export default function PopPersonCanvas() {
         <div onClick={() => !isJoiningPlayer && setShowPlayerSignup(false)} style={{ position: "fixed", inset: 0, zIndex: 100, backgroundColor: "rgba(0,0,0,0.68)", display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
           <div role="dialog" aria-modal="true" aria-labelledby="player-signup-title" onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: "400px", maxHeight: "88vh", backgroundColor: "#171717", border: "1px solid #333", borderRadius: "18px", padding: "20px", display: "flex", flexDirection: "column", gap: "16px", overflowY: "auto", boxShadow: "0 12px 36px rgba(0,0,0,0.45)" }}>
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "10px" }}>
-              <div style={{ display: "flex", alignItems: "flex-start", gap: "10px", minWidth: 0 }}>
-                <div style={{ width: "34px", height: "34px", flexShrink: 0, display: "grid", placeItems: "center", borderRadius: "10px", backgroundColor: "rgba(124, 58, 237, 0.18)", color: "#c4b5fd" }}>
-                  <Trophy size={18} aria-hidden="true" />
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                  <span id="player-signup-title" style={{ color: "#fff", fontWeight: 800, fontSize: "19px", letterSpacing: "-0.02em" }}>Obter minha célula</span>
-                  <span style={{ color: "#a3a3a3", fontSize: "12px", lineHeight: 1.4 }}>Informe sua localização e escolha uma categoria para posicionar sua célula no mapa.</span>
-                </div>
+               <div style={{ display: "flex", flexDirection: "column", gap: "4px", minWidth: 0 }}>
+                 <span id="player-signup-title" style={{ color: "#fff", fontWeight: 800, fontSize: "19px", letterSpacing: "-0.02em" }}>Obter minha célula</span>
+                 <span style={{ color: "#a3a3a3", fontSize: "12px", lineHeight: 1.4 }}>Informe sua localização e escolha uma categoria para posicionar sua célula no mapa.</span>
               </div>
               <button data-testid="button-close-player-signup" type="button" onClick={() => setShowPlayerSignup(false)} disabled={isJoiningPlayer} style={{ ...closeButtonStyle, flexShrink: 0, opacity: isJoiningPlayer ? 0.45 : 1 }}><X size={13} /></button>
             </div>
@@ -2200,7 +2195,7 @@ export default function PopPersonCanvas() {
                   {playerRegistration.user.avatarUrl ? (
                     <img src={playerRegistration.user.avatarUrl} alt="" style={{ width: "48px", height: "48px", borderRadius: "9999px", objectFit: "cover", flexShrink: 0 }} />
                   ) : (
-                    <div style={{ width: "48px", height: "48px", borderRadius: "9999px", backgroundColor: "#333", color: "#f5f5f5", display: "grid", placeItems: "center", flexShrink: 0 }}><CircleUserRound size={24} /></div>
+                     <div style={{ width: "48px", height: "48px", borderRadius: "9999px", backgroundColor: "#333", color: "#f5f5f5", display: "grid", placeItems: "center", flexShrink: 0, fontSize: "18px", fontWeight: 800 }}>{playerRegistration.user.name.trim().charAt(0).toUpperCase()}</div>
                   )}
                   <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: "3px" }}>
                     <span style={{ color: "#fff", fontSize: "15px", fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerRegistration.user.name}</span>
@@ -2210,12 +2205,9 @@ export default function PopPersonCanvas() {
 
                 <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "12px", borderRadius: "12px", backgroundColor: "#202020", border: "1px solid #333" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
-                      <MapPin size={16} color="#a78bfa" aria-hidden="true" />
-                      <div style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 }}>
-                        <span style={{ color: "#f5f5f5", fontSize: "13px", fontWeight: 700 }}>Localização</span>
-                        <span style={{ color: "#737373", fontSize: "11px", lineHeight: 1.35 }}>Onde sua célula vai aparecer</span>
-                      </div>
+                     <div style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 }}>
+                       <span style={{ color: "#f5f5f5", fontSize: "13px", fontWeight: 700 }}>Localização</span>
+                       <span style={{ color: "#737373", fontSize: "11px", lineHeight: 1.35 }}>Onde sua célula vai aparecer</span>
                     </div>
                     <button
                       data-testid="button-edit-player-location"
@@ -2231,8 +2223,7 @@ export default function PopPersonCanvas() {
                   </div>
 
                   {!isEditingPlayerLocation ? (
-                    <div data-testid="text-player-location" style={{ display: "flex", alignItems: "center", gap: "8px", minHeight: "38px", padding: "9px 10px", borderRadius: "9px", backgroundColor: "#292929", color: playerLocationComplete ? "#f5f5f5" : "#a3a3a3", fontSize: "12px", lineHeight: 1.35 }}>
-                      <MapPin size={14} color={playerLocationComplete ? "#c4b5fd" : "#737373"} aria-hidden="true" />
+                     <div data-testid="text-player-location" style={{ display: "flex", alignItems: "center", minHeight: "38px", padding: "9px 10px", borderRadius: "9px", backgroundColor: "#292929", color: playerLocationComplete ? "#f5f5f5" : "#a3a3a3", fontSize: "12px", lineHeight: 1.35 }}>
                       <span>{playerLocationComplete ? `${playerLocation.city}, ${playerLocation.region} — ${playerLocation.country}` : "Informe sua cidade para continuar"}</span>
                     </div>
                   ) : (
