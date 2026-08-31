@@ -45,6 +45,7 @@ const CELL_TEXT_MAX_SCREEN_SIZE = 15;
 const CELL_TEXT_RADIUS_RATIO = 0.42;
 const ADD_PLAYER_CELL_NAME = "__instapop_add_player__";
 const ADD_PLAYER_CELL_SCREEN_RADIUS = 30;
+const PLAYER_AUTO_FOCUS_DELAY_MS = 1500;
 const EMPTY_PLAYER_LOCATION = { city: "", region: "", country: "" };
 
 function getSuggestedPlayerLocation(accessLocation) {
@@ -592,6 +593,7 @@ export default function PopPersonCanvas() {
   const impactsRef = useRef([]);
   const pendingRadiusAnimationsRef = useRef(new Set());
   const pendingPlayerFocusRef = useRef(false);
+  const playerFocusTimeoutRef = useRef(null);
   const visualizedHitKeysRef = useRef(new Set());
   const deferredCompletedActionIdsRef = useRef(new Set());
   const personImagesRef = useRef(new Map());
@@ -1612,8 +1614,32 @@ export default function PopPersonCanvas() {
 
   useEffect(() => {
     if (!pendingPlayerFocusRef.current || !playerName) return;
-    focusPlayer();
+    const player = leavesRef.current.find((leaf) => leaf.name === playerName);
+    if (!player) {
+      if (activeFilterCount > 0) {
+        pendingPlayerFocusRef.current = true;
+        clearFilters();
+      }
+      return;
+    }
+    if (playerFocusTimeoutRef.current !== null) return;
+
+    playerFocusTimeoutRef.current = window.setTimeout(() => {
+      playerFocusTimeoutRef.current = null;
+      if (pendingPlayerFocusRef.current) {
+        focusPlayer();
+      }
+    }, PLAYER_AUTO_FOCUS_DELAY_MS);
   }, [focusPlayer, leaves, playerName]);
+
+  useEffect(() => {
+    return () => {
+      if (playerFocusTimeoutRef.current !== null) {
+        window.clearTimeout(playerFocusTimeoutRef.current);
+        playerFocusTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   const seedMissingRects = useCallback((now = performance.now()) => {
     const names = new Set();
