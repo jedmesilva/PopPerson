@@ -1,7 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { Request, Response } from "express";
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import {
+  accessEventsTable,
   authSessionsTable,
   db,
   anonymousSessionsTable,
@@ -97,6 +98,39 @@ export async function createAuthenticatedSession(
       .returning();
 
     if (!user) throw new Error("Could not persist the X user.");
+
+    const [latestAccess] = anonymousSessionId
+      ? await tx
+          .select({
+            city: accessEventsTable.city,
+            region: accessEventsTable.region,
+            country: accessEventsTable.country,
+            countryCode: accessEventsTable.countryCode,
+            timezone: accessEventsTable.timezone,
+            locationSource: accessEventsTable.locationSource,
+            accessedAt: accessEventsTable.accessedAt,
+          })
+          .from(accessEventsTable)
+          .where(eq(accessEventsTable.sessionId, anonymousSessionId))
+          .orderBy(desc(accessEventsTable.accessedAt))
+          .limit(1)
+      : [];
+
+    if (latestAccess) {
+      await tx
+        .update(usersTable)
+        .set({
+          lastAccessCity: latestAccess.city,
+          lastAccessRegion: latestAccess.region,
+          lastAccessCountry: latestAccess.country,
+          lastAccessCountryCode: latestAccess.countryCode,
+          lastAccessTimezone: latestAccess.timezone,
+          lastAccessLocationSource: latestAccess.locationSource,
+          lastAccessLocationAt: latestAccess.accessedAt,
+          updatedAt: now,
+        })
+        .where(eq(usersTable.id, user.id));
+    }
 
     await tx.insert(authSessionsTable).values({
       userId: user.id,
