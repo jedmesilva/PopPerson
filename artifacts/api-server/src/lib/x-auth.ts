@@ -115,7 +115,8 @@ function isSecureRequest(req: Request): boolean {
 
 function cookieAttributes(req: Request, maxAge: number): string {
   const secure = isSecureRequest(req) ? "; Secure" : "";
-  return `Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=Lax${secure}`;
+  const sameSite = process.env.NODE_ENV === "production" ? "None" : "Lax";
+  return `Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=${sameSite}${secure}`;
 }
 
 export function setAuthCookie(req: Request, res: Response, user: AuthenticatedUser): void {
@@ -170,6 +171,30 @@ export function getXRedirectUri(req: Request): string {
   const host = req.get("x-forwarded-host")?.split(",")[0].trim() || req.get("host");
   if (!host) throw new Error("Cannot determine the X OAuth redirect host.");
   return `${protocol}://${host}/api/auth/x/callback`;
+}
+
+function getRequestOrigin(req: Request): string {
+  const protocol = req.get("x-forwarded-proto")?.split(",")[0].trim() || req.protocol;
+  const host = req.get("x-forwarded-host")?.split(",")[0].trim() || req.get("host");
+  if (!host) throw new Error("Cannot determine the request origin.");
+  return `${protocol}://${host}`;
+}
+
+function getFrontendOrigin(): string | null {
+  const configured =
+    process.env.FRONTEND_URL?.trim() ||
+    process.env.CORS_ORIGIN?.split(",").map((origin) => origin.trim()).find(Boolean);
+  if (!configured) return null;
+  try {
+    return new URL(configured).origin;
+  } catch {
+    throw new Error("FRONTEND_URL or CORS_ORIGIN must contain a valid frontend URL.");
+  }
+}
+
+export function getFrontendRedirectUri(req: Request, returnTo: unknown): string {
+  const origin = getFrontendOrigin() || getRequestOrigin(req);
+  return new URL(normalizeReturnTo(returnTo), `${origin}/`).toString();
 }
 
 export function normalizeReturnTo(value: unknown): string {

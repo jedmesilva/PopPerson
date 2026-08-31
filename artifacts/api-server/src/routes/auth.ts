@@ -3,6 +3,7 @@ import {
   beginXAuthorization,
   clearAuthCookie,
   completeXAuthorization,
+  getFrontendRedirectUri,
   getReturnTo,
 } from "../lib/x-auth";
 
@@ -23,10 +24,12 @@ router.get("/auth/x/callback", async (req, res): Promise<void> => {
   const returnTo = getReturnTo(req);
   try {
     await completeXAuthorization(req, res);
-    res.redirect(303, returnTo);
+    res.redirect(303, getFrontendRedirectUri(req, returnTo));
   } catch (error) {
     req.log.error({ err: error }, "Failed to complete X authentication");
-    res.redirect(303, `${returnTo}?auth=error`);
+    const errorRedirect = new URL(getFrontendRedirectUri(req, returnTo));
+    errorRedirect.searchParams.set("auth", "error");
+    res.redirect(303, errorRedirect.toString());
   }
 });
 
