@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { SlidersHorizontal, ArrowLeft, X, ChevronDown, Locate, Search, Plus } from "lucide-react";
+import { SlidersHorizontal, ArrowLeft, X, ChevronDown, Locate, Search, Plus, CircleUserRound } from "lucide-react";
 import {
   useCreatePopPersonAction,
   useGetAccessLocation,
@@ -1887,6 +1887,7 @@ export default function PopPersonCanvas() {
   const closeButtonStyle = { width: "26px", height: "26px", borderRadius: "9999px", backgroundColor: "#262626", color: "#a3a3a3", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" };
   const selectedInitials = selectedCellData ? selectedCellData.name.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase() : "";
   const actionWasRateLimited = createActionMutation.error?.status === 429;
+  const authenticatedUser = bootstrapQuery.data?.user ?? null;
 
   return (
     <div style={{ width: "100%", minHeight: "100vh", backgroundColor: "#0a0a0a", position: "relative" }}>
@@ -1894,15 +1895,31 @@ export default function PopPersonCanvas() {
         <div style={{ flexShrink: 0, display: "flex", alignItems: "center", padding: "6px 12px", borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.55)", backdropFilter: "blur(6px)" }}>
           <img data-testid="image-brand" src="/instapop-logo.svg" alt="InstaPop" style={{ display: "block", width: "92px", height: "auto" }} />
         </div>
-        <button
-          type="button"
-          data-testid="button-auth"
-          aria-label="Fazer autenticação"
-          title="Fazer autenticação"
-          style={{ flexShrink: 0, width: "36px", height: "36px", borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.72)", backdropFilter: "blur(6px)", border: "1px solid rgba(255, 255, 255, 0.12)", color: "#f5f5f5", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 4px 14px rgba(0,0,0,0.25)" }}
-        >
-          <Plus size={18} strokeWidth={2.4} aria-hidden="true" />
-        </button>
+        {authenticatedUser ? (
+          <button
+            type="button"
+            data-testid="button-account"
+            aria-label="Abrir conta"
+            title="Abrir conta"
+            style={{ flexShrink: 0, width: "36px", height: "36px", padding: 0, overflow: "hidden", borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.72)", backdropFilter: "blur(6px)", border: "1px solid rgba(255, 255, 255, 0.12)", color: "#f5f5f5", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 4px 14px rgba(0,0,0,0.25)" }}
+          >
+            {authenticatedUser.avatarUrl ? (
+              <img src={authenticatedUser.avatarUrl} alt="" style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }} />
+            ) : (
+              <CircleUserRound size={20} strokeWidth={1.8} aria-hidden="true" />
+            )}
+          </button>
+        ) : (
+          <button
+            type="button"
+            data-testid="button-auth"
+            aria-label="Fazer autenticação"
+            title="Fazer autenticação"
+            style={{ flexShrink: 0, width: "36px", height: "36px", borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.72)", backdropFilter: "blur(6px)", border: "1px solid rgba(255, 255, 255, 0.12)", color: "#f5f5f5", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 4px 14px rgba(0,0,0,0.25)" }}
+          >
+            <Plus size={18} strokeWidth={2.4} aria-hidden="true" />
+          </button>
+        )}
         <div className="action-pill-container" style={{ flex: "1 1 auto", minWidth: 0, display: "flex", justifyContent: "center", containerType: "inline-size" }}>
           {(queue.length > 0 || activeActions.length > 0) && (() => {
             const now = performance.now();
