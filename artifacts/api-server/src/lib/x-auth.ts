@@ -222,7 +222,7 @@ export function beginXAuthorization(req: Request, res: Response): void {
     response_type: "code",
     client_id: clientId,
     redirect_uri: getXRedirectUri(req),
-    scope: "users.read",
+    scope: "tweet.read users.read",
     state,
     code_challenge: challenge,
     code_challenge_method: "S256",

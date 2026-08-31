@@ -8,3 +8,9 @@ Para o OAuth 2.0 Authorization Code com PKCE do X, um Web App é cliente confide
 **Why:** O X trata esses dois formatos como modos distintos; misturar Basic Auth com `client_id` no corpo pode fazer a troca do token falhar ou produzir diagnósticos ambíguos.
 
 **How to apply:** Ao configurar o backend, alinhe o tipo escolhido no Developer Portal com a presença de `X_CLIENT_SECRET` e valide a resposta da troca do token sem registrar tokens.
+
+Para consultar o usuário autenticado em `/2/users/me`, o fluxo PKCE deve solicitar os escopos `tweet.read users.read`.
+
+**Why:** A documentação atual do endpoint exige ambos os escopos para User Context, mesmo quando o aplicativo só precisa ler o perfil.
+
+**How to apply:** Inclua os dois escopos no authorize URL e force um novo consentimento depois de alterar os escopos, pois tokens emitidos anteriormente não ganham permissões retroativamente.
