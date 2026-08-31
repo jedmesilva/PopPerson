@@ -2278,20 +2278,20 @@ export default function PopPersonCanvas() {
                     <>
                       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: "8px", marginTop: "10px" }}>
                         <label style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-                          <span style={{ color: "#d4d4d4", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Cidade</span>
+                          <span style={{ color: "#d4d4d4", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>País</span>
                           <input
-                            data-testid="input-player-city"
-                            value={playerLocation.city}
+                            data-testid="input-player-country"
+                            value={playerLocation.country}
                             onChange={(e) => {
                               playerLocationEditedRef.current = true;
-                              setPlayerLocation((location) => ({ ...location, city: e.target.value }));
+                              setPlayerLocation((location) => ({ ...location, country: e.target.value }));
                             }}
-                            placeholder="Ex.: São Paulo"
-                            autoComplete="address-level2"
+                            placeholder="Ex.: Brasil"
+                            autoComplete="country-name"
                             style={{ width: "100%", boxSizing: "border-box", padding: "10px 11px", borderRadius: "9px", backgroundColor: "#292929", color: "#f5f5f5", border: "1px solid #484848", fontSize: "13px", outline: "none" }}
                           />
                         </label>
-                        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: "8px" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 0.7fr) minmax(0, 1.3fr)", gap: "8px" }}>
                           <label style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
                             <span style={{ color: "#d4d4d4", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Estado</span>
                             <input
@@ -2307,22 +2307,22 @@ export default function PopPersonCanvas() {
                             />
                           </label>
                           <label style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-                            <span style={{ color: "#d4d4d4", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>País</span>
+                            <span style={{ color: "#d4d4d4", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Cidade</span>
                             <input
-                              data-testid="input-player-country"
-                              value={playerLocation.country}
+                              data-testid="input-player-city"
+                              value={playerLocation.city}
                               onChange={(e) => {
                                 playerLocationEditedRef.current = true;
-                                setPlayerLocation((location) => ({ ...location, country: e.target.value }));
+                                setPlayerLocation((location) => ({ ...location, city: e.target.value }));
                               }}
-                              placeholder="Ex.: Brasil"
-                              autoComplete="country-name"
+                              placeholder="Ex.: São Paulo"
+                              autoComplete="address-level2"
                               style={{ width: "100%", boxSizing: "border-box", padding: "10px 11px", borderRadius: "9px", backgroundColor: "#292929", color: "#f5f5f5", border: "1px solid #484848", fontSize: "13px", outline: "none" }}
                             />
                           </label>
                         </div>
                       </div>
-                      <span style={{ display: "block", marginTop: "8px", color: "#737373", fontSize: "11px", lineHeight: 1.35 }}>Use a cidade, o estado e o país onde você está.</span>
+                      <span style={{ display: "block", marginTop: "8px", color: "#737373", fontSize: "11px", lineHeight: 1.35 }}>Use o país, o estado e a cidade onde você está.</span>
                       <button
                         data-testid="button-save-player-location"
                         type="button"
