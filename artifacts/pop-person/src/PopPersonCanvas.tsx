@@ -2182,7 +2182,7 @@ export default function PopPersonCanvas() {
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "10px" }}>
                <div style={{ display: "flex", flexDirection: "column", gap: "4px", minWidth: 0 }}>
                  <span id="player-signup-title" style={{ color: "#fff", fontWeight: 800, fontSize: "19px", letterSpacing: "-0.02em" }}>Obter minha célula</span>
-                 <span style={{ color: "#a3a3a3", fontSize: "12px", lineHeight: 1.4 }}>Informe sua localização e escolha uma categoria para posicionar sua célula no mapa.</span>
+                 <span style={{ color: "#a3a3a3", fontSize: "12px", lineHeight: 1.4 }}>Informe sua localidade e escolha uma categoria para obter sua célula.</span>
               </div>
               <button data-testid="button-close-player-signup" type="button" onClick={() => setShowPlayerSignup(false)} disabled={isJoiningPlayer} style={{ ...closeButtonStyle, flexShrink: 0, opacity: isJoiningPlayer ? 0.45 : 1 }}><X size={13} /></button>
             </div>
@@ -2206,16 +2206,16 @@ export default function PopPersonCanvas() {
                 <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "12px", borderRadius: "12px", backgroundColor: "#202020", border: "1px solid #333" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
                      <div style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 }}>
-                       <span style={{ color: "#f5f5f5", fontSize: "13px", fontWeight: 700 }}>Localização</span>
-                       <span style={{ color: "#737373", fontSize: "11px", lineHeight: 1.35 }}>Onde sua célula vai aparecer</span>
+                       <span style={{ color: "#f5f5f5", fontSize: "13px", fontWeight: 700 }}>Sua localidade</span>
+                       <span style={{ color: "#737373", fontSize: "11px", lineHeight: 1.35 }}>Localidade do seu perfil de player</span>
                     </div>
                     <button
                       data-testid="button-edit-player-location"
                       type="button"
                       onClick={() => setIsEditingPlayerLocation((isEditing) => !isEditing)}
                       disabled={isJoiningPlayer}
-                      aria-label={playerLocationComplete ? "Editar localização" : "Informar localização"}
-                      title={playerLocationComplete ? "Editar localização" : "Informar localização"}
+                      aria-label={playerLocationComplete ? "Editar localidade" : "Informar localidade"}
+                      title={playerLocationComplete ? "Editar localidade" : "Informar localidade"}
                       style={{ width: "30px", height: "30px", padding: 0, flexShrink: 0, display: "grid", placeItems: "center", borderRadius: "9999px", backgroundColor: "#333", border: "1px solid #484848", color: "#f5f5f5", cursor: isJoiningPlayer ? "default" : "pointer", opacity: isJoiningPlayer ? 0.5 : 1 }}
                     >
                       <Pencil size={14} aria-hidden="true" />
@@ -2282,7 +2282,7 @@ export default function PopPersonCanvas() {
                         disabled={!playerLocationComplete}
                         style={{ alignSelf: "flex-start", padding: "8px 11px", borderRadius: "8px", backgroundColor: playerLocationComplete ? "#333" : "#292929", color: playerLocationComplete ? "#f5f5f5" : "#737373", border: "1px solid #484848", fontSize: "11px", fontWeight: 700, cursor: playerLocationComplete ? "pointer" : "default" }}
                       >
-                        Salvar localização
+                        Salvar localidade
                       </button>
                     </>
                   )}
