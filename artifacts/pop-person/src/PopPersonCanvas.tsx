@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { SlidersHorizontal, ArrowLeft, X, ChevronDown, Locate, Search, Plus, CircleUserRound, Pencil } from "lucide-react";
+import { SlidersHorizontal, ArrowLeft, X, ChevronDown, ChevronRight, Locate, Search, Plus, CircleUserRound, Pencil } from "lucide-react";
 import {
   useCreatePopPersonAction,
   useGetAccessLocation,
@@ -352,6 +352,7 @@ export default function PopPersonCanvas() {
   const [playerCategoryId, setPlayerCategoryId] = useState("");
   const [isPlayerCategoryPickerOpen, setIsPlayerCategoryPickerOpen] = useState(false);
   const [playerCategorySearch, setPlayerCategorySearch] = useState("");
+  const [expandedPlayerCategoryIds, setExpandedPlayerCategoryIds] = useState(new Set());
   const [playerLocation, setPlayerLocation] = useState(EMPTY_PLAYER_LOCATION);
   const [isEditingPlayerLocation, setIsEditingPlayerLocation] = useState(false);
   const [, forceTick] = useState(0);
@@ -386,7 +387,12 @@ export default function PopPersonCanvas() {
       if (!category || visited.has(category.id)) return;
       visited.add(category.id);
       const path = [...parentPath, category.name];
-      ordered.push({ ...category, depth, pathLabel: path.join(" / ") });
+      ordered.push({
+        ...category,
+        depth,
+        hasChildren: (childrenByParent.get(category.id)?.length ?? 0) > 0,
+        pathLabel: path.join(" / "),
+      });
       (childrenByParent.get(category.id) ?? [])
         .slice()
         .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
@@ -408,6 +414,19 @@ export default function PopPersonCanvas() {
       normalizeLocationValue(`${category.name} ${category.pathLabel}`).includes(query),
     );
   }, [playerCategoryOptions, playerCategorySearch]);
+  const visiblePlayerCategoryOptions = useMemo(() => {
+    if (normalizeLocationValue(playerCategorySearch)) return filteredPlayerCategoryOptions;
+    return filteredPlayerCategoryOptions.filter((category) => {
+      if (category.depth === 0) return true;
+      let parentId = category.parentId;
+      while (parentId) {
+        if (!expandedPlayerCategoryIds.has(parentId)) return false;
+        const parent = playerCategoryOptions.find((option) => option.id === parentId);
+        parentId = parent?.parentId;
+      }
+      return true;
+    });
+  }, [expandedPlayerCategoryIds, filteredPlayerCategoryOptions, playerCategoryOptions, playerCategorySearch]);
   const selectedPlayerCategory = useMemo(
     () => playerCategoryOptions.find((category) => category.id === playerCategoryId),
     [playerCategoryId, playerCategoryOptions],
@@ -1320,6 +1339,7 @@ export default function PopPersonCanvas() {
     setJoinPlayerError(null);
     setIsPlayerCategoryPickerOpen(false);
     setPlayerCategorySearch("");
+    setExpandedPlayerCategoryIds(new Set());
     try {
       const response = await fetch(getApiEndpoint("/api/pop-person/player/registration"), {
         credentials: "include",
@@ -2339,7 +2359,7 @@ export default function PopPersonCanvas() {
                 <div style={{ display: "flex", flexDirection: "column", gap: "7px" }}>
                   <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
                     <span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>Categoria de popularidade</span>
-                    <span style={{ color: "#737373", fontSize: "11px", lineHeight: 1.35 }}>Encontre a disputa que combina com sua popularidade.</span>
+                    <span style={{ color: "#737373", fontSize: "11px", lineHeight: 1.35 }}>Abra uma categoria para ver suas subcategorias ou use a busca.</span>
                   </div>
                   <button
                     data-testid="select-player-category"
@@ -2381,27 +2401,43 @@ export default function PopPersonCanvas() {
                       </div>
 
                       <div style={{ display: "flex", flexDirection: "column", gap: "2px", maxHeight: "190px", overflowY: "auto" }}>
-                        {filteredPlayerCategoryOptions.length === 0 ? (
+                        {visiblePlayerCategoryOptions.length === 0 ? (
                           <span style={{ padding: "12px 10px", color: "#737373", fontSize: "12px", textAlign: "center" }}>Nenhuma categoria encontrada.</span>
                         ) : (
-                          filteredPlayerCategoryOptions.map((category) => (
-                            <button
-                              key={category.id}
-                              type="button"
-                              role="option"
-                              aria-selected={category.id === playerCategoryId}
-                              onClick={() => {
-                                setPlayerCategoryId(category.id);
-                                setIsPlayerCategoryPickerOpen(false);
-                                setPlayerCategorySearch("");
-                              }}
-                              style={{ width: "100%", padding: "9px 10px", paddingLeft: `${10 + category.depth * 18}px`, display: "block", border: "none", borderRadius: "7px", backgroundColor: category.id === playerCategoryId ? "#363636" : "transparent", color: category.id === playerCategoryId ? "#fff" : category.depth === 0 ? "#f5f5f5" : "#d4d4d4", fontSize: "12px", fontWeight: category.depth === 0 ? 700 : 600, textAlign: "left", cursor: "pointer" }}
-                            >
-                              <span style={{ position: "relative", display: "flex", alignItems: "center", gap: "6px" }}>
-                                {category.depth > 0 && <span aria-hidden="true" style={{ position: "absolute", left: "-10px", width: "2px", height: "16px", borderRadius: "999px", backgroundColor: category.id === playerCategoryId ? "#a3a3a3" : "#4a4a4a" }} />}
-                                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{category.name}</span>
-                              </span>
-                            </button>
+                          visiblePlayerCategoryOptions.map((category) => (
+                            <div key={category.id} style={{ display: "flex", alignItems: "stretch", gap: "2px", paddingLeft: `${category.depth * 18}px` }}>
+                              {category.hasChildren ? (
+                                <button
+                                  type="button"
+                                  aria-label={`${expandedPlayerCategoryIds.has(category.id) ? "Recolher" : "Expandir"} ${category.name}`}
+                                  aria-expanded={expandedPlayerCategoryIds.has(category.id)}
+                                  onClick={() => setExpandedPlayerCategoryIds((expanded) => {
+                                    const next = new Set(expanded);
+                                    if (next.has(category.id)) next.delete(category.id);
+                                    else next.add(category.id);
+                                    return next;
+                                  })}
+                                  style={{ width: "26px", flexShrink: 0, display: "grid", placeItems: "center", padding: 0, border: "none", borderRadius: "7px", backgroundColor: "transparent", color: "#737373", cursor: "pointer" }}
+                                >
+                                  {expandedPlayerCategoryIds.has(category.id) ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
+                                </button>
+                              ) : (
+                                <span aria-hidden="true" style={{ width: "26px", flexShrink: 0 }} />
+                              )}
+                              <button
+                                type="button"
+                                role="option"
+                                aria-selected={category.id === playerCategoryId}
+                                onClick={() => {
+                                  setPlayerCategoryId(category.id);
+                                  setIsPlayerCategoryPickerOpen(false);
+                                  setPlayerCategorySearch("");
+                                }}
+                                style={{ flex: 1, minWidth: 0, padding: "9px 10px", display: "block", border: "none", borderRadius: "7px", backgroundColor: category.id === playerCategoryId ? "#363636" : "transparent", color: category.id === playerCategoryId ? "#fff" : category.depth === 0 ? "#f5f5f5" : "#d4d4d4", fontSize: "12px", fontWeight: category.depth === 0 ? 700 : 600, textAlign: "left", cursor: "pointer" }}
+                              >
+                                <span style={{ display: "block", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{category.name}</span>
+                              </button>
+                            </div>
                           ))
                         )}
                       </div>
