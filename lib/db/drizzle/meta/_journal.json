@@ -29,6 +29,13 @@
       "when": 1787913783365,
       "tag": "0003_enforce_server_only_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788163023293,
+      "tag": "0004_add_x_auth_tables",
+      "breakpoints": true
     }
   ]
 }
