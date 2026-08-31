@@ -2415,31 +2415,30 @@ export default function PopPersonCanvas() {
                 <div style={{ overflow: "hidden", borderRadius: "12px", backgroundColor: "#202020", border: "1px solid #2d2d2d" }}>
                   <FilterSection label="País" options={paisOptions} selected={filters.pais} onSelect={(v) => selectFilterLevel("pais", v)} />
                   <FilterSection label="Estado" options={estadoOptions} selected={filters.estado} onSelect={(v) => selectFilterLevel("estado", v)} disabled={filters.pais === "Todos"} disabledHint="Escolha um país primeiro" />
-                  <div style={{ padding: "8px 12px", borderBottom: "1px solid #2d2d2d" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", minHeight: "38px" }}>
+                  <div style={{ borderBottom: "1px solid #2d2d2d" }}>
+                    <button
+                      data-testid="button-open-filter-city"
+                      type="button"
+                      onClick={() => {
+                        setIsFilterCityPickerOpen((isOpen) => !isOpen);
+                        setFilterCitySearch("");
+                        setIsFilterCategoryPickerOpen(false);
+                      }}
+                      aria-label={filters.cidade === "Todos" ? "Buscar cidade" : "Editar cidade"}
+                      aria-haspopup="listbox"
+                      aria-expanded={isFilterCityPickerOpen}
+                      style={{ width: "100%", minHeight: "54px", padding: "8px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", border: "none", backgroundColor: "transparent", color: "#f5f5f5", textAlign: "left", cursor: "pointer" }}
+                    >
                       <div style={{ display: "flex", flexDirection: "column", gap: "3px", minWidth: 0 }}>
-                        <span style={{ color: filters.estado === "Todos" ? "#737373" : "#d4d4d4", fontSize: "11px", fontWeight: 700, letterSpacing: "0.04em", lineHeight: 1.2, textTransform: "uppercase" }}>Cidade</span>
+                        <span style={{ color: "#d4d4d4", fontSize: "11px", fontWeight: 700, letterSpacing: "0.04em", lineHeight: 1.2, textTransform: "uppercase" }}>Cidade</span>
                         <span data-testid="text-filter-city" style={{ color: filters.cidade !== "Todos" ? "#c7d2fe" : "#a3a3a3", fontSize: "12px", fontWeight: 700, lineHeight: 1.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                           {filters.cidade === "Todos" ? "Todas as cidades" : filters.cidade}
                         </span>
                       </div>
-                      <button
-                        data-testid="button-open-filter-city"
-                        type="button"
-                        onClick={() => {
-                          setIsFilterCityPickerOpen((isOpen) => !isOpen);
-                          setFilterCitySearch("");
-                          setIsFilterCategoryPickerOpen(false);
-                        }}
-                        aria-label={filters.cidade === "Todos" ? "Buscar cidade" : "Editar cidade"}
-                        aria-expanded={isFilterCityPickerOpen}
-                        style={{ width: "28px", height: "28px", padding: 0, flexShrink: 0, display: "grid", placeItems: "center", borderRadius: "8px", backgroundColor: "transparent", border: "1px solid #3b3b3b", color: "#a3a3a3", cursor: "pointer" }}
-                      >
-                        <Pencil size={14} aria-hidden="true" />
-                      </button>
-                    </div>
+                      {isFilterCityPickerOpen ? <ChevronDown size={16} aria-hidden="true" style={{ flexShrink: 0, color: "#c7d2fe" }} /> : <ChevronRight size={16} aria-hidden="true" style={{ flexShrink: 0, color: "#737373" }} />}
+                    </button>
                     {isFilterCityPickerOpen && (
-                      <div role="listbox" aria-label="Resultados de cidades" style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "8px", padding: "8px", borderRadius: "10px", backgroundColor: "#202020", border: "1px solid #3a3a3a", boxShadow: "0 8px 22px rgba(0,0,0,0.28)" }}>
+                      <div role="listbox" aria-label="Resultados de cidades" style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "0 12px 12px", backgroundColor: "#202020", borderTop: "1px solid #2d2d2d" }}>
                         <div style={{ position: "relative" }}>
                           <Search size={14} aria-hidden="true" style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#737373", pointerEvents: "none" }} />
                           <input
@@ -2494,32 +2493,28 @@ export default function PopPersonCanvas() {
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: "7px" }}>
                 <span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>Categoria</span>
-                <div style={{ padding: "8px 12px", borderRadius: "12px", backgroundColor: "#202020", border: "1px solid #2d2d2d" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", minHeight: "38px" }}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "3px", minWidth: 0 }}>
-                      <span style={{ color: "#d4d4d4", fontSize: "11px", fontWeight: 700, letterSpacing: "0.04em", lineHeight: 1.2, textTransform: "uppercase" }}>Perfil</span>
-                      <span data-testid="text-filter-category" style={{ color: filters.categoria !== "Todos" ? "#c7d2fe" : "#a3a3a3", fontSize: "12px", fontWeight: 700, lineHeight: 1.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {selectedFilterCategory?.pathLabel ?? "Todas as categorias"}
-                      </span>
-                    </div>
-                    <button
-                      data-testid="button-open-filter-category"
-                      type="button"
-                      onClick={() => {
-                        setIsFilterCategoryPickerOpen((isOpen) => !isOpen);
-                        setFilterCategorySearch("");
-                        setIsFilterCityPickerOpen(false);
-                      }}
-                      aria-label={filters.categoria === "Todos" ? "Buscar categoria" : "Editar categoria"}
-                      aria-expanded={isFilterCategoryPickerOpen}
-                      style={{ width: "28px", height: "28px", padding: 0, flexShrink: 0, display: "grid", placeItems: "center", borderRadius: "8px", backgroundColor: "transparent", border: "1px solid #3b3b3b", color: "#a3a3a3", cursor: "pointer" }}
-                    >
-                      <Pencil size={14} aria-hidden="true" />
-                    </button>
-                  </div>
+                <div style={{ overflow: "hidden", borderRadius: "12px", backgroundColor: "#202020", border: "1px solid #2d2d2d" }}>
+                  <button
+                    data-testid="button-open-filter-category"
+                    type="button"
+                    onClick={() => {
+                      setIsFilterCategoryPickerOpen((isOpen) => !isOpen);
+                      setFilterCategorySearch("");
+                      setIsFilterCityPickerOpen(false);
+                    }}
+                    aria-label={filters.categoria === "Todos" ? "Buscar categoria" : "Editar categoria"}
+                    aria-haspopup="listbox"
+                    aria-expanded={isFilterCategoryPickerOpen}
+                    style={{ width: "100%", minHeight: "54px", padding: "8px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", border: "none", backgroundColor: "transparent", color: "#f5f5f5", textAlign: "left", cursor: "pointer" }}
+                  >
+                    <span data-testid="text-filter-category" style={{ minWidth: 0, color: filters.categoria !== "Todos" ? "#c7d2fe" : "#a3a3a3", fontSize: "13px", fontWeight: 700, lineHeight: 1.3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {selectedFilterCategory?.pathLabel ?? "Todas as categorias"}
+                    </span>
+                    {isFilterCategoryPickerOpen ? <ChevronDown size={16} aria-hidden="true" style={{ flexShrink: 0, color: "#c7d2fe" }} /> : <ChevronRight size={16} aria-hidden="true" style={{ flexShrink: 0, color: "#737373" }} />}
+                  </button>
 
                   {isFilterCategoryPickerOpen && (
-                    <div role="listbox" aria-label="Categorias de popularidade" style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "8px", padding: "8px", borderRadius: "10px", backgroundColor: "#202020", border: "1px solid #3a3a3a", boxShadow: "0 8px 22px rgba(0,0,0,0.28)" }}>
+                    <div role="listbox" aria-label="Categorias de popularidade" style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "0 12px 12px", backgroundColor: "#202020", borderTop: "1px solid #2d2d2d" }}>
                       <div style={{ position: "relative" }}>
                         <Search size={14} aria-hidden="true" style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#737373", pointerEvents: "none" }} />
                         <input
@@ -2592,13 +2587,9 @@ export default function PopPersonCanvas() {
               </div>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px", borderTop: "1px solid #292929", paddingTop: "16px" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
-                <span style={{ color: "#a3a3a3", fontSize: "11px", lineHeight: 1.35 }}>{activeFilterCount === 0 ? "Nenhum filtro aplicado" : `${activeFilterCount} filtro${activeFilterCount === 1 ? "" : "s"} selecionado${activeFilterCount === 1 ? "" : "s"}`}</span>
-                <span aria-hidden="true" style={{ color: activeFilterCount > 0 ? "#c7d2fe" : "#737373", fontFamily: "monospace", fontSize: "11px", fontWeight: 700 }}>{activeFilterCount}/4</span>
-              </div>
-              <button data-testid="button-clear-filters" type="button" onClick={clearFilters} disabled={activeFilterCount === 0} style={{ width: "100%", padding: "9px", borderRadius: "9999px", backgroundColor: "transparent", color: activeFilterCount === 0 ? "#525252" : "#a3a3a3", fontWeight: 700, fontSize: "12px", border: "1px solid #333", cursor: activeFilterCount === 0 ? "default" : "pointer", opacity: activeFilterCount === 0 ? 0.7 : 1 }}>Limpar filtros</button>
-              <button data-testid="button-apply-filters" type="button" onClick={() => setShowFiltersModal(false)} style={{ width: "100%", padding: "11px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", fontWeight: 700, fontSize: "13px", border: "none", cursor: "pointer" }}>Aplicar filtros</button>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", borderTop: "1px solid #292929", paddingTop: "16px" }}>
+              <button data-testid="button-clear-filters" type="button" onClick={clearFilters} disabled={activeFilterCount === 0} style={{ padding: "10px 8px", borderRadius: "8px", backgroundColor: "transparent", color: activeFilterCount === 0 ? "#525252" : "#a3a3a3", fontWeight: 700, fontSize: "12px", border: "none", cursor: activeFilterCount === 0 ? "default" : "pointer", opacity: activeFilterCount === 0 ? 0.7 : 1 }}>Limpar filtros</button>
+              <button data-testid="button-apply-filters" type="button" onClick={() => setShowFiltersModal(false)} style={{ minWidth: "108px", padding: "11px 16px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", fontWeight: 700, fontSize: "13px", border: "none", cursor: "pointer" }}>Concluído</button>
             </div>
           </div>
         </div>
