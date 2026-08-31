@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { SlidersHorizontal, ArrowLeft, X, ChevronDown, ChevronRight, Locate, Search, Plus, CircleUserRound, Pencil } from "lucide-react";
+import { SlidersHorizontal, ArrowLeft, X, ChevronDown, ChevronRight, Locate, Search, ScanSearch, Plus, CircleUserRound, Pencil } from "lucide-react";
 import {
   useCreatePopPersonAction,
   useGetAccessLocation,
@@ -2320,10 +2320,9 @@ export default function PopPersonCanvas() {
               onClick={focusPlayer}
               aria-label="Encontrar meu perfil"
               title="Encontrar meu perfil"
-              style={{ width: "42px", height: "42px", padding: 0, borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.82)", backdropFilter: "blur(6px)", border: "1px solid rgba(129, 140, 248, 0.65)", color: "#c7d2fe", display: "flex", alignItems: "center", justifyContent: "center", gap: "3px", cursor: "pointer", boxShadow: "0 4px 14px rgba(0,0,0,0.35)" }}
+              style={{ width: "42px", height: "42px", padding: 0, borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.82)", backdropFilter: "blur(6px)", border: "1px solid rgba(129, 140, 248, 0.65)", color: "#c7d2fe", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 4px 14px rgba(0,0,0,0.35)" }}
             >
-              <CircleUserRound size={15} strokeWidth={2} aria-hidden="true" />
-              <span style={{ fontSize: "11px", fontWeight: 800, lineHeight: 1 }}>Eu</span>
+              <ScanSearch size={19} strokeWidth={2.1} aria-hidden="true" />
             </button>
           )}
           {showRecenter && (
