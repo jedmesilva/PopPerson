@@ -8,6 +8,7 @@ import {
   timestamp,
   uniqueIndex,
   uuid,
+  varchar,
 } from "drizzle-orm/pg-core";
 import { z } from "zod/v4";
 
@@ -19,6 +20,13 @@ export const usersTable = pgTable(
     username: text("username").notNull(),
     name: text("name").notNull(),
     xLocation: text("x_location"),
+    lastAccessCity: text("last_access_city"),
+    lastAccessRegion: text("last_access_region"),
+    lastAccessCountry: text("last_access_country"),
+    lastAccessCountryCode: varchar("last_access_country_code", { length: 8 }),
+    lastAccessTimezone: text("last_access_timezone"),
+    lastAccessLocationSource: varchar("last_access_location_source", { length: 32 }),
+    lastAccessLocationAt: timestamp("last_access_location_at", { withTimezone: true }),
     avatarUrl: text("avatar_url"),
     email: text("email"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

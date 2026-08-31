@@ -1,6 +1,7 @@
 import { Router, type IRouter, type Request } from "express";
 import { GetAccessLocationResponse } from "@workspace/api-zod";
-import { accessEventsTable, db } from "@workspace/db";
+import { accessEventsTable, db, usersTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 
 type IpWhoResponse = {
   success?: boolean;
@@ -121,6 +122,23 @@ async function recordAccessEvent(req: Request, location: Awaited<ReturnType<type
     locationSource: location.source,
     requestPath: req.originalUrl?.split("?")[0] ?? req.path,
   });
+
+  const authenticatedUserId = req.res?.locals?.authenticatedUser?.id;
+  if (authenticatedUserId) {
+    await db
+      .update(usersTable)
+      .set({
+        lastAccessCity: location.city,
+        lastAccessRegion: location.region,
+        lastAccessCountry: location.country,
+        lastAccessCountryCode: location.countryCode,
+        lastAccessTimezone: location.timezone,
+        lastAccessLocationSource: location.source,
+        lastAccessLocationAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(usersTable.id, authenticatedUserId));
+  }
 }
 
 router.get("/access/location", async (req, res): Promise<void> => {
@@ -134,6 +152,7 @@ router.get("/access/location", async (req, res): Promise<void> => {
     return;
   }
 
+  res.set("Cache-Control", "no-store");
   res.json(GetAccessLocationResponse.parse(location));
 });
 

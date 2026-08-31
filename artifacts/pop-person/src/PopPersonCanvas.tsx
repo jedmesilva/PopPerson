@@ -46,6 +46,16 @@ const ADD_PLAYER_CELL_NAME = "__instapop_add_player__";
 const ADD_PLAYER_CELL_SCREEN_RADIUS = 30;
 const EMPTY_PLAYER_LOCATION = { city: "", region: "", country: "" };
 
+function getSuggestedPlayerLocation(accessLocation) {
+  if (accessLocation?.source !== "ip") return { ...EMPTY_PLAYER_LOCATION };
+  const cleanValue = (value) => value && value !== "—" ? value : "";
+  return {
+    city: cleanValue(accessLocation.city),
+    region: cleanValue(accessLocation.region),
+    country: cleanValue(accessLocation.country),
+  };
+}
+
 function getAddPlayerCellWorldRadius(scale) {
   return ADD_PLAYER_CELL_SCREEN_RADIUS / Math.max(Number(scale) || 1, MIN_ZOOM);
 }
@@ -347,6 +357,7 @@ export default function PopPersonCanvas() {
   const idempotencyKeyRef = useRef(null);
   const idempotencyPayloadRef = useRef("");
   const locationDefaultsAppliedRef = useRef(false);
+  const playerLocationEditedRef = useRef(false);
   const config = bootstrapQuery.data?.config;
   const canJoinAsPlayer = Boolean(
     bootstrapQuery.data?.user && !bootstrapQuery.data?.player?.isPlayer,
@@ -1272,7 +1283,8 @@ export default function PopPersonCanvas() {
       const data = await response.json();
       setPlayerRegistration(data);
       setPlayerCategoryId(data.defaultCategoryId || data.categories?.[0]?.id || "");
-      setPlayerLocation({ ...EMPTY_PLAYER_LOCATION });
+      playerLocationEditedRef.current = false;
+      setPlayerLocation(getSuggestedPlayerLocation(accessLocationQuery.data));
       setIsEditingPlayerLocation(false);
     } catch (error) {
       setShowPlayerSignup(false);
@@ -1280,12 +1292,19 @@ export default function PopPersonCanvas() {
     } finally {
       setIsLoadingPlayerRegistration(false);
     }
-  }, [canJoinAsPlayer, isJoiningPlayer, isLoadingPlayerRegistration]);
+  }, [accessLocationQuery.data, canJoinAsPlayer, isJoiningPlayer, isLoadingPlayerRegistration]);
   const playerLocationComplete = Boolean(
     playerLocation.city.trim() &&
     playerLocation.region.trim() &&
     playerLocation.country.trim(),
   );
+  useEffect(() => {
+    if (!showPlayerSignup || playerLocationEditedRef.current) return;
+    const suggestedLocation = getSuggestedPlayerLocation(accessLocationQuery.data);
+    if (suggestedLocation.city && suggestedLocation.region && suggestedLocation.country) {
+      setPlayerLocation(suggestedLocation);
+    }
+  }, [accessLocationQuery.data, showPlayerSignup]);
   const joinPlayer = useCallback(async () => {
     if (!canJoinAsPlayer || isJoiningPlayer || !playerCategoryId || !playerLocationComplete) return;
     setIsJoiningPlayer(true);
@@ -2224,7 +2243,10 @@ export default function PopPersonCanvas() {
                           <input
                             data-testid="input-player-city"
                             value={playerLocation.city}
-                            onChange={(e) => setPlayerLocation((location) => ({ ...location, city: e.target.value }))}
+                            onChange={(e) => {
+                              playerLocationEditedRef.current = true;
+                              setPlayerLocation((location) => ({ ...location, city: e.target.value }));
+                            }}
                             placeholder="Ex.: São Paulo"
                             autoComplete="address-level2"
                             style={{ width: "100%", boxSizing: "border-box", padding: "10px 11px", borderRadius: "9px", backgroundColor: "#292929", color: "#f5f5f5", border: "1px solid #484848", fontSize: "13px", outline: "none" }}
@@ -2236,7 +2258,10 @@ export default function PopPersonCanvas() {
                             <input
                               data-testid="input-player-region"
                               value={playerLocation.region}
-                              onChange={(e) => setPlayerLocation((location) => ({ ...location, region: e.target.value }))}
+                              onChange={(e) => {
+                                playerLocationEditedRef.current = true;
+                                setPlayerLocation((location) => ({ ...location, region: e.target.value }));
+                              }}
                               placeholder="Ex.: SP"
                               autoComplete="address-level1"
                               style={{ width: "100%", boxSizing: "border-box", padding: "10px 11px", borderRadius: "9px", backgroundColor: "#292929", color: "#f5f5f5", border: "1px solid #484848", fontSize: "13px", outline: "none" }}
@@ -2247,7 +2272,10 @@ export default function PopPersonCanvas() {
                             <input
                               data-testid="input-player-country"
                               value={playerLocation.country}
-                              onChange={(e) => setPlayerLocation((location) => ({ ...location, country: e.target.value }))}
+                              onChange={(e) => {
+                                playerLocationEditedRef.current = true;
+                                setPlayerLocation((location) => ({ ...location, country: e.target.value }));
+                              }}
                               placeholder="Ex.: Brasil"
                               autoComplete="country-name"
                               style={{ width: "100%", boxSizing: "border-box", padding: "10px 11px", borderRadius: "9px", backgroundColor: "#292929", color: "#f5f5f5", border: "1px solid #484848", fontSize: "13px", outline: "none" }}
