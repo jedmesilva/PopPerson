@@ -2286,7 +2286,7 @@ export default function PopPersonCanvas() {
 
       {showPlayerSignup && (
         <div onClick={() => !isJoiningPlayer && setShowPlayerSignup(false)} style={{ position: "fixed", inset: 0, zIndex: 100, backgroundColor: "rgba(0,0,0,0.72)", display: "flex", alignItems: "center", justifyContent: "center", padding: "16px", backdropFilter: "blur(2px)" }}>
-          <div role="dialog" aria-modal="true" aria-labelledby="player-signup-title" onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: "360px", maxHeight: "88vh", backgroundColor: "#171717", border: "1px solid #292929", borderRadius: "14px", padding: "16px", display: "flex", flexDirection: "column", gap: "14px", overflowY: "auto", boxShadow: "0 8px 28px rgba(0,0,0,0.42)" }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="player-signup-title" onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: "360px", maxHeight: "88vh", backgroundColor: "#171717", border: "1px solid #292929", borderRadius: "14px", padding: "18px", display: "flex", flexDirection: "column", gap: "16px", overflowY: "auto", boxShadow: "0 8px 28px rgba(0,0,0,0.42)" }}>
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
               <div style={{ minWidth: 0 }}>
                 <span id="player-signup-title" style={{ display: "block", color: "#fff", fontWeight: 800, fontSize: "18px", lineHeight: 1.2, letterSpacing: "-0.02em" }}>Entrar na disputa popular</span>
@@ -2299,24 +2299,25 @@ export default function PopPersonCanvas() {
               <div style={{ padding: "28px 8px", textAlign: "center", color: "#a3a3a3", fontSize: "13px" }}>Carregando sua inscrição…</div>
             ) : playerRegistration ? (
               <>
-                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "11px 12px", borderRadius: "12px", backgroundColor: "#202020", border: "1px solid #2d2d2d" }}>
                   {playerRegistration.user.avatarUrl ? (
-                    <img src={playerRegistration.user.avatarUrl} alt="" style={{ width: "38px", height: "38px", borderRadius: "9999px", objectFit: "cover", flexShrink: 0 }} />
+                    <img src={playerRegistration.user.avatarUrl} alt="" style={{ width: "40px", height: "40px", borderRadius: "9999px", objectFit: "cover", flexShrink: 0 }} />
                   ) : (
-                     <div style={{ width: "38px", height: "38px", borderRadius: "9999px", backgroundColor: "#333", color: "#f5f5f5", display: "grid", placeItems: "center", flexShrink: 0, fontSize: "15px", fontWeight: 800 }}>{playerRegistration.user.name.trim().charAt(0).toUpperCase()}</div>
+                     <div style={{ width: "40px", height: "40px", borderRadius: "9999px", backgroundColor: "#333", color: "#f5f5f5", display: "grid", placeItems: "center", flexShrink: 0, fontSize: "15px", fontWeight: 800 }}>{playerRegistration.user.name.trim().charAt(0).toUpperCase()}</div>
                   )}
                   <div style={{ minWidth: 0 }}>
-                    <span style={{ display: "block", color: "#fff", fontSize: "14px", fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerRegistration.user.name}</span>
-                    <span style={{ display: "block", marginTop: "2px", color: "#a3a3a3", fontSize: "11px" }}>@{playerRegistration.user.username}</span>
+                    <span style={{ display: "block", marginBottom: "3px", color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.05em", lineHeight: 1.2, textTransform: "uppercase" }}>Você está entrando como</span>
+                    <span style={{ display: "block", color: "#fff", fontSize: "14px", fontWeight: 800, lineHeight: 1.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerRegistration.user.name}</span>
+                    <span style={{ display: "block", marginTop: "3px", color: "#a3a3a3", fontSize: "11px", lineHeight: 1.2 }}>@{playerRegistration.user.username}</span>
                   </div>
                 </div>
 
-                <div style={{ borderTop: "1px solid #292929", paddingTop: "13px" }}>
+                <div style={{ borderTop: "1px solid #292929", paddingTop: "16px" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
                     <div style={{ minWidth: 0 }}>
                       <span style={{ display: "block", color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>Localidade</span>
                       {!isEditingPlayerLocation && (
-                        <span data-testid="text-player-location" style={{ display: "block", marginTop: "4px", color: playerLocationComplete ? "#f5f5f5" : "#a3a3a3", fontSize: "13px", fontWeight: 700, lineHeight: 1.35 }}>
+                        <span data-testid="text-player-location" style={{ display: "block", marginTop: "6px", color: playerLocationComplete ? "#f5f5f5" : "#a3a3a3", fontSize: "13px", fontWeight: 700, lineHeight: 1.4 }}>
                           {playerLocationComplete ? `${playerLocation.city}, ${playerLocation.region} — ${playerLocation.country}` : "Informe sua cidade para continuar"}
                         </span>
                       )}
@@ -2415,11 +2416,11 @@ export default function PopPersonCanvas() {
                   )}
                 </div>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: "7px", borderTop: "1px solid #292929", paddingTop: "13px" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "7px", borderTop: "1px solid #292929", paddingTop: "16px" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
                     <div style={{ minWidth: 0 }}>
                       <span style={{ display: "block", color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>Categoria de popularidade</span>
-                      <span data-testid="text-player-category" style={{ display: "block", marginTop: "4px", color: selectedPlayerCategory ? "#f5f5f5" : "#a3a3a3", fontSize: "13px", fontWeight: 700, lineHeight: 1.35, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <span data-testid="text-player-category" style={{ display: "block", marginTop: "6px", color: selectedPlayerCategory ? "#f5f5f5" : "#a3a3a3", fontSize: "13px", fontWeight: 700, lineHeight: 1.4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {selectedPlayerCategory?.pathLabel ?? "Informe sua categoria para continuar"}
                       </span>
                     </div>
@@ -2509,8 +2510,8 @@ export default function PopPersonCanvas() {
                   )}
                 </div>
 
-                 <div style={{ display: "flex", flexDirection: "column", gap: "8px", paddingTop: "2px" }}>
-                   <label style={{ display: "flex", alignItems: "flex-start", gap: "9px", padding: "2px 2px 0", color: "#a3a3a3", fontSize: "11px", lineHeight: 1.45, cursor: isJoiningPlayer ? "default" : "pointer" }}>
+                 <div style={{ display: "flex", flexDirection: "column", gap: "10px", borderTop: "1px solid #292929", paddingTop: "16px" }}>
+                   <label style={{ display: "flex", alignItems: "flex-start", gap: "9px", padding: "0 2px", color: "#a3a3a3", fontSize: "11px", lineHeight: 1.5, cursor: isJoiningPlayer ? "default" : "pointer" }}>
                      <input
                        data-testid="checkbox-player-terms"
                        type="checkbox"
@@ -2523,7 +2524,7 @@ export default function PopPersonCanvas() {
                        Ao entrar na disputa de popularidade, declaro que li e concordo com os <strong style={{ color: "#d4d4d4", fontWeight: 700 }}>Termos e Condições do InstaPop</strong>.
                      </span>
                    </label>
-                   <button data-testid="button-confirm-player-signup" type="button" onClick={() => void joinPlayer()} disabled={isJoiningPlayer || !playerCategoryId || !playerLocationComplete || !hasAcceptedPlayerTerms} style={{ width: "100%", padding: "10px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", fontWeight: 700, fontSize: "13px", border: "none", cursor: isJoiningPlayer || !hasAcceptedPlayerTerms ? "default" : "pointer", opacity: isJoiningPlayer || !playerLocationComplete || !hasAcceptedPlayerTerms ? 0.6 : 1 }}>{isJoiningPlayer ? "Entrando na disputa…" : "Entrar na disputa"}</button>
+                   <button data-testid="button-confirm-player-signup" type="button" onClick={() => void joinPlayer()} disabled={isJoiningPlayer || !playerCategoryId || !playerLocationComplete || !hasAcceptedPlayerTerms} style={{ width: "100%", padding: "11px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", fontWeight: 700, fontSize: "13px", border: "none", cursor: isJoiningPlayer || !hasAcceptedPlayerTerms ? "default" : "pointer", opacity: isJoiningPlayer || !playerLocationComplete || !hasAcceptedPlayerTerms ? 0.6 : 1 }}>{isJoiningPlayer ? "Entrando na disputa…" : "Entrar na disputa"}</button>
                 </div>
               </>
             ) : null}
