@@ -1,12 +1,12 @@
 import { Router, type IRouter } from "express";
 import {
   beginXAuthorization,
-  clearAuthCookie,
   completeXAuthorization,
   getFrontendRedirectUri,
   getPublicAuthErrorReason,
   getReturnTo,
 } from "../lib/x-auth";
+import { revokeCurrentAuthSession } from "../lib/auth-session";
 
 const router: IRouter = Router();
 
@@ -24,7 +24,7 @@ router.get("/auth/x/start", (req, res): void => {
 router.get("/auth/x/callback", async (req, res): Promise<void> => {
   const returnTo = getReturnTo(req);
   try {
-    await completeXAuthorization(req, res);
+    await completeXAuthorization(req, res, res.locals.anonymousSessionId);
     res.redirect(303, getFrontendRedirectUri(req, returnTo));
   } catch (error) {
     req.log.error({ err: error }, "Failed to complete X authentication");
@@ -39,8 +39,8 @@ router.get("/auth/me", (req, res): void => {
   res.json({ user: res.locals.authenticatedUser ?? null });
 });
 
-router.post("/auth/logout", (req, res): void => {
-  clearAuthCookie(req, res);
+router.post("/auth/logout", async (req, res): Promise<void> => {
+  await revokeCurrentAuthSession(req, res);
   res.status(204).end();
 });
 
