@@ -2369,7 +2369,7 @@ export default function PopPersonCanvas() {
                       </label>
 
                       {isPlayerLocationPickerOpen && (
-                        <div role="listbox" aria-label="Resultados de cidades" style={{ display: "flex", flexDirection: "column", gap: "2px", maxHeight: "190px", overflowY: "auto", padding: "6px", borderRadius: "10px", backgroundColor: "#202020", border: "1px solid #3a3a3a", boxShadow: "0 8px 22px rgba(0,0,0,0.28)" }}>
+                        <div role="listbox" aria-label="Resultados de cidades" style={{ display: "flex", flexDirection: "column", gap: "2px", maxHeight: "190px", overflowY: "auto", marginTop: "7px", padding: "6px", borderRadius: "10px", backgroundColor: "#202020", border: "1px solid #3a3a3a", boxShadow: "0 8px 22px rgba(0,0,0,0.28)" }}>
                           {isSearchingPlayerLocation ? (
                             <span style={{ padding: "12px 10px", color: "#a3a3a3", fontSize: "12px", textAlign: "center" }}>Buscando cidades…</span>
                           ) : playerLocationSearchError ? (
@@ -2408,7 +2408,6 @@ export default function PopPersonCanvas() {
                         </div>
                       )}
 
-                      <span style={{ display: "block", marginTop: "3px", color: "#737373", fontSize: "11px", lineHeight: 1.35 }}>Selecione uma cidade para preencher o estado e o país automaticamente.</span>
                     </>
                   )}
                 </div>
