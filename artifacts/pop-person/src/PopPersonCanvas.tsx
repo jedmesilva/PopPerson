@@ -2298,7 +2298,6 @@ export default function PopPersonCanvas() {
                 </label>
 
                 <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "8px", paddingTop: "2px" }}>
-                  <button data-testid="button-cancel-player-signup" type="button" onClick={() => setShowPlayerSignup(false)} disabled={isJoiningPlayer} style={{ padding: "8px 11px", borderRadius: "8px", backgroundColor: "transparent", color: "#a3a3a3", fontWeight: 700, fontSize: "11px", border: "none", cursor: isJoiningPlayer ? "default" : "pointer", opacity: isJoiningPlayer ? 0.55 : 1 }}>Cancelar</button>
                   <button data-testid="button-confirm-player-signup" type="button" onClick={() => void joinPlayer()} disabled={isJoiningPlayer || !playerCategoryId || !playerLocationComplete} style={{ padding: "10px 16px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", fontWeight: 800, fontSize: "12px", border: "none", cursor: isJoiningPlayer ? "default" : "pointer", opacity: isJoiningPlayer || !playerLocationComplete ? 0.6 : 1 }}>{isJoiningPlayer ? "Obtendo sua célula…" : "Obter minha célula"}</button>
                 </div>
               </>

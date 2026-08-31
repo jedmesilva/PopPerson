@@ -53,7 +53,6 @@ export function Integrated() {
         </label>
 
         <footer style={{ display: "flex", justifyContent: "flex-end", gap: 8, paddingTop: 2 }}>
-          <button style={{ ...secondaryButtonStyle, border: 0, background: "transparent", color: "var(--app-muted)" }}>Cancelar</button>
           <button style={{ padding: "10px 16px", borderRadius: 999, border: 0, background: "var(--app-text)", color: "#0a0a0a", fontWeight: 800, fontSize: 12 }}>Obter minha célula</button>
         </footer>
       </section>
