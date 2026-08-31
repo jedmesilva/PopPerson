@@ -402,6 +402,7 @@ export default function PopPersonCanvas() {
   const boardWrapRef = useRef(null);
   const [dataset, setDataset] = useState([]);
   const [filters, setFilters] = useState({ pais: "Todos", estado: "Todos", cidade: "Todos", categoria: "Todos" });
+  const [draftFilters, setDraftFilters] = useState({ pais: "Todos", estado: "Todos", cidade: "Todos", categoria: "Todos" });
   const [showFiltersModal, setShowFiltersModal] = useState(false);
   const [isFilterCountryPickerOpen, setIsFilterCountryPickerOpen] = useState(false);
   const [filterCountrySearch, setFilterCountrySearch] = useState("");
@@ -614,11 +615,11 @@ export default function PopPersonCanvas() {
     });
   }, [expandedFilterCategoryIds, filteredFilterCategoryOptions, filterCategoryOptions, filterCategorySearch]);
   const selectedFilterCategory = useMemo(
-    () => filterCategoryOptions.find((category) => category.id === filters.categoria),
-    [filterCategoryOptions, filters.categoria],
+    () => filterCategoryOptions.find((category) => category.id === draftFilters.categoria),
+    [draftFilters.categoria, filterCategoryOptions],
   );
   const setFilterLevel = useCallback((level, value) => {
-    setFilters((prev) => level === "pais"
+    setDraftFilters((prev) => level === "pais"
       ? { pais: value, estado: "Todos", cidade: "Todos", categoria: prev.categoria }
       : level === "estado"
         ? { ...prev, estado: value, cidade: "Todos" }
@@ -637,8 +638,7 @@ export default function PopPersonCanvas() {
     setIsFilterCityPickerOpen(false);
     setIsFilterCategoryPickerOpen(false);
   }, [setFilterLevel]);
-  const clearFilters = useCallback(() => {
-    setFilters({ pais: "Todos", estado: "Todos", cidade: "Todos", categoria: "Todos" });
+  const resetFilterPickerState = useCallback(() => {
     setFilterCountrySearch("");
     setFilterStateSearch("");
     setFilterCitySearch("");
@@ -648,7 +648,28 @@ export default function PopPersonCanvas() {
     setIsFilterCityPickerOpen(false);
     setIsFilterCategoryPickerOpen(false);
   }, []);
+  const openFilters = useCallback(() => {
+    setDraftFilters(filters);
+    resetFilterPickerState();
+    setShowFiltersModal(true);
+  }, [filters, resetFilterPickerState]);
+  const applyFilters = useCallback(() => {
+    setFilters(draftFilters);
+    resetFilterPickerState();
+    setShowFiltersModal(false);
+  }, [draftFilters, resetFilterPickerState]);
+  const clearFilters = useCallback(() => {
+    const emptyFilters = { pais: "Todos", estado: "Todos", cidade: "Todos", categoria: "Todos" };
+    setFilters(emptyFilters);
+    setDraftFilters(emptyFilters);
+    resetFilterPickerState();
+  }, [resetFilterPickerState]);
+  const clearDraftFilters = useCallback(() => {
+    setDraftFilters({ pais: "Todos", estado: "Todos", cidade: "Todos", categoria: "Todos" });
+    resetFilterPickerState();
+  }, [resetFilterPickerState]);
   const activeFilterCount = (filters.pais !== "Todos" ? 1 : 0) + (filters.estado !== "Todos" ? 1 : 0) + (filters.cidade !== "Todos" ? 1 : 0) + (filters.categoria !== "Todos" ? 1 : 0);
+  const draftFilterCount = (draftFilters.pais !== "Todos" ? 1 : 0) + (draftFilters.estado !== "Todos" ? 1 : 0) + (draftFilters.cidade !== "Todos" ? 1 : 0) + (draftFilters.categoria !== "Todos" ? 1 : 0);
   const filteredDataset = useMemo(() => dataset.filter((d) => (filters.pais === "Todos" || d.pais === filters.pais) && (filters.estado === "Todos" || d.estado === filters.estado) && (filters.cidade === "Todos" || d.cidade === filters.cidade) && (filters.categoria === "Todos" || d.categoryPath.some((category) => category.id === filters.categoria))), [dataset, filters]);
   const leaves = useMemo(() => {
     if (!canJoinAsPlayer) return computeLeaves(filteredDataset);
@@ -1560,11 +1581,11 @@ export default function PopPersonCanvas() {
         const data = await searchCities({ q: query }, { signal: controller.signal });
         const results = (data.results ?? []).filter((result) => {
           if (activeFilterLocationSearch.level === "pais") return true;
-          if (filters.pais !== "Todos" && result.country !== filters.pais) return false;
+          if (draftFilters.pais !== "Todos" && result.country !== draftFilters.pais) return false;
           if (activeFilterLocationSearch.level === "estado") {
             return result.region && result.region !== result.country;
           }
-          return filters.estado === "Todos" || result.region === filters.estado;
+          return draftFilters.estado === "Todos" || result.region === draftFilters.estado;
         });
         setFilterLocationSearchResults(results);
       } catch (error) {
@@ -1582,8 +1603,8 @@ export default function PopPersonCanvas() {
     };
   }, [
     activeFilterLocationSearch,
-    filters.estado,
-    filters.pais,
+    draftFilters.estado,
+    draftFilters.pais,
   ]);
   useEffect(() => {
     if (!showPlayerSignup || playerLocationEditedRef.current) return;
@@ -2461,7 +2482,7 @@ export default function PopPersonCanvas() {
             );
           })()}
         </div>
-        <button data-testid="button-open-filters" onClick={() => { setShowFiltersModal(true); setIsFilterCityPickerOpen(false); setIsFilterCategoryPickerOpen(false); setFilterCitySearch(""); setFilterCategorySearch(""); }} style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: "5px", padding: "7px 12px", borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.55)", backdropFilter: "blur(6px)", border: activeFilterCount > 0 ? "1px solid rgba(99, 102, 241, 0.6)" : "1px solid rgba(255, 255, 255, 0.08)", color: "#f5f5f5", fontSize: "12px", fontWeight: 600, cursor: "pointer" }}>
+        <button data-testid="button-open-filters" onClick={openFilters} style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: "5px", padding: "7px 12px", borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.55)", backdropFilter: "blur(6px)", border: activeFilterCount > 0 ? "1px solid rgba(99, 102, 241, 0.6)" : "1px solid rgba(255, 255, 255, 0.08)", color: "#f5f5f5", fontSize: "12px", fontWeight: 600, cursor: "pointer" }}>
           <SlidersHorizontal size={13} /> Filtros
           {activeFilterCount > 0 && <span data-testid="text-filter-count" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "16px", height: "16px", borderRadius: "9999px", backgroundColor: "#6366f1", color: "#fff", fontSize: "10px", fontWeight: 700, padding: "0 4px" }}>{activeFilterCount}</span>}
         </button>
@@ -2480,7 +2501,7 @@ export default function PopPersonCanvas() {
             <Search size={28} strokeWidth={1.8} aria-hidden="true" style={{ color: "#737373" }} />
             <span data-testid="text-empty-state" style={{ color: "#f5f5f5", fontSize: "14px", fontWeight: 700 }}>Nenhuma pessoa encontrada</span>
             <span style={{ color: "#737373", fontSize: "12px" }}>Tente ajustar ou limpar os filtros aplicados</span>
-            <button data-testid="button-adjust-filters" onClick={() => setShowFiltersModal(true)} style={{ marginTop: "6px", padding: "8px 16px", borderRadius: "9999px", backgroundColor: "#262626", color: "#f5f5f5", fontSize: "12px", fontWeight: 700, border: "1px solid #333", cursor: "pointer" }}>Ajustar filtros</button>
+            <button data-testid="button-adjust-filters" onClick={openFilters} style={{ marginTop: "6px", padding: "8px 16px", borderRadius: "9999px", backgroundColor: "#262626", color: "#f5f5f5", fontSize: "12px", fontWeight: 700, border: "1px solid #333", cursor: "pointer" }}>Ajustar filtros</button>
           </div>
         )}
       </div>
@@ -2530,9 +2551,9 @@ export default function PopPersonCanvas() {
                 <div style={{ overflow: "hidden", borderRadius: "12px", backgroundColor: "#202020", border: "1px solid #2d2d2d" }}>
                   <FilterSearchPicker
                     label="País"
-                    selectedLabel={filters.pais === "Todos" ? "Todos os países" : filters.pais}
+                    selectedLabel={draftFilters.pais === "Todos" ? "Todos os países" : draftFilters.pais}
                     options={activeFilterLocationSearch?.level === "pais" ? remoteFilterLocationOptions : []}
-                    selected={filters.pais}
+                    selected={draftFilters.pais}
                     onSelect={(value) => selectFilterLevel("pais", value)}
                     open={isFilterCountryPickerOpen}
                     onToggle={(next) => {
@@ -2555,11 +2576,11 @@ export default function PopPersonCanvas() {
                   />
                   <FilterSearchPicker
                     label="Estado / região"
-                    selectedLabel={filters.estado === "Todos" ? "Todos os estados / regiões" : filters.estado}
+                    selectedLabel={draftFilters.estado === "Todos" ? "Todos os estados / regiões" : draftFilters.estado}
                     options={activeFilterLocationSearch?.level === "estado" ? remoteFilterLocationOptions : []}
-                    selected={filters.estado}
+                    selected={draftFilters.estado}
                     onSelect={(value) => selectFilterLevel("estado", value)}
-                    disabled={filters.pais === "Todos"}
+                    disabled={draftFilters.pais === "Todos"}
                     open={isFilterStatePickerOpen}
                     onToggle={(next) => {
                       setIsFilterStatePickerOpen((isOpen) => typeof next === "boolean" ? next : !isOpen);
@@ -2581,9 +2602,9 @@ export default function PopPersonCanvas() {
                   />
                   <FilterSearchPicker
                     label="Cidade"
-                    selectedLabel={filters.cidade === "Todos" ? "Todas as cidades" : filters.cidade}
+                    selectedLabel={draftFilters.cidade === "Todos" ? "Todas as cidades" : draftFilters.cidade}
                     options={activeFilterLocationSearch?.level === "cidade" ? remoteFilterLocationOptions : []}
-                    selected={filters.cidade}
+                    selected={draftFilters.cidade}
                     onSelect={(value) => selectFilterLevel("cidade", value)}
                     open={isFilterCityPickerOpen}
                     onToggle={(next) => {
@@ -2620,12 +2641,12 @@ export default function PopPersonCanvas() {
                       setIsFilterStatePickerOpen(false);
                       setIsFilterCityPickerOpen(false);
                     }}
-                    aria-label={filters.categoria === "Todos" ? "Buscar categoria" : "Editar categoria"}
+                    aria-label={draftFilters.categoria === "Todos" ? "Buscar categoria" : "Editar categoria"}
                     aria-haspopup="listbox"
                     aria-expanded={isFilterCategoryPickerOpen}
                     style={{ width: "100%", minHeight: "54px", padding: "8px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", border: "none", backgroundColor: "transparent", color: "#f5f5f5", textAlign: "left", cursor: "pointer" }}
                   >
-                    <span data-testid="text-filter-category" style={{ minWidth: 0, color: filters.categoria !== "Todos" ? "#c7d2fe" : "#a3a3a3", fontSize: "13px", fontWeight: 700, lineHeight: 1.3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <span data-testid="text-filter-category" style={{ minWidth: 0, color: draftFilters.categoria !== "Todos" ? "#c7d2fe" : "#a3a3a3", fontSize: "13px", fontWeight: 700, lineHeight: 1.3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {selectedFilterCategory?.pathLabel ?? "Todas as categorias"}
                     </span>
                     {isFilterCategoryPickerOpen ? <ChevronDown size={16} aria-hidden="true" style={{ flexShrink: 0, color: "#c7d2fe" }} /> : <ChevronRight size={16} aria-hidden="true" style={{ flexShrink: 0, color: "#737373" }} />}
@@ -2657,9 +2678,9 @@ export default function PopPersonCanvas() {
                           data-testid="option-filter-category-all"
                           type="button"
                           role="option"
-                          aria-selected={filters.categoria === "Todos"}
+                          aria-selected={draftFilters.categoria === "Todos"}
                           onClick={() => selectFilterLevel("categoria", "Todos")}
-                          style={{ width: "100%", padding: "9px 10px", border: "none", borderRadius: "7px", backgroundColor: filters.categoria === "Todos" ? "#363636" : "transparent", color: "#f5f5f5", fontSize: "12px", fontWeight: 700, textAlign: "left", cursor: "pointer" }}
+                          style={{ width: "100%", padding: "9px 10px", border: "none", borderRadius: "7px", backgroundColor: draftFilters.categoria === "Todos" ? "#363636" : "transparent", color: "#f5f5f5", fontSize: "12px", fontWeight: 700, textAlign: "left", cursor: "pointer" }}
                         >
                           Todas as categorias
                         </button>
@@ -2689,9 +2710,9 @@ export default function PopPersonCanvas() {
                               <button
                                 type="button"
                                 role="option"
-                                aria-selected={category.id === filters.categoria}
+                                aria-selected={category.id === draftFilters.categoria}
                                 onClick={() => selectFilterLevel("categoria", category.id)}
-                                style={{ flex: 1, minWidth: 0, padding: "9px 10px", display: "block", border: "none", borderRadius: "7px", backgroundColor: category.id === filters.categoria ? "#363636" : "transparent", color: category.id === filters.categoria ? "#fff" : category.depth === 0 ? "#f5f5f5" : "#d4d4d4", fontSize: "12px", fontWeight: category.depth === 0 ? 700 : 600, textAlign: "left", cursor: "pointer" }}
+                                style={{ flex: 1, minWidth: 0, padding: "9px 10px", display: "block", border: "none", borderRadius: "7px", backgroundColor: category.id === draftFilters.categoria ? "#363636" : "transparent", color: category.id === draftFilters.categoria ? "#fff" : category.depth === 0 ? "#f5f5f5" : "#d4d4d4", fontSize: "12px", fontWeight: category.depth === 0 ? 700 : 600, textAlign: "left", cursor: "pointer" }}
                               >
                                 <span style={{ display: "block", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{category.name}</span>
                               </button>
@@ -2706,8 +2727,8 @@ export default function PopPersonCanvas() {
             </div>
 
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", borderTop: "1px solid #292929", paddingTop: "16px" }}>
-              <button data-testid="button-clear-filters" type="button" onClick={clearFilters} disabled={activeFilterCount === 0} style={{ padding: "10px 8px", borderRadius: "8px", backgroundColor: "transparent", color: activeFilterCount === 0 ? "#525252" : "#a3a3a3", fontWeight: 700, fontSize: "12px", border: "none", cursor: activeFilterCount === 0 ? "default" : "pointer", opacity: activeFilterCount === 0 ? 0.7 : 1 }}>Limpar filtros</button>
-              <button data-testid="button-apply-filters" type="button" onClick={() => setShowFiltersModal(false)} style={{ minWidth: "108px", padding: "11px 16px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", fontWeight: 700, fontSize: "13px", border: "none", cursor: "pointer" }}>Concluído</button>
+              <button data-testid="button-clear-filters" type="button" onClick={clearDraftFilters} disabled={draftFilterCount === 0} style={{ padding: "10px 8px", borderRadius: "8px", backgroundColor: "transparent", color: draftFilterCount === 0 ? "#525252" : "#a3a3a3", fontWeight: 700, fontSize: "12px", border: "none", cursor: draftFilterCount === 0 ? "default" : "pointer", opacity: draftFilterCount === 0 ? 0.7 : 1 }}>Limpar filtros</button>
+              <button data-testid="button-apply-filters" type="button" onClick={applyFilters} style={{ minWidth: "108px", padding: "11px 16px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", fontWeight: 700, fontSize: "13px", border: "none", cursor: "pointer" }}>Aplicar filtros</button>
             </div>
           </div>
         </div>
