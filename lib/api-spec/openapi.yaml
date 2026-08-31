@@ -495,15 +495,12 @@ components:
           minLength: 1
     PlayerRegistration:
       type: object
-      required: [user, accessLocation, locationValidation, categories, locations, defaultCategoryId]
+      required: [user, accessLocation, categories, locations, defaultCategoryId]
       properties:
         user:
-          $ref: "#/components/schemas/AuthenticatedUser"
+          $ref: "#/components/schemas/PlayerRegistrationUser"
         accessLocation:
           $ref: "#/components/schemas/AccessLocation"
-        locationValidation:
-          type: string
-          enum: [match, different, unknown]
         categories:
           type: array
           items:
@@ -513,6 +510,20 @@ components:
           items:
             $ref: "#/components/schemas/PlayerRegistrationLocation"
         defaultCategoryId:
+          type: ["string", "null"]
+    PlayerRegistrationUser:
+      type: object
+      required: [xUserId, username, name, avatarUrl, email]
+      properties:
+        xUserId:
+          type: string
+        username:
+          type: string
+        name:
+          type: string
+        avatarUrl:
+          type: ["string", "null"]
+        email:
           type: ["string", "null"]
     AuthenticatedUser:
       type: object

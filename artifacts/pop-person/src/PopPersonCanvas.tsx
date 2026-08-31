@@ -2224,14 +2224,6 @@ export default function PopPersonCanvas() {
                       ))}
                     </div>
                   )}
-                  <div style={{ padding: "9px 10px", borderRadius: "10px", backgroundColor: playerRegistration.locationValidation === "match" ? "rgba(20, 83, 45, 0.35)" : playerRegistration.locationValidation === "different" ? "rgba(120, 53, 15, 0.35)" : "rgba(64, 64, 64, 0.45)", border: `1px solid ${playerRegistration.locationValidation === "match" ? "rgba(74, 222, 128, 0.25)" : playerRegistration.locationValidation === "different" ? "rgba(251, 191, 36, 0.28)" : "rgba(163, 163, 163, 0.18)"}`, color: playerRegistration.locationValidation === "match" ? "#bbf7d0" : playerRegistration.locationValidation === "different" ? "#fde68a" : "#d4d4d4", fontSize: "11px", lineHeight: 1.4 }}>
-                    {playerRegistration.locationValidation === "match"
-                      ? "A localização do perfil do X é compatível com a localização aproximada desta sessão."
-                      : playerRegistration.locationValidation === "different"
-                        ? `O perfil do X informa “${playerRegistration.user.xLocation}”, diferente da localização aproximada desta sessão.`
-                        : "Não foi possível comparar o perfil do X com a localização desta sessão."}
-                    {playerRegistration.user.xLocation && <div style={{ marginTop: "4px", color: "rgba(255,255,255,0.6)" }}>Localização no X: {playerRegistration.user.xLocation}</div>}
-                  </div>
                 </div>
 
                 <label style={{ display: "flex", flexDirection: "column", gap: "7px" }}>

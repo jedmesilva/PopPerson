@@ -267,7 +267,6 @@ export const GetPlayerRegistrationResponse = zod.object({
   "xUserId": zod.string(),
   "username": zod.string(),
   "name": zod.string(),
-  "xLocation": zod.string().nullable(),
   "avatarUrl": zod.string().nullable(),
   "email": zod.string().nullable()
 }),
@@ -280,7 +279,6 @@ export const GetPlayerRegistrationResponse = zod.object({
   "countryCode": zod.string(),
   "timezone": zod.string()
 }),
-  "locationValidation": zod.enum(['match', 'different', 'unknown']),
   "categories": zod.array(zod.object({
   "id": zod.string(),
   "name": zod.string(),

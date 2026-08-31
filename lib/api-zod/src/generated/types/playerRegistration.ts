@@ -6,15 +6,13 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { AccessLocation } from './accessLocation';
-import type { AuthenticatedUser } from './authenticatedUser';
 import type { PlayerRegistrationLocation } from './playerRegistrationLocation';
-import type { PlayerRegistrationLocationValidation } from './playerRegistrationLocationValidation';
+import type { PlayerRegistrationUser } from './playerRegistrationUser';
 import type { PopPersonCategory } from './popPersonCategory';
 
 export interface PlayerRegistration {
-  user: AuthenticatedUser;
+  user: PlayerRegistrationUser;
   accessLocation: AccessLocation;
-  locationValidation: PlayerRegistrationLocationValidation;
   categories: PopPersonCategory[];
   locations: PlayerRegistrationLocation[];
   /** @nullable */

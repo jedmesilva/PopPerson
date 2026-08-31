@@ -261,19 +261,19 @@ export interface JoinPopPersonBody {
   location: PlayerRegistrationLocation;
 }
 
-export type PlayerRegistrationLocationValidation = typeof PlayerRegistrationLocationValidation[keyof typeof PlayerRegistrationLocationValidation];
-
-
-export const PlayerRegistrationLocationValidation = {
-  match: 'match',
-  different: 'different',
-  unknown: 'unknown',
-} as const;
+export interface PlayerRegistrationUser {
+  xUserId: string;
+  username: string;
+  name: string;
+  /** @nullable */
+  avatarUrl: string | null;
+  /** @nullable */
+  email: string | null;
+}
 
 export interface PlayerRegistration {
-  user: AuthenticatedUser;
+  user: PlayerRegistrationUser;
   accessLocation: AccessLocation;
-  locationValidation: PlayerRegistrationLocationValidation;
   categories: PopPersonCategory[];
   locations: PlayerRegistrationLocation[];
   /** @nullable */

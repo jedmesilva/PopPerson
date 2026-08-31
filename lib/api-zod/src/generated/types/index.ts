@@ -17,7 +17,7 @@ export * from './joinPopPersonResponse';
 export * from './playerMembership';
 export * from './playerRegistration';
 export * from './playerRegistrationLocation';
-export * from './playerRegistrationLocationValidation';
+export * from './playerRegistrationUser';
 export * from './popPerson';
 export * from './popPersonAction';
 export * from './popPersonActionInput';
