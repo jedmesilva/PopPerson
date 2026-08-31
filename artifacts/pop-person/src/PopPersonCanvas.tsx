@@ -300,7 +300,7 @@ function FilterSearchPicker({
       </button>
 
       {open && !disabled && (
-        <div role="listbox" aria-label={listboxLabel} style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "0 12px 12px", backgroundColor: "#202020", borderTop: "1px solid #2d2d2d" }}>
+        <div role="listbox" aria-label={listboxLabel} style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "10px 12px 12px", backgroundColor: "#202020", borderTop: "1px solid #2d2d2d" }}>
           <div style={{ position: "relative" }}>
             <Search size={14} aria-hidden="true" style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#737373", pointerEvents: "none" }} />
             <input
@@ -2574,7 +2574,7 @@ export default function PopPersonCanvas() {
                   </button>
 
                   {isFilterCategoryPickerOpen && (
-                    <div role="listbox" aria-label="Categorias de popularidade" style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "0 12px 12px", backgroundColor: "#202020", borderTop: "1px solid #2d2d2d" }}>
+                     <div role="listbox" aria-label="Categorias de popularidade" style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "10px 12px 12px", backgroundColor: "#202020", borderTop: "1px solid #2d2d2d" }}>
                       <div style={{ position: "relative" }}>
                         <Search size={14} aria-hidden="true" style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#737373", pointerEvents: "none" }} />
                         <input
