@@ -52,8 +52,8 @@ export function Integrated() {
           </select>
         </label>
 
-        <footer style={{ display: "flex", justifyContent: "flex-end", gap: 8, paddingTop: 2 }}>
-          <button style={{ padding: "10px 16px", borderRadius: 999, border: 0, background: "var(--app-text)", color: "#0a0a0a", fontWeight: 800, fontSize: 12 }}>Obter minha célula</button>
+        <footer style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 2 }}>
+          <button style={{ width: "100%", padding: 10, borderRadius: 999, border: 0, background: "var(--app-text)", color: "#0a0a0a", fontWeight: 700, fontSize: 13 }}>Obter minha célula</button>
         </footer>
       </section>
     </main>
