@@ -4,6 +4,7 @@ import {
   clearAuthCookie,
   completeXAuthorization,
   getFrontendRedirectUri,
+  getPublicAuthErrorReason,
   getReturnTo,
 } from "../lib/x-auth";
 
@@ -29,6 +30,7 @@ router.get("/auth/x/callback", async (req, res): Promise<void> => {
     req.log.error({ err: error }, "Failed to complete X authentication");
     const errorRedirect = new URL(getFrontendRedirectUri(req, returnTo));
     errorRedirect.searchParams.set("auth", "error");
+    errorRedirect.searchParams.set("reason", getPublicAuthErrorReason(error));
     res.redirect(303, errorRedirect.toString());
   }
 });

@@ -155,11 +155,14 @@ export function clearOAuthCookies(req: Request, res: Response): void {
   }
 }
 
-function getClientCredentials(): { clientId: string; clientSecret: string } {
-  const clientId = process.env.X_CLIENT_ID;
-  const clientSecret = process.env.X_CLIENT_SECRET;
-  if (!clientId || !clientSecret) {
-    throw new Error("X_CLIENT_ID and X_CLIENT_SECRET must be configured.");
+function getClientCredentials(): {
+  clientId: string;
+  clientSecret: string | null;
+} {
+  const clientId = process.env.X_CLIENT_ID?.trim();
+  const clientSecret = process.env.X_CLIENT_SECRET?.trim() || null;
+  if (!clientId) {
+    throw new Error("X_CLIENT_ID must be configured.");
   }
   return { clientId, clientSecret };
 }
@@ -238,30 +241,66 @@ async function exchangeCodeForAccessToken(
   verifier: string,
 ): Promise<string> {
   const { clientId, clientSecret } = getClientCredentials();
-  const basicCredentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": "application/x-www-form-urlencoded",
+  };
+  const body = new URLSearchParams({
+    code,
+    grant_type: "authorization_code",
+    redirect_uri: getXRedirectUri(req),
+    code_verifier: verifier,
+  });
+
+  if (clientSecret) {
+    const basicCredentials = Buffer.from(
+      `${clientId}:${clientSecret}`,
+    ).toString("base64");
+    headers.Authorization = `Basic ${basicCredentials}`;
+  } else {
+    body.set("client_id", clientId);
+  }
+
   const response = await fetch(X_TOKEN_URL, {
     method: "POST",
-    headers: {
-      Accept: "application/json",
-      Authorization: `Basic ${basicCredentials}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams({
-      code,
-      grant_type: "authorization_code",
-      redirect_uri: getXRedirectUri(req),
-      code_verifier: verifier,
-    }),
+    headers,
+    body,
     signal: AbortSignal.timeout(10_000),
   });
-  if (!response.ok) {
-    throw new Error(`X token exchange failed with status ${response.status}.`);
+  const rawResponse = await response.text();
+  let data: { access_token?: unknown; error?: unknown; error_description?: unknown };
+  try {
+    data = JSON.parse(rawResponse) as typeof data;
+  } catch {
+    data = {};
   }
-  const data = (await response.json()) as { access_token?: unknown };
+  if (!response.ok) {
+    const providerError =
+      typeof data.error === "string" ? data.error : "unknown_provider_error";
+    const description =
+      typeof data.error_description === "string"
+        ? ` ${data.error_description}`
+        : "";
+    throw new Error(
+      `X token exchange failed with status ${response.status}: ${providerError}.${description}`,
+    );
+  }
   if (typeof data.access_token !== "string" || data.access_token.length === 0) {
     throw new Error("X token exchange did not return an access token.");
   }
   return data.access_token;
+}
+
+export function getPublicAuthErrorReason(error: unknown): string {
+  const message = error instanceof Error ? error.message : "";
+  if (message.includes("Invalid X OAuth state")) return "invalid_state";
+  if (message.includes("did not return an authorization code")) {
+    return "missing_code";
+  }
+  if (message.includes("token exchange")) return "token_exchange";
+  if (message.includes("user lookup")) return "profile_lookup";
+  if (message.includes("profile")) return "profile";
+  return "unknown";
 }
 
 export async function completeXAuthorization(
