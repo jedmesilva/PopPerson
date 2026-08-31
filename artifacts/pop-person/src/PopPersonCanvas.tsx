@@ -2182,7 +2182,7 @@ export default function PopPersonCanvas() {
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
               <div style={{ minWidth: 0 }}>
                 <span id="player-signup-title" style={{ display: "block", color: "#fff", fontWeight: 800, fontSize: "18px", lineHeight: 1.2, letterSpacing: "-0.02em" }}>Entrar na disputa popular</span>
-                <span style={{ display: "block", marginTop: "4px", color: "#a3a3a3", fontSize: "12px", lineHeight: 1.4 }}>Coloque sua popularidade em jogo e escolha onde quer competir.</span>
+                 <span style={{ display: "block", marginTop: "4px", color: "#a3a3a3", fontSize: "12px", lineHeight: 1.4 }}>Coloque sua popularidade à prova e dispute seu lugar entre os mais populares.</span>
               </div>
               <button data-testid="button-close-player-signup" type="button" onClick={() => setShowPlayerSignup(false)} disabled={isJoiningPlayer} aria-label="Fechar" style={{ ...closeButtonStyle, width: "26px", height: "26px", flexShrink: 0, opacity: isJoiningPlayer ? 0.45 : 1 }}><X size={13} /></button>
             </div>
