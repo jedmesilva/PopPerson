@@ -58,6 +58,12 @@ paths:
       operationId: joinPopPersonAsPlayer
       tags: [pop-person]
       summary: Add the authenticated user as a player
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JoinPopPersonBody"
       responses:
         "201":
           description: Player cell created or restored
@@ -65,6 +71,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/JoinPopPersonResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /pop-person/player/registration:
+    get:
+      operationId: getPlayerRegistration
+      tags: [pop-person]
+      summary: Get authenticated player registration defaults
+      responses:
+        "200":
+          description: Registration data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlayerRegistration"
         "401":
           description: Authentication required
           content:
@@ -441,9 +465,58 @@ components:
       properties:
         player:
           $ref: "#/components/schemas/PopPerson"
+    JoinPopPersonBody:
+      type: object
+      required: [categoryId, location]
+      properties:
+        categoryId:
+          type: string
+          minLength: 1
+        location:
+          $ref: "#/components/schemas/PlayerRegistrationLocation"
+    PlayerRegistrationLocation:
+      type: object
+      required: [city, region, regionCode, country, countryCode]
+      properties:
+        city:
+          type: string
+          minLength: 1
+        region:
+          type: string
+          minLength: 1
+        regionCode:
+          type: string
+          minLength: 1
+        country:
+          type: string
+          minLength: 1
+        countryCode:
+          type: string
+          minLength: 1
+    PlayerRegistration:
+      type: object
+      required: [user, accessLocation, locationValidation, categories, locations, defaultCategoryId]
+      properties:
+        user:
+          $ref: "#/components/schemas/AuthenticatedUser"
+        accessLocation:
+          $ref: "#/components/schemas/AccessLocation"
+        locationValidation:
+          type: string
+          enum: [match, different, unknown]
+        categories:
+          type: array
+          items:
+            $ref: "#/components/schemas/PopPersonCategory"
+        locations:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlayerRegistrationLocation"
+        defaultCategoryId:
+          type: ["string", "null"]
     AuthenticatedUser:
       type: object
-      required: [xUserId, username, name, avatarUrl, email]
+      required: [xUserId, username, name, xLocation, avatarUrl, email]
       properties:
         xUserId:
           type: string
@@ -451,6 +524,8 @@ components:
           type: string
         name:
           type: string
+        xLocation:
+          type: ["string", "null"]
         avatarUrl:
           type: ["string", "null"]
         email:

@@ -62,7 +62,7 @@ function unavailableLocation() {
   };
 }
 
-async function resolveAccessLocation(req: Request) {
+export async function resolveAccessLocation(req: Request) {
   const ip = getClientIp(req);
 
   if (ip === "unknown" || isLocalIp(ip)) {

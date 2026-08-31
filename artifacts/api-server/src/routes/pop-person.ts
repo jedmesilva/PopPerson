@@ -2,17 +2,21 @@ import { Router, type IRouter } from "express";
 import {
   CreatePopPersonActionBody,
   CreatePopPersonActionResponse,
+  GetPlayerRegistrationResponse,
   GetPopPersonResponse,
   GetPopPersonStateResponse,
+  JoinPopPersonAsPlayerBody,
   JoinPopPersonAsPlayerResponse,
 } from "@workspace/api-zod";
 import {
   createPopPersonAction,
+  getPlayerRegistration,
   getPopPersonBootstrap,
   getPopPersonState,
   joinPopPersonAsPlayer,
 } from "../lib/pop-person";
 import { actionRateLimit } from "../middlewares/rate-limit";
+import { resolveAccessLocation } from "./access-location";
 
 const router: IRouter = Router();
 
@@ -33,6 +37,24 @@ router.get("/pop-person/state", async (req, res): Promise<void> => {
   res.json(GetPopPersonStateResponse.parse(data));
 });
 
+router.get("/pop-person/player/registration", async (req, res): Promise<void> => {
+  const user = res.locals.authenticatedUser;
+  if (!user) {
+    res.status(401).json({ error: "Faça login para ver seu cadastro de player." });
+    return;
+  }
+
+  try {
+    const accessLocation = await resolveAccessLocation(req);
+    const data = await getPlayerRegistration(user, accessLocation);
+    res.json(GetPlayerRegistrationResponse.parse(data));
+  } catch (error) {
+    res.status(400).json({
+      error: error instanceof Error ? error.message : "Não foi possível carregar o cadastro.",
+    });
+  }
+});
+
 router.post("/pop-person/player", async (req, res): Promise<void> => {
   const user = res.locals.authenticatedUser;
   if (!user) {
@@ -41,7 +63,18 @@ router.post("/pop-person/player", async (req, res): Promise<void> => {
   }
 
   try {
-    const player = await joinPopPersonAsPlayer(user, res.locals.anonymousSessionId);
+    const parsed = JoinPopPersonAsPlayerBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+    const accessLocation = await resolveAccessLocation(req);
+    const player = await joinPopPersonAsPlayer(
+      user,
+      res.locals.anonymousSessionId,
+      parsed.data,
+      accessLocation,
+    );
     res.status(201).json(JoinPopPersonAsPlayerResponse.parse({ player }));
   } catch (error) {
     res.status(400).json({

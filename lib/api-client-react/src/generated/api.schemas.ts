@@ -218,6 +218,8 @@ export interface AuthenticatedUser {
   username: string;
   name: string;
   /** @nullable */
+  xLocation: string | null;
+  /** @nullable */
   avatarUrl: string | null;
   /** @nullable */
   email: string | null;
@@ -238,6 +240,44 @@ export interface PopPersonBootstrap {
 
 export interface JoinPopPersonResponse {
   player: PopPerson;
+}
+
+export interface PlayerRegistrationLocation {
+  /** @minLength 1 */
+  city: string;
+  /** @minLength 1 */
+  region: string;
+  /** @minLength 1 */
+  regionCode: string;
+  /** @minLength 1 */
+  country: string;
+  /** @minLength 1 */
+  countryCode: string;
+}
+
+export interface JoinPopPersonBody {
+  /** @minLength 1 */
+  categoryId: string;
+  location: PlayerRegistrationLocation;
+}
+
+export type PlayerRegistrationLocationValidation = typeof PlayerRegistrationLocationValidation[keyof typeof PlayerRegistrationLocationValidation];
+
+
+export const PlayerRegistrationLocationValidation = {
+  match: 'match',
+  different: 'different',
+  unknown: 'unknown',
+} as const;
+
+export interface PlayerRegistration {
+  user: AuthenticatedUser;
+  accessLocation: AccessLocation;
+  locationValidation: PlayerRegistrationLocationValidation;
+  categories: PopPersonCategory[];
+  locations: PlayerRegistrationLocation[];
+  /** @nullable */
+  defaultCategoryId: string | null;
 }
 
 export type PopPersonActionInputMode = typeof PopPersonActionInputMode[keyof typeof PopPersonActionInputMode];

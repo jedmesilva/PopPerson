@@ -335,6 +335,11 @@ export default function PopPersonCanvas() {
   const [showRecenter, setShowRecenter] = useState(false);
   const [isJoiningPlayer, setIsJoiningPlayer] = useState(false);
   const [joinPlayerError, setJoinPlayerError] = useState(null);
+  const [showPlayerSignup, setShowPlayerSignup] = useState(false);
+  const [playerRegistration, setPlayerRegistration] = useState(null);
+  const [isLoadingPlayerRegistration, setIsLoadingPlayerRegistration] = useState(false);
+  const [playerCategoryId, setPlayerCategoryId] = useState("");
+  const [playerLocation, setPlayerLocation] = useState(null);
   const [, forceTick] = useState(0);
   const submittingActionRef = useRef(false);
   const idempotencyKeyRef = useRef(null);
@@ -344,6 +349,17 @@ export default function PopPersonCanvas() {
   const canJoinAsPlayer = Boolean(
     bootstrapQuery.data?.user && !bootstrapQuery.data?.player?.isPlayer,
   );
+  const playerLocationOptions = useMemo(() => {
+    const options = playerRegistration?.locations ?? [];
+    const suggested = playerRegistration?.accessLocation;
+    if (!suggested?.city || suggested.source === "unavailable") return options;
+    const alreadyListed = options.some((location) =>
+      location.city === suggested.city &&
+      location.region === suggested.region &&
+      location.countryCode === suggested.countryCode,
+    );
+    return alreadyListed ? options : [suggested, ...options];
+  }, [playerRegistration]);
   const elements = config?.elements ?? { atacar: [], defender: [] };
   const levels = config?.levels ?? [];
   const levelByKey = useMemo(() => Object.fromEntries(levels.map((level) => [level.key, level])), [levels]);
@@ -1249,33 +1265,77 @@ export default function PopPersonCanvas() {
   }, [queue.length > 0, activeActions.length > 0]);
   useEffect(() => { if (queue.length === 0 && activeActions.length === 0) setShowQueueModal(false); }, [queue.length, activeActions.length]);
 
+  const locationKey = useCallback((location) => {
+    if (!location) return "";
+    return [location.countryCode, location.regionCode, location.city].join("|");
+  }, []);
+  const openPlayerSignup = useCallback(async () => {
+    if (!canJoinAsPlayer || isJoiningPlayer || isLoadingPlayerRegistration) return;
+    setShowPlayerSignup(true);
+    setIsLoadingPlayerRegistration(true);
+    setJoinPlayerError(null);
+    try {
+      const response = await fetch(getApiEndpoint("/api/pop-person/player/registration"), {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || "Não foi possível carregar seu cadastro.");
+      }
+      const data = await response.json();
+      setPlayerRegistration(data);
+      setPlayerCategoryId(data.defaultCategoryId || data.categories?.[0]?.id || "");
+      setPlayerLocation(
+        data.accessLocation?.source === "unavailable"
+          ? data.locations?.[0] ?? null
+          : data.accessLocation,
+      );
+    } catch (error) {
+      setShowPlayerSignup(false);
+      setJoinPlayerError(error instanceof Error ? error.message : "Não foi possível carregar seu cadastro.");
+    } finally {
+      setIsLoadingPlayerRegistration(false);
+    }
+  }, [canJoinAsPlayer, isJoiningPlayer, isLoadingPlayerRegistration]);
   const joinPlayer = useCallback(async () => {
-    if (!canJoinAsPlayer || isJoiningPlayer) return;
+    if (!canJoinAsPlayer || isJoiningPlayer || !playerCategoryId || !playerLocation) return;
     setIsJoiningPlayer(true);
     setJoinPlayerError(null);
     try {
       const response = await fetch(getApiEndpoint("/api/pop-person/player"), {
         method: "POST",
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          categoryId: playerCategoryId,
+          location: {
+            city: playerLocation.city,
+            region: playerLocation.region,
+            regionCode: playerLocation.regionCode,
+            country: playerLocation.country,
+            countryCode: playerLocation.countryCode,
+          },
+        }),
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
         throw new Error(payload?.error || "Não foi possível entrar como player.");
       }
       await Promise.all([bootstrapQuery.refetch(), stateQuery.refetch()]);
+      setShowPlayerSignup(false);
     } catch (error) {
       setJoinPlayerError(error instanceof Error ? error.message : "Não foi possível entrar como player.");
     } finally {
       setIsJoiningPlayer(false);
     }
-  }, [bootstrapQuery.refetch, canJoinAsPlayer, isJoiningPlayer, stateQuery.refetch]);
+  }, [bootstrapQuery.refetch, canJoinAsPlayer, isJoiningPlayer, playerCategoryId, playerLocation, stateQuery.refetch]);
   const selectCell = useCallback((name) => {
     if (name === ADD_PLAYER_CELL_NAME) {
-      void joinPlayer();
+      void openPlayerSignup();
       return;
     }
     setSelectedCell((prev) => prev === name ? null : name);
-  }, [joinPlayer]);
+  }, [openPlayerSignup]);
   const openModal = useCallback((mode) => {
     setPendingMode(mode);
     setModalStep("elemento");
@@ -2106,6 +2166,89 @@ export default function PopPersonCanvas() {
                 );
               })}
             </div>
+          </div>
+        </div>
+      )}
+
+      {showPlayerSignup && (
+        <div onClick={() => !isJoiningPlayer && setShowPlayerSignup(false)} style={{ position: "fixed", inset: 0, zIndex: 100, backgroundColor: "rgba(0,0,0,0.68)", display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="player-signup-title" onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: "400px", maxHeight: "88vh", backgroundColor: "#171717", border: "1px solid #333", borderRadius: "18px", padding: "20px", display: "flex", flexDirection: "column", gap: "16px", overflowY: "auto", boxShadow: "0 12px 36px rgba(0,0,0,0.45)" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "10px" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <span id="player-signup-title" style={{ color: "#fff", fontWeight: 800, fontSize: "19px", letterSpacing: "-0.02em" }}>Entrar como player</span>
+                <span style={{ color: "#737373", fontSize: "12px", lineHeight: 1.4 }}>Confira os dados que serão cadastrados no canvas.</span>
+              </div>
+              <button data-testid="button-close-player-signup" type="button" onClick={() => setShowPlayerSignup(false)} disabled={isJoiningPlayer} style={{ ...closeButtonStyle, flexShrink: 0, opacity: isJoiningPlayer ? 0.45 : 1 }}><X size={13} /></button>
+            </div>
+
+            {isLoadingPlayerRegistration ? (
+              <div style={{ padding: "28px 8px", textAlign: "center", color: "#a3a3a3", fontSize: "13px" }}>Carregando seus dados…</div>
+            ) : playerRegistration ? (
+              <>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px", borderRadius: "12px", backgroundColor: "#262626", border: "1px solid #333" }}>
+                  {playerRegistration.user.avatarUrl ? (
+                    <img src={playerRegistration.user.avatarUrl} alt="" style={{ width: "48px", height: "48px", borderRadius: "9999px", objectFit: "cover", flexShrink: 0 }} />
+                  ) : (
+                    <div style={{ width: "48px", height: "48px", borderRadius: "9999px", backgroundColor: "#333", color: "#f5f5f5", display: "grid", placeItems: "center", flexShrink: 0 }}><CircleUserRound size={24} /></div>
+                  )}
+                  <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: "3px" }}>
+                    <span style={{ color: "#fff", fontSize: "15px", fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerRegistration.user.name}</span>
+                    <span style={{ color: "#a3a3a3", fontSize: "12px" }}>@{playerRegistration.user.username}</span>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                    <span style={{ color: "#f5f5f5", fontSize: "13px", fontWeight: 700 }}>Localização do player</span>
+                    <span style={{ color: "#737373", fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>editável</span>
+                  </div>
+                  <select data-testid="select-player-location" value={locationKey(playerLocation)} onChange={(e) => {
+                    const selected = playerLocationOptions.find((location) => locationKey(location) === e.target.value);
+                    if (selected) setPlayerLocation(selected);
+                  }} style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: "10px", backgroundColor: "#262626", color: "#f5f5f5", border: "1px solid #444", fontSize: "13px", outline: "none" }}>
+                    {playerLocationOptions.map((location) => (
+                      <option key={locationKey(location)} value={locationKey(location)}>{location.city} — {location.region}, {location.country}</option>
+                    ))}
+                  </select>
+                  {playerLocation && (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "6px" }}>
+                      {[
+                        ["Cidade", playerLocation.city],
+                        ["Estado", playerLocation.region],
+                        ["País", playerLocation.country],
+                      ].map(([label, value]) => (
+                        <div key={label} style={{ minWidth: 0, padding: "8px", borderRadius: "9px", backgroundColor: "#202020" }}>
+                          <div style={{ color: "#737373", fontSize: "9px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>{label}</div>
+                          <div style={{ color: "#f5f5f5", marginTop: "3px", fontSize: "11px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ padding: "9px 10px", borderRadius: "10px", backgroundColor: playerRegistration.locationValidation === "match" ? "rgba(20, 83, 45, 0.35)" : playerRegistration.locationValidation === "different" ? "rgba(120, 53, 15, 0.35)" : "rgba(64, 64, 64, 0.45)", border: `1px solid ${playerRegistration.locationValidation === "match" ? "rgba(74, 222, 128, 0.25)" : playerRegistration.locationValidation === "different" ? "rgba(251, 191, 36, 0.28)" : "rgba(163, 163, 163, 0.18)"}`, color: playerRegistration.locationValidation === "match" ? "#bbf7d0" : playerRegistration.locationValidation === "different" ? "#fde68a" : "#d4d4d4", fontSize: "11px", lineHeight: 1.4 }}>
+                    {playerRegistration.locationValidation === "match"
+                      ? "A localização do perfil do X é compatível com a localização aproximada desta sessão."
+                      : playerRegistration.locationValidation === "different"
+                        ? `O perfil do X informa “${playerRegistration.user.xLocation}”, diferente da localização aproximada desta sessão.`
+                        : "Não foi possível comparar o perfil do X com a localização desta sessão."}
+                    {playerRegistration.user.xLocation && <div style={{ marginTop: "4px", color: "rgba(255,255,255,0.6)" }}>Localização no X: {playerRegistration.user.xLocation}</div>}
+                  </div>
+                </div>
+
+                <label style={{ display: "flex", flexDirection: "column", gap: "7px" }}>
+                  <span style={{ color: "#f5f5f5", fontSize: "13px", fontWeight: 700 }}>Categoria</span>
+                  <select data-testid="select-player-category" value={playerCategoryId} onChange={(e) => setPlayerCategoryId(e.target.value)} style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: "10px", backgroundColor: "#262626", color: "#f5f5f5", border: "1px solid #444", fontSize: "13px", outline: "none" }}>
+                    {playerRegistration.categories.map((category) => (
+                      <option key={category.id} value={category.id}>{category.parentId ? "↳ " : ""}{category.name}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <div style={{ display: "flex", gap: "10px", marginTop: "2px" }}>
+                  <button data-testid="button-cancel-player-signup" type="button" onClick={() => setShowPlayerSignup(false)} disabled={isJoiningPlayer} style={{ flex: 1, padding: "11px", borderRadius: "9999px", backgroundColor: "#262626", color: "#f5f5f5", fontWeight: 700, fontSize: "13px", border: "1px solid #3a3a3a", cursor: isJoiningPlayer ? "default" : "pointer", opacity: isJoiningPlayer ? 0.55 : 1 }}>Cancelar</button>
+                  <button data-testid="button-confirm-player-signup" type="button" onClick={() => void joinPlayer()} disabled={isJoiningPlayer || !playerCategoryId || !playerLocation} style={{ flex: 1, padding: "11px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", fontWeight: 800, fontSize: "13px", border: "none", cursor: isJoiningPlayer ? "default" : "pointer", opacity: isJoiningPlayer ? 0.6 : 1 }}>{isJoiningPlayer ? "Cadastrando…" : "Confirmar entrada"}</button>
+                </div>
+              </>
+            ) : null}
           </div>
         </div>
       )}

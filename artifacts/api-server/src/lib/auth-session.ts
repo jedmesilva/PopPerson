@@ -18,6 +18,7 @@ export type AuthenticatedUser = {
   xUserId: string;
   username: string;
   name: string;
+  xLocation: string | null;
   avatarUrl: string | null;
   email: string | null;
 };
@@ -77,6 +78,7 @@ export async function createAuthenticatedSession(
         xUserId: profile.xUserId,
         username: profile.username,
         name: profile.name,
+        xLocation: profile.xLocation,
         avatarUrl: profile.avatarUrl,
         email: profile.email,
       })
@@ -85,6 +87,7 @@ export async function createAuthenticatedSession(
         set: {
           username: profile.username,
           name: profile.name,
+          xLocation: profile.xLocation,
           avatarUrl: profile.avatarUrl ?? usersTable.avatarUrl,
           email: profile.email ?? usersTable.email,
           updatedAt: now,
@@ -119,6 +122,7 @@ export async function createAuthenticatedSession(
     xUserId: result.xUserId,
     username: result.username,
     name: result.name,
+    xLocation: result.xLocation,
     avatarUrl: result.avatarUrl,
     email: result.email,
   };
@@ -141,6 +145,7 @@ export async function loadAuthenticatedUser(
       xUserId: usersTable.xUserId,
       username: usersTable.username,
       name: usersTable.name,
+      xLocation: usersTable.xLocation,
       avatarUrl: usersTable.avatarUrl,
       email: usersTable.email,
     })
@@ -172,6 +177,7 @@ export async function loadAuthenticatedUser(
     xUserId: session.xUserId,
     username: session.username,
     name: session.name,
+    xLocation: session.xLocation,
     avatarUrl: session.avatarUrl,
     email: session.email,
   };

@@ -11,6 +11,8 @@ export interface AuthenticatedUser {
   username: string;
   name: string;
   /** @nullable */
+  xLocation: string | null;
+  /** @nullable */
   avatarUrl: string | null;
   /** @nullable */
   email: string | null;

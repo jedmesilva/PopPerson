@@ -213,7 +213,7 @@ export async function completeXAuthorization(
 
   const accessToken = await exchangeCodeForAccessToken(req, code, verifier);
   const response = await fetch(
-    `${X_USER_URL}?user.fields=profile_image_url,username,name`,
+    `${X_USER_URL}?user.fields=profile_image_url,username,name,location`,
     {
       headers: {
         Accept: "application/json",
@@ -228,6 +228,7 @@ export async function completeXAuthorization(
       id?: unknown;
       username?: unknown;
       name?: unknown;
+      location?: unknown;
       profile_image_url?: unknown;
       email?: unknown;
     };
@@ -268,6 +269,7 @@ export async function completeXAuthorization(
     xUserId: profile.id,
     username: profile.username,
     name: profile.name,
+    xLocation: typeof profile.location === "string" ? profile.location : null,
     avatarUrl: typeof profile.profile_image_url === "string"
       ? profile.profile_image_url.replace("_normal.", "_400x400.")
       : null,

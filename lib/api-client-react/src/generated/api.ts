@@ -24,7 +24,9 @@ import type {
   ErrorResponse,
   GetAuthenticatedUser200,
   HealthStatus,
+  JoinPopPersonBody,
   JoinPopPersonResponse,
+  PlayerRegistration,
   PopPersonAction,
   PopPersonActionInput,
   PopPersonBootstrap,
@@ -303,14 +305,14 @@ export const getJoinPopPersonAsPlayerUrl = () => {
 /**
  * @summary Add the authenticated user as a player
  */
-export const joinPopPersonAsPlayer = async ( options?: Parameters<typeof customFetch>[1]): Promise<JoinPopPersonResponse> => {
+export const joinPopPersonAsPlayer = async (joinPopPersonBody: JoinPopPersonBody, options?: Parameters<typeof customFetch>[1]): Promise<JoinPopPersonResponse> => {
 
   return customFetch<JoinPopPersonResponse>(getJoinPopPersonAsPlayerUrl(),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(joinPopPersonBody)
   }
 );}
 
@@ -319,8 +321,8 @@ export const joinPopPersonAsPlayer = async ( options?: Parameters<typeof customF
 
 
 export const getJoinPopPersonAsPlayerMutationOptions = <TError = ErrorType<ErrorResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinPopPersonAsPlayer>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof joinPopPersonAsPlayer>>, TError,void, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinPopPersonAsPlayer>>, TError,{data: BodyType<JoinPopPersonBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof joinPopPersonAsPlayer>>, TError,{data: BodyType<JoinPopPersonBody>}, TContext> => {
 
 const mutationKey = ['joinPopPersonAsPlayer'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -332,10 +334,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof joinPopPersonAsPlayer>>, void> = () => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof joinPopPersonAsPlayer>>, {data: BodyType<JoinPopPersonBody>}> = (props) => {
+          const {data} = props ?? {};
 
-
-          return  joinPopPersonAsPlayer(requestOptions)
+          return  joinPopPersonAsPlayer(data,requestOptions)
         }
 
 
@@ -346,22 +348,99 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type JoinPopPersonAsPlayerMutationResult = NonNullable<Awaited<ReturnType<typeof joinPopPersonAsPlayer>>>
-
+    export type JoinPopPersonAsPlayerMutationBody = BodyType<JoinPopPersonBody>
     export type JoinPopPersonAsPlayerMutationError = ErrorType<ErrorResponse>
 
     /**
  * @summary Add the authenticated user as a player
  */
 export const useJoinPopPersonAsPlayer = <TError = ErrorType<ErrorResponse>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinPopPersonAsPlayer>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinPopPersonAsPlayer>>, TError,{data: BodyType<JoinPopPersonBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof joinPopPersonAsPlayer>>,
         TError,
-        void,
+        {data: BodyType<JoinPopPersonBody>},
         TContext
       > => {
       return useMutation(getJoinPopPersonAsPlayerMutationOptions(options));
     }
+
+export const getGetPlayerRegistrationUrl = () => {
+
+
+
+
+  return `/api/pop-person/player/registration`
+}
+
+/**
+ * @summary Get authenticated player registration defaults
+ */
+export const getPlayerRegistration = async ( options?: Parameters<typeof customFetch>[1]): Promise<PlayerRegistration> => {
+
+  return customFetch<PlayerRegistration>(getGetPlayerRegistrationUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPlayerRegistrationQueryKey = () => {
+    return [
+    `/api/pop-person/player/registration`
+    ] as const;
+    }
+
+
+export const getGetPlayerRegistrationQueryOptions = <TData = Awaited<ReturnType<typeof getPlayerRegistration>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPlayerRegistration>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPlayerRegistrationQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPlayerRegistration>>> = ({ signal }) => getPlayerRegistration({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPlayerRegistration>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPlayerRegistrationQueryResult = NonNullable<Awaited<ReturnType<typeof getPlayerRegistration>>>
+export type GetPlayerRegistrationQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get authenticated player registration defaults
+ */
+
+export function useGetPlayerRegistration<TData = Awaited<ReturnType<typeof getPlayerRegistration>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPlayerRegistration>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPlayerRegistrationQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getStartXAuthenticationUrl = (params?: StartXAuthenticationParams,) => {
   const normalizedParams = new URLSearchParams();

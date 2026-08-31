@@ -25,6 +25,7 @@ import {
   usersTable,
 } from "@workspace/db";
 import type {
+  JoinPopPersonBody,
   PopPerson,
   PopPersonAction,
   PopPersonActionInput,
@@ -32,6 +33,7 @@ import type {
   PopPersonCategory,
   PopPersonConfig,
   PopPersonState,
+  PlayerRegistration,
 } from "@workspace/api-zod";
 import {
   dueHitCountAt,
@@ -84,6 +86,11 @@ export type PopPersonRealtimeNotification =
 type Snapshot = Record<string, unknown>;
 type AuthenticatedPopPersonUser = NonNullable<PopPersonBootstrap["user"]> & {
   id: string;
+};
+type PlayerRegistrationLocation = JoinPopPersonBody["location"];
+type ResolvedAccessLocation = PlayerRegistrationLocation & {
+  source: "ip" | "local" | "unavailable";
+  timezone: string;
 };
 
 export const POP_PERSON_REALTIME_CHANNEL = "pop_person_live";
@@ -626,6 +633,70 @@ export async function getPopPersonState(
   return currentState(roomId);
 }
 
+function normalizeLocationText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function compareProfileAndAccessLocation(
+  profileLocation: string | null,
+  accessLocation: ResolvedAccessLocation,
+): PlayerRegistration["locationValidation"] {
+  if (!profileLocation?.trim() || accessLocation.source !== "ip") return "unknown";
+  const profile = normalizeLocationText(profileLocation);
+  const matches = [
+    accessLocation.city,
+    accessLocation.region,
+    accessLocation.country,
+  ]
+    .map(normalizeLocationText)
+    .filter((value) => value.length >= 3)
+    .filter((value) => profile.includes(value) || value.includes(profile));
+  return matches.length > 0 ? "match" : "different";
+}
+
+export async function getPlayerRegistration(
+  user: AuthenticatedPopPersonUser,
+  accessLocation: ResolvedAccessLocation,
+): Promise<PlayerRegistration> {
+  const categories = await db
+    .select({
+      id: categoriesTable.id,
+      name: categoriesTable.name,
+      slug: categoriesTable.slug,
+      parentId: categoriesTable.parentId,
+    })
+    .from(categoriesTable)
+    .where(eq(categoriesTable.active, true))
+    .orderBy(asc(categoriesTable.name));
+  const locations = await db
+    .select({
+      city: locationsTable.city,
+      region: locationsTable.state,
+      regionCode: locationsTable.stateCode,
+      country: locationsTable.country,
+      countryCode: locationsTable.countryCode,
+    })
+    .from(locationsTable)
+    .orderBy(asc(locationsTable.country), asc(locationsTable.state), asc(locationsTable.city));
+
+  return {
+    user,
+    accessLocation,
+    locationValidation: compareProfileAndAccessLocation(user.xLocation, accessLocation),
+    categories,
+    locations,
+    defaultCategoryId:
+      categories.find((category) => category.slug === "players")?.id ??
+      categories[0]?.id ??
+      null,
+  };
+}
+
 async function getPlayerMembership(
   roomId: string,
   userId?: string,
@@ -673,30 +744,66 @@ function playerColor(xUserId: string): string {
 export async function joinPopPersonAsPlayer(
   user: AuthenticatedPopPersonUser,
   sessionId?: string,
+  input?: JoinPopPersonBody,
+  accessLocation?: ResolvedAccessLocation,
 ): Promise<PopPerson> {
   const roomId = await getRoomId();
   await ensureRoomMembership(roomId, sessionId);
   const now = new Date();
   const displayName = playerDisplayName(user);
   const slug = `player-${user.xUserId}`;
+  if (!input?.categoryId || !input.location) {
+    throw new Error("Categoria e localização são obrigatórias.");
+  }
+  const location = input.location;
+  if (
+    !location.city.trim() ||
+    !location.region.trim() ||
+    !location.regionCode.trim() ||
+    !location.country.trim() ||
+    !location.countryCode.trim()
+  ) {
+    throw new Error("Preencha cidade, estado e país.");
+  }
+  if (!accessLocation) {
+    throw new Error("Não foi possível validar a localização da sessão.");
+  }
 
   await db.transaction(async (tx) => {
     const [category] = await tx
-      .insert(categoriesTable)
+      .select({ id: categoriesTable.id })
+      .from(categoriesTable)
+      .where(
+        and(
+          eq(categoriesTable.id, input.categoryId),
+          eq(categoriesTable.active, true),
+        ),
+      )
+      .limit(1);
+    if (!category) throw new Error("Não foi possível configurar a categoria de players.");
+
+    const [savedLocation] = await tx
+      .insert(locationsTable)
       .values({
-        name: "Players",
-        slug: "players",
-        parentId: null,
-        active: true,
-        createdAt: now,
-        updatedAt: now,
+        city: location.city.trim(),
+        state: location.region.trim(),
+        stateCode: location.regionCode.trim(),
+        country: location.country.trim(),
+        countryCode: location.countryCode.trim().toUpperCase(),
       })
       .onConflictDoUpdate({
-        target: categoriesTable.slug,
-        set: { active: true, updatedAt: now },
+        target: [
+          locationsTable.countryCode,
+          locationsTable.stateCode,
+          locationsTable.city,
+        ],
+        set: {
+          state: location.region.trim(),
+          country: location.country.trim(),
+        },
       })
-      .returning({ id: categoriesTable.id });
-    if (!category) throw new Error("Não foi possível configurar a categoria de players.");
+      .returning({ id: locationsTable.id });
+    if (!savedLocation) throw new Error("Não foi possível cadastrar a localização.");
 
     const [existing] = await tx
       .select({ id: peopleTable.id })
@@ -716,6 +823,7 @@ export async function joinPopPersonAsPlayer(
           color: playerColor(user.xUserId),
           status: "candidato",
           imageUrl: user.avatarUrl,
+          locationId: savedLocation.id,
           active: true,
           updatedAt: now,
         })
@@ -731,7 +839,7 @@ export async function joinPopPersonAsPlayer(
           color: playerColor(user.xUserId),
           status: "candidato",
           imageUrl: user.avatarUrl,
-          locationId: null,
+          locationId: savedLocation.id,
           playerUserId: user.id,
           active: true,
           createdAt: now,
