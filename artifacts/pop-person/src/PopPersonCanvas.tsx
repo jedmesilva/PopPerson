@@ -273,6 +273,8 @@ function FilterSearchPicker({
   listboxLabel,
   placeholder,
   allLabel,
+  loading = false,
+  emptyMessage = "Nenhum resultado encontrado.",
   showDivider = true,
 }) {
   const query = normalizeLocationValue(search);
@@ -328,8 +330,10 @@ function FilterSearchPicker({
             >
               {allLabel}
             </button>
-            {visibleOptions.length === 0 ? (
-              <span style={{ padding: "12px 10px", color: "#737373", fontSize: "12px", textAlign: "center" }}>Nenhum resultado encontrado.</span>
+            {loading ? (
+              <span style={{ padding: "12px 10px", color: "#737373", fontSize: "12px", textAlign: "center" }}>Buscando...</span>
+            ) : visibleOptions.length === 0 ? (
+              <span style={{ padding: "12px 10px", color: "#737373", fontSize: "12px", textAlign: "center" }}>{emptyMessage}</span>
             ) : (
               visibleOptions.map((option) => (
                 <button
@@ -405,6 +409,9 @@ export default function PopPersonCanvas() {
   const [filterStateSearch, setFilterStateSearch] = useState("");
   const [isFilterCityPickerOpen, setIsFilterCityPickerOpen] = useState(false);
   const [filterCitySearch, setFilterCitySearch] = useState("");
+  const [filterLocationSearchResults, setFilterLocationSearchResults] = useState([]);
+  const [isSearchingFilterLocation, setIsSearchingFilterLocation] = useState(false);
+  const [filterLocationSearchError, setFilterLocationSearchError] = useState(null);
   const [isFilterCategoryPickerOpen, setIsFilterCategoryPickerOpen] = useState(false);
   const [filterCategorySearch, setFilterCategorySearch] = useState("");
   const [expandedFilterCategoryIds, setExpandedFilterCategoryIds] = useState(new Set());
@@ -524,50 +531,46 @@ export default function PopPersonCanvas() {
     () => getActionTotalPrice(modalElement, selectedActionRule),
     [modalElement, selectedActionRule],
   );
+  const activeFilterLocationSearch = useMemo(() => {
+    if (isFilterCountryPickerOpen) return { level: "pais", query: filterCountrySearch };
+    if (isFilterStatePickerOpen) return { level: "estado", query: filterStateSearch };
+    if (isFilterCityPickerOpen) return { level: "cidade", query: filterCitySearch };
+    return null;
+  }, [
+    filterCitySearch,
+    filterCountrySearch,
+    filterStateSearch,
+    isFilterCityPickerOpen,
+    isFilterCountryPickerOpen,
+    isFilterStatePickerOpen,
+  ]);
 
-  const paisOptions = useMemo(() => {
-    const options = new Map(
-      dataset
-        .filter((person) => person.pais)
-        .map((person) => [person.pais, { value: person.pais, label: person.pais }]),
-    );
-    return [
-      { value: "Todos", label: "Todos" },
-      ...Array.from(options.values()).sort((a, b) => a.label.localeCompare(b.label, "pt-BR")),
-    ];
-  }, [dataset]);
-  const estadoOptions = useMemo(() => {
-    const scoped = filters.pais === "Todos" ? dataset : dataset.filter((d) => d.pais === filters.pais);
-    const options = new Map(
-      scoped
-        .filter((person) => person.estado)
-        .map((person) => [
-          person.estado,
-          {
-            value: person.estado,
-            label: person.estadoCodigo && person.estadoCodigo !== person.estado
-              ? `${person.estado} (${person.estadoCodigo})`
-              : person.estado,
-          },
-        ]),
-    );
-    return [
-      { value: "Todos", label: "Todos" },
-      ...Array.from(options.values()).sort((a, b) => a.label.localeCompare(b.label, "pt-BR")),
-    ];
-  }, [dataset, filters.pais]);
-  const cidadeOptions = useMemo(() => {
-    const scoped = dataset.filter((d) => (filters.pais === "Todos" || d.pais === filters.pais) && (filters.estado === "Todos" || d.estado === filters.estado));
-    const options = new Map(
-      scoped
-        .filter((person) => person.cidade)
-        .map((person) => [person.cidade, { value: person.cidade, label: person.cidade }]),
-    );
-    return [
-      { value: "Todos", label: "Todos" },
-      ...Array.from(options.values()).sort((a, b) => a.label.localeCompare(b.label, "pt-BR")),
-    ];
-  }, [dataset, filters.pais, filters.estado]);
+  const remoteFilterLocationOptions = useMemo(() => {
+    if (!activeFilterLocationSearch) return [];
+    const options = new Map();
+    filterLocationSearchResults.forEach((result) => {
+      if (activeFilterLocationSearch.level === "pais") {
+        if (result.country) options.set(result.country, { value: result.country, label: result.country });
+        return;
+      }
+      if (activeFilterLocationSearch.level === "estado") {
+        if (result.region && result.region !== result.country) {
+          options.set(result.region, { value: result.region, label: result.region });
+        }
+        return;
+      }
+      if (result.city) {
+        const label = result.region && result.region !== result.country
+          ? `${result.city} (${result.region})`
+          : result.city;
+        options.set(result.city, { value: result.city, label });
+      }
+    });
+    return Array.from(options.values()).sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
+  }, [activeFilterLocationSearch, filterLocationSearchResults]);
+  const filterLocationEmptyMessage = activeFilterLocationSearch?.query.trim().length < 2
+    ? "Digite pelo menos 2 caracteres."
+    : filterLocationSearchError || "Nenhum resultado encontrado.";
   const filterCategoryOptions = useMemo(() => {
     const categories = new Map();
     dataset.forEach((person) => {
@@ -1534,6 +1537,55 @@ export default function PopPersonCanvas() {
     };
   }, [isEditingPlayerLocation, isPlayerLocationPickerOpen, playerLocationSearch]);
   useEffect(() => {
+    if (!activeFilterLocationSearch) {
+      setFilterLocationSearchResults([]);
+      setIsSearchingFilterLocation(false);
+      setFilterLocationSearchError(null);
+      return undefined;
+    }
+
+    const query = activeFilterLocationSearch.query.trim();
+    if (query.length < 2) {
+      setFilterLocationSearchResults([]);
+      setIsSearchingFilterLocation(false);
+      setFilterLocationSearchError(null);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(async () => {
+      setIsSearchingFilterLocation(true);
+      setFilterLocationSearchError(null);
+      try {
+        const data = await searchCities({ q: query }, { signal: controller.signal });
+        const results = (data.results ?? []).filter((result) => {
+          if (activeFilterLocationSearch.level === "pais") return true;
+          if (filters.pais !== "Todos" && result.country !== filters.pais) return false;
+          if (activeFilterLocationSearch.level === "estado") {
+            return result.region && result.region !== result.country;
+          }
+          return filters.estado === "Todos" || result.region === filters.estado;
+        });
+        setFilterLocationSearchResults(results);
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        setFilterLocationSearchResults([]);
+        setFilterLocationSearchError("Não foi possível buscar locais agora.");
+      } finally {
+        if (!controller.signal.aborted) setIsSearchingFilterLocation(false);
+      }
+    }, 280);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [
+    activeFilterLocationSearch,
+    filters.estado,
+    filters.pais,
+  ]);
+  useEffect(() => {
     if (!showPlayerSignup || playerLocationEditedRef.current) return;
     const suggestedLocation = getSuggestedPlayerLocation(accessLocationQuery.data);
     if (suggestedLocation.city && suggestedLocation.region && suggestedLocation.country) {
@@ -2479,7 +2531,7 @@ export default function PopPersonCanvas() {
                   <FilterSearchPicker
                     label="País"
                     selectedLabel={filters.pais === "Todos" ? "Todos os países" : filters.pais}
-                    options={paisOptions}
+                    options={activeFilterLocationSearch?.level === "pais" ? remoteFilterLocationOptions : []}
                     selected={filters.pais}
                     onSelect={(value) => selectFilterLevel("pais", value)}
                     open={isFilterCountryPickerOpen}
@@ -2492,6 +2544,8 @@ export default function PopPersonCanvas() {
                     }}
                     search={filterCountrySearch}
                     onSearch={setFilterCountrySearch}
+                    loading={isSearchingFilterLocation && activeFilterLocationSearch?.level === "pais"}
+                    emptyMessage={filterLocationEmptyMessage}
                     inputTestId="input-search-filter-country"
                     buttonTestId="button-open-filter-country"
                     allOptionTestId="option-filter-country-all"
@@ -2502,7 +2556,7 @@ export default function PopPersonCanvas() {
                   <FilterSearchPicker
                     label="Estado / região"
                     selectedLabel={filters.estado === "Todos" ? "Todos os estados / regiões" : filters.estado}
-                    options={estadoOptions}
+                    options={activeFilterLocationSearch?.level === "estado" ? remoteFilterLocationOptions : []}
                     selected={filters.estado}
                     onSelect={(value) => selectFilterLevel("estado", value)}
                     disabled={filters.pais === "Todos"}
@@ -2516,6 +2570,8 @@ export default function PopPersonCanvas() {
                     }}
                     search={filterStateSearch}
                     onSearch={setFilterStateSearch}
+                    loading={isSearchingFilterLocation && activeFilterLocationSearch?.level === "estado"}
+                    emptyMessage={filterLocationEmptyMessage}
                     inputTestId="input-search-filter-state"
                     buttonTestId="button-open-filter-state"
                     allOptionTestId="option-filter-state-all"
@@ -2526,7 +2582,7 @@ export default function PopPersonCanvas() {
                   <FilterSearchPicker
                     label="Cidade"
                     selectedLabel={filters.cidade === "Todos" ? "Todas as cidades" : filters.cidade}
-                    options={cidadeOptions}
+                    options={activeFilterLocationSearch?.level === "cidade" ? remoteFilterLocationOptions : []}
                     selected={filters.cidade}
                     onSelect={(value) => selectFilterLevel("cidade", value)}
                     open={isFilterCityPickerOpen}
@@ -2539,6 +2595,8 @@ export default function PopPersonCanvas() {
                     }}
                     search={filterCitySearch}
                     onSearch={setFilterCitySearch}
+                    loading={isSearchingFilterLocation && activeFilterLocationSearch?.level === "cidade"}
+                    emptyMessage={filterLocationEmptyMessage}
                     inputTestId="input-search-filter-city"
                     buttonTestId="button-open-filter-city"
                     allOptionTestId="option-filter-city-all"
