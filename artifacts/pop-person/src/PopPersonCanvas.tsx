@@ -2177,37 +2177,41 @@ export default function PopPersonCanvas() {
       )}
 
       {showPlayerSignup && (
-        <div onClick={() => !isJoiningPlayer && setShowPlayerSignup(false)} style={{ position: "fixed", inset: 0, zIndex: 100, backgroundColor: "rgba(0,0,0,0.68)", display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
-          <div role="dialog" aria-modal="true" aria-labelledby="player-signup-title" onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: "400px", maxHeight: "88vh", backgroundColor: "#171717", border: "1px solid #333", borderRadius: "18px", padding: "20px", display: "flex", flexDirection: "column", gap: "16px", overflowY: "auto", boxShadow: "0 12px 36px rgba(0,0,0,0.45)" }}>
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "10px" }}>
-               <div style={{ display: "flex", flexDirection: "column", gap: "4px", minWidth: 0 }}>
-                 <span id="player-signup-title" style={{ color: "#fff", fontWeight: 800, fontSize: "19px", letterSpacing: "-0.02em" }}>Obter minha célula</span>
-                 <span style={{ color: "#a3a3a3", fontSize: "12px", lineHeight: 1.4 }}>Informe sua localidade e escolha uma categoria para obter sua célula.</span>
+        <div onClick={() => !isJoiningPlayer && setShowPlayerSignup(false)} style={{ position: "fixed", inset: 0, zIndex: 100, backgroundColor: "rgba(0,0,0,0.72)", display: "flex", alignItems: "center", justifyContent: "center", padding: "16px", backdropFilter: "blur(2px)" }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="player-signup-title" onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: "360px", maxHeight: "88vh", backgroundColor: "#171717", border: "1px solid #292929", borderRadius: "14px", padding: "16px", display: "flex", flexDirection: "column", gap: "14px", overflowY: "auto", boxShadow: "0 8px 28px rgba(0,0,0,0.42)" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
+              <div style={{ minWidth: 0 }}>
+                <span id="player-signup-title" style={{ display: "block", color: "#fff", fontWeight: 800, fontSize: "18px", lineHeight: 1.2, letterSpacing: "-0.02em" }}>Obter minha célula</span>
+                <span style={{ display: "block", marginTop: "4px", color: "#a3a3a3", fontSize: "12px", lineHeight: 1.4 }}>Escolha sua localidade e categoria.</span>
               </div>
-              <button data-testid="button-close-player-signup" type="button" onClick={() => setShowPlayerSignup(false)} disabled={isJoiningPlayer} style={{ ...closeButtonStyle, flexShrink: 0, opacity: isJoiningPlayer ? 0.45 : 1 }}><X size={13} /></button>
+              <button data-testid="button-close-player-signup" type="button" onClick={() => setShowPlayerSignup(false)} disabled={isJoiningPlayer} aria-label="Fechar" style={{ ...closeButtonStyle, width: "26px", height: "26px", flexShrink: 0, opacity: isJoiningPlayer ? 0.45 : 1 }}><X size={13} /></button>
             </div>
 
             {isLoadingPlayerRegistration ? (
               <div style={{ padding: "28px 8px", textAlign: "center", color: "#a3a3a3", fontSize: "13px" }}>Carregando seus dados…</div>
             ) : playerRegistration ? (
               <>
-                <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px", borderRadius: "12px", backgroundColor: "#262626", border: "1px solid #333" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                   {playerRegistration.user.avatarUrl ? (
-                    <img src={playerRegistration.user.avatarUrl} alt="" style={{ width: "48px", height: "48px", borderRadius: "9999px", objectFit: "cover", flexShrink: 0 }} />
+                    <img src={playerRegistration.user.avatarUrl} alt="" style={{ width: "38px", height: "38px", borderRadius: "9999px", objectFit: "cover", flexShrink: 0 }} />
                   ) : (
-                     <div style={{ width: "48px", height: "48px", borderRadius: "9999px", backgroundColor: "#333", color: "#f5f5f5", display: "grid", placeItems: "center", flexShrink: 0, fontSize: "18px", fontWeight: 800 }}>{playerRegistration.user.name.trim().charAt(0).toUpperCase()}</div>
+                     <div style={{ width: "38px", height: "38px", borderRadius: "9999px", backgroundColor: "#333", color: "#f5f5f5", display: "grid", placeItems: "center", flexShrink: 0, fontSize: "15px", fontWeight: 800 }}>{playerRegistration.user.name.trim().charAt(0).toUpperCase()}</div>
                   )}
-                  <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: "3px" }}>
-                    <span style={{ color: "#fff", fontSize: "15px", fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerRegistration.user.name}</span>
-                    <span style={{ color: "#a3a3a3", fontSize: "12px" }}>@{playerRegistration.user.username}</span>
+                  <div style={{ minWidth: 0 }}>
+                    <span style={{ display: "block", color: "#fff", fontSize: "14px", fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerRegistration.user.name}</span>
+                    <span style={{ display: "block", marginTop: "2px", color: "#a3a3a3", fontSize: "11px" }}>@{playerRegistration.user.username}</span>
                   </div>
                 </div>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "12px", borderRadius: "12px", backgroundColor: "#202020", border: "1px solid #333" }}>
+                <div style={{ borderTop: "1px solid #292929", paddingTop: "13px" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
-                     <div style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 }}>
-                       <span style={{ color: "#f5f5f5", fontSize: "13px", fontWeight: 700 }}>Sua localidade</span>
-                       <span style={{ color: "#737373", fontSize: "11px", lineHeight: 1.35 }}>Localidade do seu perfil de player</span>
+                    <div style={{ minWidth: 0 }}>
+                      <span style={{ display: "block", color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>Localidade</span>
+                      {!isEditingPlayerLocation && (
+                        <span data-testid="text-player-location" style={{ display: "block", marginTop: "4px", color: playerLocationComplete ? "#f5f5f5" : "#a3a3a3", fontSize: "13px", fontWeight: 700, lineHeight: 1.35 }}>
+                          {playerLocationComplete ? `${playerLocation.city}, ${playerLocation.region} — ${playerLocation.country}` : "Informe sua cidade para continuar"}
+                        </span>
+                      )}
                     </div>
                     <button
                       data-testid="button-edit-player-location"
@@ -2216,21 +2220,17 @@ export default function PopPersonCanvas() {
                       disabled={isJoiningPlayer}
                       aria-label={playerLocationComplete ? "Editar localidade" : "Informar localidade"}
                       title={playerLocationComplete ? "Editar localidade" : "Informar localidade"}
-                      style={{ width: "30px", height: "30px", padding: 0, flexShrink: 0, display: "grid", placeItems: "center", borderRadius: "9999px", backgroundColor: "#333", border: "1px solid #484848", color: "#f5f5f5", cursor: isJoiningPlayer ? "default" : "pointer", opacity: isJoiningPlayer ? 0.5 : 1 }}
+                      style={{ width: "28px", height: "28px", padding: 0, flexShrink: 0, display: "grid", placeItems: "center", borderRadius: "8px", backgroundColor: "transparent", border: "1px solid #3b3b3b", color: "#a3a3a3", cursor: isJoiningPlayer ? "default" : "pointer", opacity: isJoiningPlayer ? 0.5 : 1 }}
                     >
                       <Pencil size={14} aria-hidden="true" />
                     </button>
                   </div>
 
-                  {!isEditingPlayerLocation ? (
-                     <div data-testid="text-player-location" style={{ display: "flex", alignItems: "center", minHeight: "38px", padding: "9px 10px", borderRadius: "9px", backgroundColor: "#292929", color: playerLocationComplete ? "#f5f5f5" : "#a3a3a3", fontSize: "12px", lineHeight: 1.35 }}>
-                      <span>{playerLocationComplete ? `${playerLocation.city}, ${playerLocation.region} — ${playerLocation.country}` : "Informe sua cidade para continuar"}</span>
-                    </div>
-                  ) : (
+                  {isEditingPlayerLocation && (
                     <>
-                      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: "8px" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: "8px", marginTop: "10px" }}>
                         <label style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-                          <span style={{ color: "#d4d4d4", fontSize: "11px", fontWeight: 700 }}>Cidade</span>
+                          <span style={{ color: "#d4d4d4", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Cidade</span>
                           <input
                             data-testid="input-player-city"
                             value={playerLocation.city}
@@ -2245,7 +2245,7 @@ export default function PopPersonCanvas() {
                         </label>
                         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: "8px" }}>
                           <label style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-                            <span style={{ color: "#d4d4d4", fontSize: "11px", fontWeight: 700 }}>Estado</span>
+                            <span style={{ color: "#d4d4d4", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Estado</span>
                             <input
                               data-testid="input-player-region"
                               value={playerLocation.region}
@@ -2259,7 +2259,7 @@ export default function PopPersonCanvas() {
                             />
                           </label>
                           <label style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-                            <span style={{ color: "#d4d4d4", fontSize: "11px", fontWeight: 700 }}>País</span>
+                            <span style={{ color: "#d4d4d4", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>País</span>
                             <input
                               data-testid="input-player-country"
                               value={playerLocation.country}
@@ -2274,13 +2274,13 @@ export default function PopPersonCanvas() {
                           </label>
                         </div>
                       </div>
-                      <span style={{ color: "#737373", fontSize: "11px", lineHeight: 1.35 }}>Use a cidade, o estado e o país onde você está.</span>
+                      <span style={{ display: "block", marginTop: "8px", color: "#737373", fontSize: "11px", lineHeight: 1.35 }}>Use a cidade, o estado e o país onde você está.</span>
                       <button
                         data-testid="button-save-player-location"
                         type="button"
                         onClick={() => setIsEditingPlayerLocation(false)}
                         disabled={!playerLocationComplete}
-                        style={{ alignSelf: "flex-start", padding: "8px 11px", borderRadius: "8px", backgroundColor: playerLocationComplete ? "#333" : "#292929", color: playerLocationComplete ? "#f5f5f5" : "#737373", border: "1px solid #484848", fontSize: "11px", fontWeight: 700, cursor: playerLocationComplete ? "pointer" : "default" }}
+                        style={{ marginTop: "8px", alignSelf: "flex-start", padding: "8px 11px", borderRadius: "8px", backgroundColor: playerLocationComplete ? "#333" : "#292929", color: playerLocationComplete ? "#f5f5f5" : "#737373", border: "1px solid #484848", fontSize: "11px", fontWeight: 700, cursor: playerLocationComplete ? "pointer" : "default" }}
                       >
                         Salvar localidade
                       </button>
@@ -2289,7 +2289,7 @@ export default function PopPersonCanvas() {
                 </div>
 
                 <label style={{ display: "flex", flexDirection: "column", gap: "7px" }}>
-                  <span style={{ color: "#f5f5f5", fontSize: "13px", fontWeight: 700 }}>Escolha sua categoria</span>
+                  <span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>Categoria</span>
                   <select data-testid="select-player-category" value={playerCategoryId} onChange={(e) => setPlayerCategoryId(e.target.value)} style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: "10px", backgroundColor: "#262626", color: "#f5f5f5", border: "1px solid #444", fontSize: "13px", outline: "none" }}>
                     {playerRegistration.categories.map((category) => (
                       <option key={category.id} value={category.id}>{category.parentId ? "↳ " : ""}{category.name}</option>
@@ -2297,9 +2297,9 @@ export default function PopPersonCanvas() {
                   </select>
                 </label>
 
-                <div style={{ display: "flex", gap: "10px", marginTop: "2px" }}>
-                  <button data-testid="button-cancel-player-signup" type="button" onClick={() => setShowPlayerSignup(false)} disabled={isJoiningPlayer} style={{ flex: 1, padding: "11px", borderRadius: "9999px", backgroundColor: "#262626", color: "#f5f5f5", fontWeight: 700, fontSize: "13px", border: "1px solid #3a3a3a", cursor: isJoiningPlayer ? "default" : "pointer", opacity: isJoiningPlayer ? 0.55 : 1 }}>Cancelar</button>
-                  <button data-testid="button-confirm-player-signup" type="button" onClick={() => void joinPlayer()} disabled={isJoiningPlayer || !playerCategoryId || !playerLocationComplete} style={{ flex: 1, padding: "11px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", fontWeight: 800, fontSize: "13px", border: "none", cursor: isJoiningPlayer ? "default" : "pointer", opacity: isJoiningPlayer || !playerLocationComplete ? 0.6 : 1 }}>{isJoiningPlayer ? "Obtendo sua célula…" : "Obter minha célula"}</button>
+                <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "8px", paddingTop: "2px" }}>
+                  <button data-testid="button-cancel-player-signup" type="button" onClick={() => setShowPlayerSignup(false)} disabled={isJoiningPlayer} style={{ padding: "8px 11px", borderRadius: "8px", backgroundColor: "transparent", color: "#a3a3a3", fontWeight: 700, fontSize: "11px", border: "none", cursor: isJoiningPlayer ? "default" : "pointer", opacity: isJoiningPlayer ? 0.55 : 1 }}>Cancelar</button>
+                  <button data-testid="button-confirm-player-signup" type="button" onClick={() => void joinPlayer()} disabled={isJoiningPlayer || !playerCategoryId || !playerLocationComplete} style={{ padding: "10px 16px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", fontWeight: 800, fontSize: "12px", border: "none", cursor: isJoiningPlayer ? "default" : "pointer", opacity: isJoiningPlayer || !playerLocationComplete ? 0.6 : 1 }}>{isJoiningPlayer ? "Obtendo sua célula…" : "Obter minha célula"}</button>
                 </div>
               </>
             ) : null}

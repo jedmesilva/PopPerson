@@ -1,0 +1,37 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+
+:root {
+  --app-bg: #0a0a0a;
+  --app-surface: #171717;
+  --app-surface-raised: #202020;
+  --app-control: #292929;
+  --app-border: #333333;
+  --app-muted: #a3a3a3;
+  --app-faint: #737373;
+  --app-text: #f5f5f5;
+  --app-accent: #c4b5fd;
+  --app-font: "Inter", sans-serif;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--app-bg);
+  color: var(--app-text);
+  font-family: var(--app-font);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
