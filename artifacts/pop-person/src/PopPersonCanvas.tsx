@@ -339,6 +339,11 @@ export default function PopPersonCanvas() {
   const [dataset, setDataset] = useState([]);
   const [filters, setFilters] = useState({ pais: "Todos", estado: "Todos", cidade: "Todos", categoria: "Todos" });
   const [showFiltersModal, setShowFiltersModal] = useState(false);
+  const [isFilterCityPickerOpen, setIsFilterCityPickerOpen] = useState(false);
+  const [filterCitySearch, setFilterCitySearch] = useState("");
+  const [isFilterCategoryPickerOpen, setIsFilterCategoryPickerOpen] = useState(false);
+  const [filterCategorySearch, setFilterCategorySearch] = useState("");
+  const [expandedFilterCategoryIds, setExpandedFilterCategoryIds] = useState(new Set());
   const [selectedCell, setSelectedCell] = useState(null);
   const [pendingMode, setPendingMode] = useState(null);
   const [modalStep, setModalStep] = useState("elemento");
@@ -499,23 +504,59 @@ export default function PopPersonCanvas() {
       ...Array.from(options.values()).sort((a, b) => a.label.localeCompare(b.label, "pt-BR")),
     ];
   }, [dataset, filters.pais, filters.estado]);
-  const categoriaOptions = useMemo(() => {
+  const filterCategoryOptions = useMemo(() => {
     const categories = new Map();
     dataset.forEach((person) => {
-      person.categoryPath.forEach((category) => {
+      (person.categoryPath ?? []).forEach((category, index, path) => {
         if (!categories.has(category.id)) {
           categories.set(category.id, {
-            value: category.id,
-            label: person.categoryPath.map((item) => item.name).slice(
-              0,
-              person.categoryPath.findIndex((item) => item.id === category.id) + 1,
-            ).join(" / "),
+            ...category,
+            depth: index,
+            pathLabel: path.slice(0, index + 1).map((item) => item.name).join(" / "),
           });
         }
       });
     });
-    return [{ value: "Todos", label: "Todos" }, ...Array.from(categories.values()).sort((a, b) => a.label.localeCompare(b.label))];
+    const categoryIdsWithChildren = new Set(
+      Array.from(categories.values())
+        .map((category) => category.parentId)
+        .filter(Boolean),
+    );
+    return Array.from(categories.values())
+      .map((category) => ({ ...category, hasChildren: categoryIdsWithChildren.has(category.id) }))
+      .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, "pt-BR"));
   }, [dataset]);
+  const filteredFilterCategoryOptions = useMemo(() => {
+    const query = normalizeLocationValue(filterCategorySearch);
+    if (!query) return filterCategoryOptions;
+    return filterCategoryOptions.filter((category) =>
+      normalizeLocationValue(`${category.name} ${category.pathLabel}`).includes(query),
+    );
+  }, [filterCategoryOptions, filterCategorySearch]);
+  const visibleFilterCategoryOptions = useMemo(() => {
+    if (normalizeLocationValue(filterCategorySearch)) return filteredFilterCategoryOptions;
+    return filteredFilterCategoryOptions.filter((category) => {
+      if (category.depth === 0) return true;
+      let parentId = category.parentId;
+      while (parentId) {
+        if (!expandedFilterCategoryIds.has(parentId)) return false;
+        const parent = filterCategoryOptions.find((option) => option.id === parentId);
+        parentId = parent?.parentId;
+      }
+      return true;
+    });
+  }, [expandedFilterCategoryIds, filteredFilterCategoryOptions, filterCategoryOptions, filterCategorySearch]);
+  const filterCityOptions = useMemo(
+    () => cidadeOptions.filter((option) => option.value !== "Todos" && (
+      !normalizeLocationValue(filterCitySearch)
+      || normalizeLocationValue(option.label).includes(normalizeLocationValue(filterCitySearch))
+    )),
+    [cidadeOptions, filterCitySearch],
+  );
+  const selectedFilterCategory = useMemo(
+    () => filterCategoryOptions.find((category) => category.id === filters.categoria),
+    [filterCategoryOptions, filters.categoria],
+  );
   const setFilterLevel = useCallback((level, value) => {
     setFilters((prev) => level === "pais"
       ? { pais: value, estado: "Todos", cidade: "Todos", categoria: prev.categoria }
@@ -525,6 +566,21 @@ export default function PopPersonCanvas() {
           ? { ...prev, cidade: value }
           : { ...prev, categoria: value });
   }, []);
+  const selectFilterLevel = useCallback((level, value) => {
+    setFilterLevel(level, value);
+    if (level === "pais" || level === "estado") {
+      setFilterCitySearch("");
+      setIsFilterCityPickerOpen(false);
+    }
+    if (level === "cidade") {
+      setFilterCitySearch("");
+      setIsFilterCityPickerOpen(false);
+    }
+    if (level === "categoria") {
+      setFilterCategorySearch("");
+      setIsFilterCategoryPickerOpen(false);
+    }
+  }, [setFilterLevel]);
   const clearFilters = useCallback(() => setFilters({ pais: "Todos", estado: "Todos", cidade: "Todos", categoria: "Todos" }), []);
   const activeFilterCount = (filters.pais !== "Todos" ? 1 : 0) + (filters.estado !== "Todos" ? 1 : 0) + (filters.cidade !== "Todos" ? 1 : 0) + (filters.categoria !== "Todos" ? 1 : 0);
   const filteredDataset = useMemo(() => dataset.filter((d) => (filters.pais === "Todos" || d.pais === filters.pais) && (filters.estado === "Todos" || d.estado === filters.estado) && (filters.cidade === "Todos" || d.cidade === filters.cidade) && (filters.categoria === "Todos" || d.categoryPath.some((category) => category.id === filters.categoria))), [dataset, filters]);
