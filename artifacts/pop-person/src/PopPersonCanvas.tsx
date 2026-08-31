@@ -2412,30 +2412,35 @@ export default function PopPersonCanvas() {
                   )}
                 </div>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: "7px" }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
-                    <span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>Categoria de popularidade</span>
-                    <span style={{ color: "#737373", fontSize: "11px", lineHeight: 1.35 }}>Abra uma categoria para ver suas subcategorias ou use a busca.</span>
+                <div style={{ display: "flex", flexDirection: "column", gap: "7px", borderTop: "1px solid #292929", paddingTop: "13px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
+                    <div style={{ minWidth: 0 }}>
+                      <span style={{ display: "block", color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>Categoria de popularidade</span>
+                      <span data-testid="text-player-category" style={{ display: "block", marginTop: "4px", color: selectedPlayerCategory ? "#f5f5f5" : "#a3a3a3", fontSize: "13px", fontWeight: 700, lineHeight: 1.35, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {selectedPlayerCategory?.pathLabel ?? "Informe sua categoria para continuar"}
+                      </span>
+                    </div>
+                    <button
+                      data-testid="select-player-category"
+                      type="button"
+                      onClick={() => {
+                        if (isJoiningPlayer) return;
+                        setIsPlayerCategoryPickerOpen((isOpen) => !isOpen);
+                        setPlayerCategorySearch("");
+                      }}
+                      disabled={isJoiningPlayer}
+                      aria-label={selectedPlayerCategory ? "Editar categoria" : "Informar categoria"}
+                      title={selectedPlayerCategory ? "Editar categoria" : "Informar categoria"}
+                      aria-haspopup="listbox"
+                      aria-expanded={isPlayerCategoryPickerOpen}
+                      style={{ width: "28px", height: "28px", padding: 0, flexShrink: 0, display: "grid", placeItems: "center", borderRadius: "8px", backgroundColor: "transparent", border: "1px solid #3b3b3b", color: "#a3a3a3", cursor: isJoiningPlayer ? "default" : "pointer", opacity: isJoiningPlayer ? 0.5 : 1 }}
+                    >
+                      <Pencil size={14} aria-hidden="true" />
+                    </button>
                   </div>
-                  <button
-                    data-testid="select-player-category"
-                    type="button"
-                    onClick={() => {
-                      if (isJoiningPlayer) return;
-                      setIsPlayerCategoryPickerOpen((isOpen) => !isOpen);
-                      setPlayerCategorySearch("");
-                    }}
-                    disabled={isJoiningPlayer}
-                    aria-haspopup="listbox"
-                    aria-expanded={isPlayerCategoryPickerOpen}
-                    style={{ width: "100%", boxSizing: "border-box", minHeight: "40px", padding: "10px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", borderRadius: "10px", backgroundColor: "#262626", color: selectedPlayerCategory ? "#f5f5f5" : "#737373", border: "1px solid #444", fontSize: "13px", textAlign: "left", outline: "none", cursor: isJoiningPlayer ? "default" : "pointer", opacity: isJoiningPlayer ? 0.6 : 1 }}
-                  >
-                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedPlayerCategory?.pathLabel ?? "Selecione uma categoria"}</span>
-                    <ChevronDown size={15} aria-hidden="true" style={{ flexShrink: 0, color: "#a3a3a3", transform: isPlayerCategoryPickerOpen ? "rotate(180deg)" : "none", transition: "transform 140ms ease" }} />
-                  </button>
 
                   {isPlayerCategoryPickerOpen && (
-                    <div role="listbox" aria-label="Categorias de popularidade" style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "8px", borderRadius: "10px", backgroundColor: "#202020", border: "1px solid #3a3a3a", boxShadow: "0 8px 22px rgba(0,0,0,0.28)" }}>
+                    <div role="listbox" aria-label="Categorias de popularidade" style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "3px", padding: "8px", borderRadius: "10px", backgroundColor: "#202020", border: "1px solid #3a3a3a", boxShadow: "0 8px 22px rgba(0,0,0,0.28)" }}>
                       <div style={{ position: "relative" }}>
                         <Search size={14} aria-hidden="true" style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#737373", pointerEvents: "none" }} />
                         <input
