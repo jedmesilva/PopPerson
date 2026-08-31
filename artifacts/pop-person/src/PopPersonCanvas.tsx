@@ -2346,7 +2346,7 @@ export default function PopPersonCanvas() {
             );
           })()}
         </div>
-        <button data-testid="button-open-filters" onClick={() => setShowFiltersModal(true)} style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: "5px", padding: "7px 12px", borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.55)", backdropFilter: "blur(6px)", border: activeFilterCount > 0 ? "1px solid rgba(99, 102, 241, 0.6)" : "1px solid rgba(255, 255, 255, 0.08)", color: "#f5f5f5", fontSize: "12px", fontWeight: 600, cursor: "pointer" }}>
+        <button data-testid="button-open-filters" onClick={() => { setShowFiltersModal(true); setIsFilterCityPickerOpen(false); setIsFilterCategoryPickerOpen(false); setFilterCitySearch(""); setFilterCategorySearch(""); }} style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: "5px", padding: "7px 12px", borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.55)", backdropFilter: "blur(6px)", border: activeFilterCount > 0 ? "1px solid rgba(99, 102, 241, 0.6)" : "1px solid rgba(255, 255, 255, 0.08)", color: "#f5f5f5", fontSize: "12px", fontWeight: 600, cursor: "pointer" }}>
           <SlidersHorizontal size={13} /> Filtros
           {activeFilterCount > 0 && <span data-testid="text-filter-count" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "16px", height: "16px", borderRadius: "9999px", backgroundColor: "#6366f1", color: "#fff", fontSize: "10px", fontWeight: 700, padding: "0 4px" }}>{activeFilterCount}</span>}
         </button>
@@ -2413,22 +2413,188 @@ export default function PopPersonCanvas() {
               <div style={{ display: "flex", flexDirection: "column", gap: "7px" }}>
                 <span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>Localidade</span>
                 <div style={{ overflow: "hidden", borderRadius: "12px", backgroundColor: "#202020", border: "1px solid #2d2d2d" }}>
-                  <FilterSection label="País" options={paisOptions} selected={filters.pais} onSelect={(v) => setFilterLevel("pais", v)} />
-                  <FilterSection label="Estado" options={estadoOptions} selected={filters.estado} onSelect={(v) => setFilterLevel("estado", v)} disabled={filters.pais === "Todos"} disabledHint="Escolha um país primeiro" />
-                  <FilterSection label="Cidade" options={cidadeOptions} selected={filters.cidade} onSelect={(v) => setFilterLevel("cidade", v)} disabled={filters.estado === "Todos"} disabledHint="Escolha um estado primeiro" showDivider={false} />
+                  <FilterSection label="País" options={paisOptions} selected={filters.pais} onSelect={(v) => selectFilterLevel("pais", v)} />
+                  <FilterSection label="Estado" options={estadoOptions} selected={filters.estado} onSelect={(v) => selectFilterLevel("estado", v)} disabled={filters.pais === "Todos"} disabledHint="Escolha um país primeiro" />
+                  <div style={{ padding: "8px 12px", borderBottom: "1px solid #2d2d2d" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", minHeight: "38px" }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "3px", minWidth: 0 }}>
+                        <span style={{ color: filters.estado === "Todos" ? "#737373" : "#d4d4d4", fontSize: "11px", fontWeight: 700, letterSpacing: "0.04em", lineHeight: 1.2, textTransform: "uppercase" }}>Cidade</span>
+                        <span data-testid="text-filter-city" style={{ color: filters.cidade !== "Todos" ? "#c7d2fe" : "#a3a3a3", fontSize: "12px", fontWeight: 700, lineHeight: 1.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {filters.cidade === "Todos" ? "Todas as cidades" : filters.cidade}
+                        </span>
+                      </div>
+                      <button
+                        data-testid="button-open-filter-city"
+                        type="button"
+                        onClick={() => {
+                          setIsFilterCityPickerOpen((isOpen) => !isOpen);
+                          setFilterCitySearch("");
+                          setIsFilterCategoryPickerOpen(false);
+                        }}
+                        aria-label={filters.cidade === "Todos" ? "Buscar cidade" : "Editar cidade"}
+                        aria-expanded={isFilterCityPickerOpen}
+                        style={{ width: "28px", height: "28px", padding: 0, flexShrink: 0, display: "grid", placeItems: "center", borderRadius: "8px", backgroundColor: "transparent", border: "1px solid #3b3b3b", color: "#a3a3a3", cursor: "pointer" }}
+                      >
+                        <Pencil size={14} aria-hidden="true" />
+                      </button>
+                    </div>
+                    {isFilterCityPickerOpen && (
+                      <div role="listbox" aria-label="Resultados de cidades" style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "8px", padding: "8px", borderRadius: "10px", backgroundColor: "#202020", border: "1px solid #3a3a3a", boxShadow: "0 8px 22px rgba(0,0,0,0.28)" }}>
+                        <div style={{ position: "relative" }}>
+                          <Search size={14} aria-hidden="true" style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#737373", pointerEvents: "none" }} />
+                          <input
+                            data-testid="input-search-filter-city"
+                            type="search"
+                            value={filterCitySearch}
+                            onChange={(event) => setFilterCitySearch(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Escape") {
+                                setIsFilterCityPickerOpen(false);
+                                setFilterCitySearch("");
+                              }
+                            }}
+                            placeholder="Digite o nome da cidade"
+                            aria-label="Buscar cidade"
+                            autoFocus
+                            style={{ width: "100%", boxSizing: "border-box", padding: "9px 10px 9px 30px", borderRadius: "8px", backgroundColor: "#2a2a2a", color: "#f5f5f5", border: "1px solid #454545", fontSize: "12px", outline: "none" }}
+                          />
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "2px", maxHeight: "190px", overflowY: "auto" }}>
+                          <button
+                            data-testid="option-filter-city-all"
+                            type="button"
+                            role="option"
+                            aria-selected={filters.cidade === "Todos"}
+                            onClick={() => selectFilterLevel("cidade", "Todos")}
+                            style={{ width: "100%", padding: "9px 10px", border: "none", borderRadius: "7px", backgroundColor: filters.cidade === "Todos" ? "#363636" : "transparent", color: "#f5f5f5", fontSize: "12px", fontWeight: 700, textAlign: "left", cursor: "pointer" }}
+                          >
+                            Todas as cidades
+                          </button>
+                          {filterCityOptions.length === 0 ? (
+                            <span style={{ padding: "12px 10px", color: "#737373", fontSize: "12px", textAlign: "center" }}>Nenhuma cidade encontrada.</span>
+                          ) : (
+                            filterCityOptions.map((option) => (
+                              <button
+                                key={option.value}
+                                type="button"
+                                role="option"
+                                aria-selected={option.value === filters.cidade}
+                                onClick={() => selectFilterLevel("cidade", option.value)}
+                                style={{ width: "100%", padding: "9px 10px", border: "none", borderRadius: "7px", backgroundColor: option.value === filters.cidade ? "#363636" : "transparent", color: option.value === filters.cidade ? "#fff" : "#d4d4d4", fontSize: "12px", fontWeight: option.value === filters.cidade ? 700 : 600, textAlign: "left", cursor: "pointer" }}
+                              >
+                                {option.label}
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: "7px" }}>
                 <span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>Categoria</span>
-                <div style={{ overflow: "hidden", borderRadius: "12px", backgroundColor: "#202020", border: "1px solid #2d2d2d" }}>
-                  <FilterSection label="Categoria" options={categoriaOptions} selected={filters.categoria} onSelect={(v) => setFilterLevel("categoria", v)} showDivider={false} />
+                <div style={{ padding: "8px 12px", borderRadius: "12px", backgroundColor: "#202020", border: "1px solid #2d2d2d" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", minHeight: "38px" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "3px", minWidth: 0 }}>
+                      <span style={{ color: "#d4d4d4", fontSize: "11px", fontWeight: 700, letterSpacing: "0.04em", lineHeight: 1.2, textTransform: "uppercase" }}>Perfil</span>
+                      <span data-testid="text-filter-category" style={{ color: filters.categoria !== "Todos" ? "#c7d2fe" : "#a3a3a3", fontSize: "12px", fontWeight: 700, lineHeight: 1.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {selectedFilterCategory?.pathLabel ?? "Todas as categorias"}
+                      </span>
+                    </div>
+                    <button
+                      data-testid="button-open-filter-category"
+                      type="button"
+                      onClick={() => {
+                        setIsFilterCategoryPickerOpen((isOpen) => !isOpen);
+                        setFilterCategorySearch("");
+                        setIsFilterCityPickerOpen(false);
+                      }}
+                      aria-label={filters.categoria === "Todos" ? "Buscar categoria" : "Editar categoria"}
+                      aria-expanded={isFilterCategoryPickerOpen}
+                      style={{ width: "28px", height: "28px", padding: 0, flexShrink: 0, display: "grid", placeItems: "center", borderRadius: "8px", backgroundColor: "transparent", border: "1px solid #3b3b3b", color: "#a3a3a3", cursor: "pointer" }}
+                    >
+                      <Pencil size={14} aria-hidden="true" />
+                    </button>
+                  </div>
+
+                  {isFilterCategoryPickerOpen && (
+                    <div role="listbox" aria-label="Categorias de popularidade" style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "8px", padding: "8px", borderRadius: "10px", backgroundColor: "#202020", border: "1px solid #3a3a3a", boxShadow: "0 8px 22px rgba(0,0,0,0.28)" }}>
+                      <div style={{ position: "relative" }}>
+                        <Search size={14} aria-hidden="true" style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#737373", pointerEvents: "none" }} />
+                        <input
+                          data-testid="input-search-filter-category"
+                          type="search"
+                          value={filterCategorySearch}
+                          onChange={(event) => setFilterCategorySearch(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Escape") {
+                              setIsFilterCategoryPickerOpen(false);
+                              setFilterCategorySearch("");
+                            }
+                          }}
+                          placeholder="Buscar categoria"
+                          aria-label="Buscar categoria"
+                          autoFocus
+                          style={{ width: "100%", boxSizing: "border-box", padding: "9px 10px 9px 30px", borderRadius: "8px", backgroundColor: "#2a2a2a", color: "#f5f5f5", border: "1px solid #454545", fontSize: "12px", outline: "none" }}
+                        />
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "2px", maxHeight: "190px", overflowY: "auto" }}>
+                        <button
+                          data-testid="option-filter-category-all"
+                          type="button"
+                          role="option"
+                          aria-selected={filters.categoria === "Todos"}
+                          onClick={() => selectFilterLevel("categoria", "Todos")}
+                          style={{ width: "100%", padding: "9px 10px", border: "none", borderRadius: "7px", backgroundColor: filters.categoria === "Todos" ? "#363636" : "transparent", color: "#f5f5f5", fontSize: "12px", fontWeight: 700, textAlign: "left", cursor: "pointer" }}
+                        >
+                          Todas as categorias
+                        </button>
+                        {visibleFilterCategoryOptions.length === 0 ? (
+                          <span style={{ padding: "12px 10px", color: "#737373", fontSize: "12px", textAlign: "center" }}>Nenhuma categoria encontrada.</span>
+                        ) : (
+                          visibleFilterCategoryOptions.map((category) => (
+                            <div key={category.id} style={{ display: "flex", alignItems: "stretch", gap: "2px", paddingLeft: `${category.depth * 18}px` }}>
+                              {category.hasChildren ? (
+                                <button
+                                  type="button"
+                                  aria-label={`${expandedFilterCategoryIds.has(category.id) ? "Recolher" : "Expandir"} ${category.name}`}
+                                  aria-expanded={expandedFilterCategoryIds.has(category.id)}
+                                  onClick={() => setExpandedFilterCategoryIds((expanded) => {
+                                    const next = new Set(expanded);
+                                    if (next.has(category.id)) next.delete(category.id);
+                                    else next.add(category.id);
+                                    return next;
+                                  })}
+                                  style={{ width: "26px", flexShrink: 0, display: "grid", placeItems: "center", padding: 0, border: "none", borderRadius: "7px", backgroundColor: "transparent", color: "#737373", cursor: "pointer" }}
+                                >
+                                  {expandedFilterCategoryIds.has(category.id) ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
+                                </button>
+                              ) : (
+                                <span aria-hidden="true" style={{ width: "26px", flexShrink: 0 }} />
+                              )}
+                              <button
+                                type="button"
+                                role="option"
+                                aria-selected={category.id === filters.categoria}
+                                onClick={() => selectFilterLevel("categoria", category.id)}
+                                style={{ flex: 1, minWidth: 0, padding: "9px 10px", display: "block", border: "none", borderRadius: "7px", backgroundColor: category.id === filters.categoria ? "#363636" : "transparent", color: category.id === filters.categoria ? "#fff" : category.depth === 0 ? "#f5f5f5" : "#d4d4d4", fontSize: "12px", fontWeight: category.depth === 0 ? 700 : 600, textAlign: "left", cursor: "pointer" }}
+                              >
+                                <span style={{ display: "block", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{category.name}</span>
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: "10px", borderTop: "1px solid #292929", paddingTop: "16px" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
-                <span style={{ color: "#a3a3a3", fontSize: "11px", lineHeight: 1.35 }}>{activeFilterCount === 0 ? "Todas as pessoas" : `${activeFilterCount} filtro${activeFilterCount === 1 ? "" : "s"} selecionado${activeFilterCount === 1 ? "" : "s"}`}</span>
+                <span style={{ color: "#a3a3a3", fontSize: "11px", lineHeight: 1.35 }}>{activeFilterCount === 0 ? "Nenhum filtro aplicado" : `${activeFilterCount} filtro${activeFilterCount === 1 ? "" : "s"} selecionado${activeFilterCount === 1 ? "" : "s"}`}</span>
                 <span aria-hidden="true" style={{ color: activeFilterCount > 0 ? "#c7d2fe" : "#737373", fontFamily: "monospace", fontSize: "11px", fontWeight: 700 }}>{activeFilterCount}/4</span>
               </div>
               <button data-testid="button-clear-filters" type="button" onClick={clearFilters} disabled={activeFilterCount === 0} style={{ width: "100%", padding: "9px", borderRadius: "9999px", backgroundColor: "transparent", color: activeFilterCount === 0 ? "#525252" : "#a3a3a3", fontWeight: 700, fontSize: "12px", border: "1px solid #333", cursor: activeFilterCount === 0 ? "default" : "pointer", opacity: activeFilterCount === 0 ? 0.7 : 1 }}>Limpar filtros</button>
