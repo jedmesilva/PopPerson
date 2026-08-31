@@ -350,6 +350,8 @@ export default function PopPersonCanvas() {
   const [playerRegistration, setPlayerRegistration] = useState(null);
   const [isLoadingPlayerRegistration, setIsLoadingPlayerRegistration] = useState(false);
   const [playerCategoryId, setPlayerCategoryId] = useState("");
+  const [isPlayerCategoryPickerOpen, setIsPlayerCategoryPickerOpen] = useState(false);
+  const [playerCategorySearch, setPlayerCategorySearch] = useState("");
   const [playerLocation, setPlayerLocation] = useState(EMPTY_PLAYER_LOCATION);
   const [isEditingPlayerLocation, setIsEditingPlayerLocation] = useState(false);
   const [, forceTick] = useState(0);
@@ -366,6 +368,50 @@ export default function PopPersonCanvas() {
   const levels = config?.levels ?? [];
   const levelByKey = useMemo(() => Object.fromEntries(levels.map((level) => [level.key, level])), [levels]);
   const levelKeys = useMemo(() => levels.map((level) => level.key), [levels]);
+  const playerCategoryOptions = useMemo(() => {
+    const categories = playerRegistration?.categories ?? [];
+    const categoryById = new Map(categories.map((category) => [category.id, category]));
+    const childrenByParent = new Map();
+
+    categories.forEach((category) => {
+      if (!category.parentId) return;
+      const children = childrenByParent.get(category.parentId) ?? [];
+      children.push(category);
+      childrenByParent.set(category.parentId, children);
+    });
+
+    const ordered = [];
+    const visited = new Set();
+    const visit = (category, depth, parentPath) => {
+      if (!category || visited.has(category.id)) return;
+      visited.add(category.id);
+      const path = [...parentPath, category.name];
+      ordered.push({ ...category, depth, pathLabel: path.join(" / ") });
+      (childrenByParent.get(category.id) ?? [])
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+        .forEach((child) => visit(child, depth + 1, path));
+    };
+
+    categories
+      .filter((category) => !category.parentId || !categoryById.has(category.parentId))
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+      .forEach((category) => visit(category, 0, []));
+    categories.forEach((category) => visit(category, 0, []));
+    return ordered;
+  }, [playerRegistration?.categories]);
+  const filteredPlayerCategoryOptions = useMemo(() => {
+    const query = normalizeLocationValue(playerCategorySearch);
+    if (!query) return playerCategoryOptions;
+    return playerCategoryOptions.filter((category) =>
+      normalizeLocationValue(`${category.name} ${category.pathLabel}`).includes(query),
+    );
+  }, [playerCategoryOptions, playerCategorySearch]);
+  const selectedPlayerCategory = useMemo(
+    () => playerCategoryOptions.find((category) => category.id === playerCategoryId),
+    [playerCategoryId, playerCategoryOptions],
+  );
   const actionRuleByKey = useMemo(
     () => Object.fromEntries((config?.actionRules ?? []).map((rule) => [`${rule.elementId}:${rule.level}`, rule])),
     [config?.actionRules],
@@ -1272,6 +1318,8 @@ export default function PopPersonCanvas() {
     setShowPlayerSignup(true);
     setIsLoadingPlayerRegistration(true);
     setJoinPlayerError(null);
+    setIsPlayerCategoryPickerOpen(false);
+    setPlayerCategorySearch("");
     try {
       const response = await fetch(getApiEndpoint("/api/pop-person/player/registration"), {
         credentials: "include",
@@ -2288,17 +2336,78 @@ export default function PopPersonCanvas() {
                   )}
                 </div>
 
-                <label style={{ display: "flex", flexDirection: "column", gap: "7px" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "7px" }}>
                   <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
                     <span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>Categoria de popularidade</span>
-                    <span style={{ color: "#737373", fontSize: "11px", lineHeight: 1.35 }}>Selecione a categoria em que deseja competir.</span>
+                    <span style={{ color: "#737373", fontSize: "11px", lineHeight: 1.35 }}>Encontre a disputa que combina com sua popularidade.</span>
                   </div>
-                  <select data-testid="select-player-category" value={playerCategoryId} onChange={(e) => setPlayerCategoryId(e.target.value)} style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: "10px", backgroundColor: "#262626", color: "#f5f5f5", border: "1px solid #444", fontSize: "13px", outline: "none" }}>
-                    {playerRegistration.categories.map((category) => (
-                      <option key={category.id} value={category.id}>{category.parentId ? "↳ " : ""}{category.name}</option>
-                    ))}
-                  </select>
-                </label>
+                  <button
+                    data-testid="select-player-category"
+                    type="button"
+                    onClick={() => {
+                      if (isJoiningPlayer) return;
+                      setIsPlayerCategoryPickerOpen((isOpen) => !isOpen);
+                      setPlayerCategorySearch("");
+                    }}
+                    disabled={isJoiningPlayer}
+                    aria-haspopup="listbox"
+                    aria-expanded={isPlayerCategoryPickerOpen}
+                    style={{ width: "100%", boxSizing: "border-box", minHeight: "40px", padding: "10px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", borderRadius: "10px", backgroundColor: "#262626", color: selectedPlayerCategory ? "#f5f5f5" : "#737373", border: "1px solid #444", fontSize: "13px", textAlign: "left", outline: "none", cursor: isJoiningPlayer ? "default" : "pointer", opacity: isJoiningPlayer ? 0.6 : 1 }}
+                  >
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedPlayerCategory?.pathLabel ?? "Selecione uma categoria"}</span>
+                    <ChevronDown size={15} aria-hidden="true" style={{ flexShrink: 0, color: "#a3a3a3", transform: isPlayerCategoryPickerOpen ? "rotate(180deg)" : "none", transition: "transform 140ms ease" }} />
+                  </button>
+
+                  {isPlayerCategoryPickerOpen && (
+                    <div role="listbox" aria-label="Categorias de popularidade" style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "8px", borderRadius: "10px", backgroundColor: "#202020", border: "1px solid #3a3a3a", boxShadow: "0 8px 22px rgba(0,0,0,0.28)" }}>
+                      <div style={{ position: "relative" }}>
+                        <Search size={14} aria-hidden="true" style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#737373", pointerEvents: "none" }} />
+                        <input
+                          data-testid="input-search-player-category"
+                          type="search"
+                          value={playerCategorySearch}
+                          onChange={(event) => setPlayerCategorySearch(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Escape") {
+                              setIsPlayerCategoryPickerOpen(false);
+                              setPlayerCategorySearch("");
+                            }
+                          }}
+                          placeholder="Buscar categoria"
+                          aria-label="Buscar categoria"
+                          autoFocus
+                          style={{ width: "100%", boxSizing: "border-box", padding: "9px 10px 9px 30px", borderRadius: "8px", backgroundColor: "#2a2a2a", color: "#f5f5f5", border: "1px solid #454545", fontSize: "12px", outline: "none" }}
+                        />
+                      </div>
+
+                      <div style={{ display: "flex", flexDirection: "column", gap: "2px", maxHeight: "190px", overflowY: "auto" }}>
+                        {filteredPlayerCategoryOptions.length === 0 ? (
+                          <span style={{ padding: "12px 10px", color: "#737373", fontSize: "12px", textAlign: "center" }}>Nenhuma categoria encontrada.</span>
+                        ) : (
+                          filteredPlayerCategoryOptions.map((category) => (
+                            <button
+                              key={category.id}
+                              type="button"
+                              role="option"
+                              aria-selected={category.id === playerCategoryId}
+                              onClick={() => {
+                                setPlayerCategoryId(category.id);
+                                setIsPlayerCategoryPickerOpen(false);
+                                setPlayerCategorySearch("");
+                              }}
+                              style={{ width: "100%", padding: "9px 10px", paddingLeft: `${10 + category.depth * 16}px`, display: "block", border: "none", borderRadius: "7px", backgroundColor: category.id === playerCategoryId ? "#363636" : "transparent", color: category.id === playerCategoryId ? "#fff" : category.depth === 0 ? "#f5f5f5" : "#d4d4d4", fontSize: "12px", fontWeight: category.depth === 0 ? 700 : 600, textAlign: "left", cursor: "pointer" }}
+                            >
+                              <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                {category.depth > 0 && <span aria-hidden="true" style={{ color: "#737373" }}>↳</span>}
+                                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{category.name}</span>
+                              </span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px", paddingTop: "2px" }}>
                   <button data-testid="button-confirm-player-signup" type="button" onClick={() => void joinPlayer()} disabled={isJoiningPlayer || !playerCategoryId || !playerLocationComplete} style={{ width: "100%", padding: "10px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", fontWeight: 700, fontSize: "13px", border: "none", cursor: isJoiningPlayer ? "default" : "pointer", opacity: isJoiningPlayer || !playerLocationComplete ? 0.6 : 1 }}>{isJoiningPlayer ? "Entrando na disputa…" : "Entrar na disputa"}</button>
