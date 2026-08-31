@@ -2,5 +2,8 @@
 type ModuleMap = Record<string, () => Promise<Record<string, unknown>>>;
 export const modules: ModuleMap = {
   "./components/mockups/player-signup-modal/Current.tsx": () => import("../components/mockups/player-signup-modal/Current.tsx"),
-  "./components/mockups/player-signup-modal/Integrated.tsx": () => import("../components/mockups/player-signup-modal/Integrated.tsx")
+  "./components/mockups/player-signup-modal/Integrated.tsx": () => import("../components/mockups/player-signup-modal/Integrated.tsx"),
+  "./components/mockups/pop-person-focus/EncontrarMeuPerfil.tsx": () => import("../components/mockups/pop-person-focus/EncontrarMeuPerfil.tsx"),
+  "./components/mockups/pop-person-focus/MeuLugar.tsx": () => import("../components/mockups/pop-person-focus/MeuLugar.tsx"),
+  "./components/mockups/pop-person-focus/MimNoMapa.tsx": () => import("../components/mockups/pop-person-focus/MimNoMapa.tsx")
 };
