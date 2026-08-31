@@ -2393,6 +2393,7 @@ export default function PopPersonCanvas() {
                                     country: result.country,
                                   });
                                   setPlayerLocationSearch(result.city);
+                                  setIsEditingPlayerLocation(false);
                                   setIsPlayerLocationPickerOpen(false);
                                   setPlayerLocationResults([]);
                                   setPlayerLocationSearchError(null);
@@ -2407,22 +2408,7 @@ export default function PopPersonCanvas() {
                         </div>
                       )}
 
-                      {playerLocationComplete && (
-                        <div style={{ display: "flex", flexDirection: "column", gap: "3px", padding: "9px 10px", borderRadius: "9px", backgroundColor: "#222", border: "1px solid #333" }}>
-                          <span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Localidade selecionada</span>
-                          <span data-testid="text-selected-player-location" style={{ color: "#f5f5f5", fontSize: "13px", fontWeight: 700 }}>{playerLocation.city}, {playerLocation.region} — {playerLocation.country}</span>
-                        </div>
-                      )}
                       <span style={{ display: "block", marginTop: "3px", color: "#737373", fontSize: "11px", lineHeight: 1.35 }}>Selecione uma cidade para preencher o estado e o país automaticamente.</span>
-                      <button
-                        data-testid="button-save-player-location"
-                        type="button"
-                        onClick={() => setIsEditingPlayerLocation(false)}
-                        disabled={!playerLocationComplete}
-                        style={{ marginTop: "8px", alignSelf: "flex-start", padding: "8px 11px", borderRadius: "8px", backgroundColor: playerLocationComplete ? "#333" : "#292929", color: playerLocationComplete ? "#f5f5f5" : "#737373", border: "1px solid #484848", fontSize: "11px", fontWeight: 700, cursor: playerLocationComplete ? "pointer" : "default" }}
-                      >
-                        Salvar localidade
-                      </button>
                     </>
                   )}
                 </div>
