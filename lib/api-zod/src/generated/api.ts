@@ -210,16 +210,12 @@ export const GetPopPersonResponse = zod.object({
 
 
 
-
-
 export const JoinPopPersonAsPlayerBody = zod.object({
   "categoryId": zod.string().min(1),
   "location": zod.object({
   "city": zod.string().min(1),
   "region": zod.string().min(1),
-  "regionCode": zod.string().min(1),
-  "country": zod.string().min(1),
-  "countryCode": zod.string().min(1)
+  "country": zod.string().min(1)
 })
 })
 
@@ -255,13 +251,6 @@ export const JoinPopPersonAsPlayerResponse = zod.object({
 /**
  * @summary Get authenticated player registration defaults
  */
-
-
-
-
-
-
-
 export const GetPlayerRegistrationResponse = zod.object({
   "user": zod.object({
   "xUserId": zod.string(),
@@ -270,27 +259,11 @@ export const GetPlayerRegistrationResponse = zod.object({
   "avatarUrl": zod.string().nullable(),
   "email": zod.string().nullable()
 }),
-  "accessLocation": zod.object({
-  "source": zod.enum(['ip', 'local', 'unavailable']),
-  "city": zod.string(),
-  "region": zod.string(),
-  "regionCode": zod.string(),
-  "country": zod.string(),
-  "countryCode": zod.string(),
-  "timezone": zod.string()
-}),
   "categories": zod.array(zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "slug": zod.string(),
   "parentId": zod.string().nullable()
-})),
-  "locations": zod.array(zod.object({
-  "city": zod.string().min(1),
-  "region": zod.string().min(1),
-  "regionCode": zod.string().min(1),
-  "country": zod.string().min(1),
-  "countryCode": zod.string().min(1)
 })),
   "defaultCategoryId": zod.string().nullable()
 })

@@ -88,8 +88,13 @@ type AuthenticatedPopPersonUser = NonNullable<PopPersonBootstrap["user"]> & {
   id: string;
 };
 type PlayerRegistrationLocation = JoinPopPersonBody["location"];
-type ResolvedAccessLocation = PlayerRegistrationLocation & {
+type ResolvedAccessLocation = {
   source: "ip" | "local" | "unavailable";
+  city: string;
+  region: string;
+  regionCode: string;
+  country: string;
+  countryCode: string;
   timezone: string;
 };
 
@@ -635,7 +640,6 @@ export async function getPopPersonState(
 
 export async function getPlayerRegistration(
   user: AuthenticatedPopPersonUser,
-  accessLocation: ResolvedAccessLocation,
 ): Promise<PlayerRegistration> {
   const categories = await db
     .select({
@@ -647,17 +651,6 @@ export async function getPlayerRegistration(
     .from(categoriesTable)
     .where(eq(categoriesTable.active, true))
     .orderBy(asc(categoriesTable.name));
-  const locations = await db
-    .select({
-      city: locationsTable.city,
-      region: locationsTable.state,
-      regionCode: locationsTable.stateCode,
-      country: locationsTable.country,
-      countryCode: locationsTable.countryCode,
-    })
-    .from(locationsTable)
-    .orderBy(asc(locationsTable.country), asc(locationsTable.state), asc(locationsTable.city));
-
   return {
     user: {
       xUserId: user.xUserId,
@@ -666,9 +659,7 @@ export async function getPlayerRegistration(
       avatarUrl: user.avatarUrl,
       email: user.email,
     },
-    accessLocation,
     categories,
-    locations,
     defaultCategoryId:
       categories.find((category) => category.slug === "players")?.id ??
       categories[0]?.id ??
@@ -720,6 +711,16 @@ function playerColor(xUserId: string): string {
   return palette[hash % palette.length];
 }
 
+function locationCode(value: string, maxLength: number): string {
+  const code = value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/[^a-zA-Z0-9]+/g, "")
+    .toUpperCase()
+    .slice(0, maxLength);
+  return code || "UNKNOWN";
+}
+
 export async function joinPopPersonAsPlayer(
   user: AuthenticatedPopPersonUser,
   sessionId?: string,
@@ -738,14 +739,12 @@ export async function joinPopPersonAsPlayer(
   if (
     !location.city.trim() ||
     !location.region.trim() ||
-    !location.regionCode.trim() ||
-    !location.country.trim() ||
-    !location.countryCode.trim()
+    !location.country.trim()
   ) {
-    throw new Error("Preencha cidade, estado e país.");
+    throw new Error("Informe cidade, estado e país.");
   }
   if (!accessLocation) {
-    throw new Error("Não foi possível validar a localização da sessão.");
+    throw new Error("Não foi possível concluir sua entrada. Tente novamente.");
   }
 
   await db.transaction(async (tx) => {
@@ -759,16 +758,16 @@ export async function joinPopPersonAsPlayer(
         ),
       )
       .limit(1);
-    if (!category) throw new Error("Não foi possível configurar a categoria de players.");
+    if (!category) throw new Error("Não foi possível definir sua categoria.");
 
     const [savedLocation] = await tx
       .insert(locationsTable)
       .values({
         city: location.city.trim(),
         state: location.region.trim(),
-        stateCode: location.regionCode.trim(),
+        stateCode: locationCode(location.region, 16),
         country: location.country.trim(),
-        countryCode: location.countryCode.trim().toUpperCase(),
+        countryCode: locationCode(location.country, 8),
       })
       .onConflictDoUpdate({
         target: [
@@ -782,7 +781,7 @@ export async function joinPopPersonAsPlayer(
         },
       })
       .returning({ id: locationsTable.id });
-    if (!savedLocation) throw new Error("Não foi possível cadastrar a localização.");
+    if (!savedLocation) throw new Error("Não foi possível salvar sua localização.");
 
     const [existing] = await tx
       .select({ id: peopleTable.id })
@@ -827,7 +826,7 @@ export async function joinPopPersonAsPlayer(
         .returning({ id: peopleTable.id });
       personId = created?.id;
     }
-    if (!personId) throw new Error("Não foi possível criar o player.");
+    if (!personId) throw new Error("Não foi possível concluir sua participação.");
 
     await tx
       .insert(cellsTable)

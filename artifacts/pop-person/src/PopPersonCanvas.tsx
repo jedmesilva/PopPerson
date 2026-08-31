@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { SlidersHorizontal, ArrowLeft, X, ChevronDown, Locate, Search, Plus, CircleUserRound } from "lucide-react";
+import { SlidersHorizontal, ArrowLeft, X, ChevronDown, Locate, Search, Plus, CircleUserRound, MapPin, Pencil, Trophy } from "lucide-react";
 import {
   useCreatePopPersonAction,
   useGetAccessLocation,
@@ -44,6 +44,7 @@ const CELL_TEXT_MAX_SCREEN_SIZE = 15;
 const CELL_TEXT_RADIUS_RATIO = 0.42;
 const ADD_PLAYER_CELL_NAME = "__instapop_add_player__";
 const ADD_PLAYER_CELL_SCREEN_RADIUS = 30;
+const EMPTY_PLAYER_LOCATION = { city: "", region: "", country: "" };
 
 function getAddPlayerCellWorldRadius(scale) {
   return ADD_PLAYER_CELL_SCREEN_RADIUS / Math.max(Number(scale) || 1, MIN_ZOOM);
@@ -339,7 +340,8 @@ export default function PopPersonCanvas() {
   const [playerRegistration, setPlayerRegistration] = useState(null);
   const [isLoadingPlayerRegistration, setIsLoadingPlayerRegistration] = useState(false);
   const [playerCategoryId, setPlayerCategoryId] = useState("");
-  const [playerLocation, setPlayerLocation] = useState(null);
+  const [playerLocation, setPlayerLocation] = useState(EMPTY_PLAYER_LOCATION);
+  const [isEditingPlayerLocation, setIsEditingPlayerLocation] = useState(false);
   const [, forceTick] = useState(0);
   const submittingActionRef = useRef(false);
   const idempotencyKeyRef = useRef(null);
@@ -349,17 +351,6 @@ export default function PopPersonCanvas() {
   const canJoinAsPlayer = Boolean(
     bootstrapQuery.data?.user && !bootstrapQuery.data?.player?.isPlayer,
   );
-  const playerLocationOptions = useMemo(() => {
-    const options = playerRegistration?.locations ?? [];
-    const suggested = playerRegistration?.accessLocation;
-    if (!suggested?.city || suggested.source === "unavailable") return options;
-    const alreadyListed = options.some((location) =>
-      location.city === suggested.city &&
-      location.region === suggested.region &&
-      location.countryCode === suggested.countryCode,
-    );
-    return alreadyListed ? options : [suggested, ...options];
-  }, [playerRegistration]);
   const elements = config?.elements ?? { atacar: [], defender: [] };
   const levels = config?.levels ?? [];
   const levelByKey = useMemo(() => Object.fromEntries(levels.map((level) => [level.key, level])), [levels]);
@@ -1265,10 +1256,6 @@ export default function PopPersonCanvas() {
   }, [queue.length > 0, activeActions.length > 0]);
   useEffect(() => { if (queue.length === 0 && activeActions.length === 0) setShowQueueModal(false); }, [queue.length, activeActions.length]);
 
-  const locationKey = useCallback((location) => {
-    if (!location) return "";
-    return [location.countryCode, location.regionCode, location.city].join("|");
-  }, []);
   const openPlayerSignup = useCallback(async () => {
     if (!canJoinAsPlayer || isJoiningPlayer || isLoadingPlayerRegistration) return;
     setShowPlayerSignup(true);
@@ -1285,11 +1272,8 @@ export default function PopPersonCanvas() {
       const data = await response.json();
       setPlayerRegistration(data);
       setPlayerCategoryId(data.defaultCategoryId || data.categories?.[0]?.id || "");
-      setPlayerLocation(
-        data.accessLocation?.source === "unavailable"
-          ? data.locations?.[0] ?? null
-          : data.accessLocation,
-      );
+      setPlayerLocation({ ...EMPTY_PLAYER_LOCATION });
+      setIsEditingPlayerLocation(false);
     } catch (error) {
       setShowPlayerSignup(false);
       setJoinPlayerError(error instanceof Error ? error.message : "Não foi possível carregar seu cadastro.");
@@ -1297,8 +1281,13 @@ export default function PopPersonCanvas() {
       setIsLoadingPlayerRegistration(false);
     }
   }, [canJoinAsPlayer, isJoiningPlayer, isLoadingPlayerRegistration]);
+  const playerLocationComplete = Boolean(
+    playerLocation.city.trim() &&
+    playerLocation.region.trim() &&
+    playerLocation.country.trim(),
+  );
   const joinPlayer = useCallback(async () => {
-    if (!canJoinAsPlayer || isJoiningPlayer || !playerCategoryId || !playerLocation) return;
+    if (!canJoinAsPlayer || isJoiningPlayer || !playerCategoryId || !playerLocationComplete) return;
     setIsJoiningPlayer(true);
     setJoinPlayerError(null);
     try {
@@ -1311,24 +1300,22 @@ export default function PopPersonCanvas() {
           location: {
             city: playerLocation.city,
             region: playerLocation.region,
-            regionCode: playerLocation.regionCode,
             country: playerLocation.country,
-            countryCode: playerLocation.countryCode,
           },
         }),
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
-        throw new Error(payload?.error || "Não foi possível entrar como player.");
+        throw new Error(payload?.error || "Não foi possível concluir sua entrada. Tente novamente.");
       }
       await Promise.all([bootstrapQuery.refetch(), stateQuery.refetch()]);
       setShowPlayerSignup(false);
     } catch (error) {
-      setJoinPlayerError(error instanceof Error ? error.message : "Não foi possível entrar como player.");
+      setJoinPlayerError(error instanceof Error ? error.message : "Não foi possível concluir sua entrada. Tente novamente.");
     } finally {
       setIsJoiningPlayer(false);
     }
-  }, [bootstrapQuery.refetch, canJoinAsPlayer, isJoiningPlayer, playerCategoryId, playerLocation, stateQuery.refetch]);
+  }, [bootstrapQuery.refetch, canJoinAsPlayer, isJoiningPlayer, playerCategoryId, playerLocation, playerLocationComplete, stateQuery.refetch]);
   const selectCell = useCallback((name) => {
     if (name === ADD_PLAYER_CELL_NAME) {
       void openPlayerSignup();
@@ -2174,9 +2161,14 @@ export default function PopPersonCanvas() {
         <div onClick={() => !isJoiningPlayer && setShowPlayerSignup(false)} style={{ position: "fixed", inset: 0, zIndex: 100, backgroundColor: "rgba(0,0,0,0.68)", display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
           <div role="dialog" aria-modal="true" aria-labelledby="player-signup-title" onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: "400px", maxHeight: "88vh", backgroundColor: "#171717", border: "1px solid #333", borderRadius: "18px", padding: "20px", display: "flex", flexDirection: "column", gap: "16px", overflowY: "auto", boxShadow: "0 12px 36px rgba(0,0,0,0.45)" }}>
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "10px" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                <span id="player-signup-title" style={{ color: "#fff", fontWeight: 800, fontSize: "19px", letterSpacing: "-0.02em" }}>Entrar como player</span>
-                <span style={{ color: "#737373", fontSize: "12px", lineHeight: 1.4 }}>Confira os dados que serão cadastrados no canvas.</span>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: "10px", minWidth: 0 }}>
+                <div style={{ width: "34px", height: "34px", flexShrink: 0, display: "grid", placeItems: "center", borderRadius: "10px", backgroundColor: "rgba(124, 58, 237, 0.18)", color: "#c4b5fd" }}>
+                  <Trophy size={18} aria-hidden="true" />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <span id="player-signup-title" style={{ color: "#fff", fontWeight: 800, fontSize: "19px", letterSpacing: "-0.02em" }}>Entrar na competição</span>
+                  <span style={{ color: "#a3a3a3", fontSize: "12px", lineHeight: 1.4 }}>Crie sua célula no mapa e comece a participar.</span>
+                </div>
               </div>
               <button data-testid="button-close-player-signup" type="button" onClick={() => setShowPlayerSignup(false)} disabled={isJoiningPlayer} style={{ ...closeButtonStyle, flexShrink: 0, opacity: isJoiningPlayer ? 0.45 : 1 }}><X size={13} /></button>
             </div>
@@ -2197,37 +2189,88 @@ export default function PopPersonCanvas() {
                   </div>
                 </div>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
-                    <span style={{ color: "#f5f5f5", fontSize: "13px", fontWeight: 700 }}>Localização do player</span>
-                    <span style={{ color: "#737373", fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>editável</span>
-                  </div>
-                  <select data-testid="select-player-location" value={locationKey(playerLocation)} onChange={(e) => {
-                    const selected = playerLocationOptions.find((location) => locationKey(location) === e.target.value);
-                    if (selected) setPlayerLocation(selected);
-                  }} style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: "10px", backgroundColor: "#262626", color: "#f5f5f5", border: "1px solid #444", fontSize: "13px", outline: "none" }}>
-                    {playerLocationOptions.map((location) => (
-                      <option key={locationKey(location)} value={locationKey(location)}>{location.city} — {location.region}, {location.country}</option>
-                    ))}
-                  </select>
-                  {playerLocation && (
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "6px" }}>
-                      {[
-                        ["Cidade", playerLocation.city],
-                        ["Estado", playerLocation.region],
-                        ["País", playerLocation.country],
-                      ].map(([label, value]) => (
-                        <div key={label} style={{ minWidth: 0, padding: "8px", borderRadius: "9px", backgroundColor: "#202020" }}>
-                          <div style={{ color: "#737373", fontSize: "9px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>{label}</div>
-                          <div style={{ color: "#f5f5f5", marginTop: "3px", fontSize: "11px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
-                        </div>
-                      ))}
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "12px", borderRadius: "12px", backgroundColor: "#202020", border: "1px solid #333" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+                      <MapPin size={16} color="#a78bfa" aria-hidden="true" />
+                      <div style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 }}>
+                        <span style={{ color: "#f5f5f5", fontSize: "13px", fontWeight: 700 }}>Localização</span>
+                        <span style={{ color: "#737373", fontSize: "11px", lineHeight: 1.35 }}>Onde sua célula vai aparecer</span>
+                      </div>
                     </div>
+                    <button
+                      data-testid="button-edit-player-location"
+                      type="button"
+                      onClick={() => setIsEditingPlayerLocation((isEditing) => !isEditing)}
+                      disabled={isJoiningPlayer}
+                      aria-label={playerLocationComplete ? "Editar localização" : "Informar localização"}
+                      title={playerLocationComplete ? "Editar localização" : "Informar localização"}
+                      style={{ width: "30px", height: "30px", padding: 0, flexShrink: 0, display: "grid", placeItems: "center", borderRadius: "9999px", backgroundColor: "#333", border: "1px solid #484848", color: "#f5f5f5", cursor: isJoiningPlayer ? "default" : "pointer", opacity: isJoiningPlayer ? 0.5 : 1 }}
+                    >
+                      <Pencil size={14} aria-hidden="true" />
+                    </button>
+                  </div>
+
+                  {!isEditingPlayerLocation ? (
+                    <div data-testid="text-player-location" style={{ display: "flex", alignItems: "center", gap: "8px", minHeight: "38px", padding: "9px 10px", borderRadius: "9px", backgroundColor: "#292929", color: playerLocationComplete ? "#f5f5f5" : "#a3a3a3", fontSize: "12px", lineHeight: 1.35 }}>
+                      <MapPin size={14} color={playerLocationComplete ? "#c4b5fd" : "#737373"} aria-hidden="true" />
+                      <span>{playerLocationComplete ? `${playerLocation.city}, ${playerLocation.region} — ${playerLocation.country}` : "Informe sua cidade para continuar"}</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: "8px" }}>
+                        <label style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                          <span style={{ color: "#d4d4d4", fontSize: "11px", fontWeight: 700 }}>Cidade</span>
+                          <input
+                            data-testid="input-player-city"
+                            value={playerLocation.city}
+                            onChange={(e) => setPlayerLocation((location) => ({ ...location, city: e.target.value }))}
+                            placeholder="Ex.: São Paulo"
+                            autoComplete="address-level2"
+                            style={{ width: "100%", boxSizing: "border-box", padding: "10px 11px", borderRadius: "9px", backgroundColor: "#292929", color: "#f5f5f5", border: "1px solid #484848", fontSize: "13px", outline: "none" }}
+                          />
+                        </label>
+                        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: "8px" }}>
+                          <label style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                            <span style={{ color: "#d4d4d4", fontSize: "11px", fontWeight: 700 }}>Estado</span>
+                            <input
+                              data-testid="input-player-region"
+                              value={playerLocation.region}
+                              onChange={(e) => setPlayerLocation((location) => ({ ...location, region: e.target.value }))}
+                              placeholder="Ex.: SP"
+                              autoComplete="address-level1"
+                              style={{ width: "100%", boxSizing: "border-box", padding: "10px 11px", borderRadius: "9px", backgroundColor: "#292929", color: "#f5f5f5", border: "1px solid #484848", fontSize: "13px", outline: "none" }}
+                            />
+                          </label>
+                          <label style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                            <span style={{ color: "#d4d4d4", fontSize: "11px", fontWeight: 700 }}>País</span>
+                            <input
+                              data-testid="input-player-country"
+                              value={playerLocation.country}
+                              onChange={(e) => setPlayerLocation((location) => ({ ...location, country: e.target.value }))}
+                              placeholder="Ex.: Brasil"
+                              autoComplete="country-name"
+                              style={{ width: "100%", boxSizing: "border-box", padding: "10px 11px", borderRadius: "9px", backgroundColor: "#292929", color: "#f5f5f5", border: "1px solid #484848", fontSize: "13px", outline: "none" }}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                      <span style={{ color: "#737373", fontSize: "11px", lineHeight: 1.35 }}>Use a cidade, o estado e o país onde você está.</span>
+                      <button
+                        data-testid="button-save-player-location"
+                        type="button"
+                        onClick={() => setIsEditingPlayerLocation(false)}
+                        disabled={!playerLocationComplete}
+                        style={{ alignSelf: "flex-start", padding: "8px 11px", borderRadius: "8px", backgroundColor: playerLocationComplete ? "#333" : "#292929", color: playerLocationComplete ? "#f5f5f5" : "#737373", border: "1px solid #484848", fontSize: "11px", fontWeight: 700, cursor: playerLocationComplete ? "pointer" : "default" }}
+                      >
+                        Salvar localização
+                      </button>
+                    </>
                   )}
                 </div>
 
                 <label style={{ display: "flex", flexDirection: "column", gap: "7px" }}>
-                  <span style={{ color: "#f5f5f5", fontSize: "13px", fontWeight: 700 }}>Categoria</span>
+                  <span style={{ color: "#f5f5f5", fontSize: "13px", fontWeight: 700 }}>Escolha sua categoria</span>
                   <select data-testid="select-player-category" value={playerCategoryId} onChange={(e) => setPlayerCategoryId(e.target.value)} style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: "10px", backgroundColor: "#262626", color: "#f5f5f5", border: "1px solid #444", fontSize: "13px", outline: "none" }}>
                     {playerRegistration.categories.map((category) => (
                       <option key={category.id} value={category.id}>{category.parentId ? "↳ " : ""}{category.name}</option>
@@ -2237,7 +2280,7 @@ export default function PopPersonCanvas() {
 
                 <div style={{ display: "flex", gap: "10px", marginTop: "2px" }}>
                   <button data-testid="button-cancel-player-signup" type="button" onClick={() => setShowPlayerSignup(false)} disabled={isJoiningPlayer} style={{ flex: 1, padding: "11px", borderRadius: "9999px", backgroundColor: "#262626", color: "#f5f5f5", fontWeight: 700, fontSize: "13px", border: "1px solid #3a3a3a", cursor: isJoiningPlayer ? "default" : "pointer", opacity: isJoiningPlayer ? 0.55 : 1 }}>Cancelar</button>
-                  <button data-testid="button-confirm-player-signup" type="button" onClick={() => void joinPlayer()} disabled={isJoiningPlayer || !playerCategoryId || !playerLocation} style={{ flex: 1, padding: "11px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", fontWeight: 800, fontSize: "13px", border: "none", cursor: isJoiningPlayer ? "default" : "pointer", opacity: isJoiningPlayer ? 0.6 : 1 }}>{isJoiningPlayer ? "Cadastrando…" : "Confirmar entrada"}</button>
+                  <button data-testid="button-confirm-player-signup" type="button" onClick={() => void joinPlayer()} disabled={isJoiningPlayer || !playerCategoryId || !playerLocationComplete} style={{ flex: 1, padding: "11px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", fontWeight: 800, fontSize: "13px", border: "none", cursor: isJoiningPlayer ? "default" : "pointer", opacity: isJoiningPlayer || !playerLocationComplete ? 0.6 : 1 }}>{isJoiningPlayer ? "Criando sua célula…" : "Obter minha célula"}</button>
                 </div>
               </>
             ) : null}

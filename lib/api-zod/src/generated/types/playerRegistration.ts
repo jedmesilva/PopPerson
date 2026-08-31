@@ -5,16 +5,12 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { AccessLocation } from './accessLocation';
-import type { PlayerRegistrationLocation } from './playerRegistrationLocation';
 import type { PlayerRegistrationUser } from './playerRegistrationUser';
 import type { PopPersonCategory } from './popPersonCategory';
 
 export interface PlayerRegistration {
   user: PlayerRegistrationUser;
-  accessLocation: AccessLocation;
   categories: PopPersonCategory[];
-  locations: PlayerRegistrationLocation[];
   /** @nullable */
   defaultCategoryId: string | null;
 }

@@ -476,7 +476,7 @@ components:
           $ref: "#/components/schemas/PlayerRegistrationLocation"
     PlayerRegistrationLocation:
       type: object
-      required: [city, region, regionCode, country, countryCode]
+      required: [city, region, country]
       properties:
         city:
           type: string
@@ -484,31 +484,19 @@ components:
         region:
           type: string
           minLength: 1
-        regionCode:
-          type: string
-          minLength: 1
         country:
-          type: string
-          minLength: 1
-        countryCode:
           type: string
           minLength: 1
     PlayerRegistration:
       type: object
-      required: [user, accessLocation, categories, locations, defaultCategoryId]
+      required: [user, categories, defaultCategoryId]
       properties:
         user:
           $ref: "#/components/schemas/PlayerRegistrationUser"
-        accessLocation:
-          $ref: "#/components/schemas/AccessLocation"
         categories:
           type: array
           items:
             $ref: "#/components/schemas/PopPersonCategory"
-        locations:
-          type: array
-          items:
-            $ref: "#/components/schemas/PlayerRegistrationLocation"
         defaultCategoryId:
           type: ["string", "null"]
     PlayerRegistrationUser:

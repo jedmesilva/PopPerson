@@ -12,9 +12,5 @@ export interface PlayerRegistrationLocation {
   /** @minLength 1 */
   region: string;
   /** @minLength 1 */
-  regionCode: string;
-  /** @minLength 1 */
   country: string;
-  /** @minLength 1 */
-  countryCode: string;
 }

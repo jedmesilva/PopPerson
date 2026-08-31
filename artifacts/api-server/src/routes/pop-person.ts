@@ -40,13 +40,12 @@ router.get("/pop-person/state", async (req, res): Promise<void> => {
 router.get("/pop-person/player/registration", async (req, res): Promise<void> => {
   const user = res.locals.authenticatedUser;
   if (!user) {
-    res.status(401).json({ error: "Faça login para ver seu cadastro de player." });
+    res.status(401).json({ error: "Faça login para entrar na competição." });
     return;
   }
 
   try {
-    const accessLocation = await resolveAccessLocation(req);
-    const data = await getPlayerRegistration(user, accessLocation);
+    const data = await getPlayerRegistration(user);
     res.json(GetPlayerRegistrationResponse.parse(data));
   } catch (error) {
     res.status(400).json({
@@ -58,7 +57,7 @@ router.get("/pop-person/player/registration", async (req, res): Promise<void> =>
 router.post("/pop-person/player", async (req, res): Promise<void> => {
   const user = res.locals.authenticatedUser;
   if (!user) {
-    res.status(401).json({ error: "Faça login para entrar como player." });
+    res.status(401).json({ error: "Faça login para entrar na competição." });
     return;
   }
 
@@ -78,7 +77,7 @@ router.post("/pop-person/player", async (req, res): Promise<void> => {
     res.status(201).json(JoinPopPersonAsPlayerResponse.parse({ player }));
   } catch (error) {
     res.status(400).json({
-      error: error instanceof Error ? error.message : "Não foi possível entrar como player.",
+      error: error instanceof Error ? error.message : "Não foi possível concluir sua entrada. Tente novamente.",
     });
   }
 });

@@ -248,11 +248,7 @@ export interface PlayerRegistrationLocation {
   /** @minLength 1 */
   region: string;
   /** @minLength 1 */
-  regionCode: string;
-  /** @minLength 1 */
   country: string;
-  /** @minLength 1 */
-  countryCode: string;
 }
 
 export interface JoinPopPersonBody {
@@ -273,9 +269,7 @@ export interface PlayerRegistrationUser {
 
 export interface PlayerRegistration {
   user: PlayerRegistrationUser;
-  accessLocation: AccessLocation;
   categories: PopPersonCategory[];
-  locations: PlayerRegistrationLocation[];
   /** @nullable */
   defaultCategoryId: string | null;
 }
