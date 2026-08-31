@@ -526,13 +526,16 @@ components:
           $ref: "#/components/schemas/PopPerson"
     JoinPopPersonBody:
       type: object
-      required: [categoryId, location]
+      required: [categoryId, location, termsAccepted]
       properties:
         categoryId:
           type: string
           minLength: 1
         location:
           $ref: "#/components/schemas/PlayerRegistrationLocation"
+        termsAccepted:
+          type: boolean
+          description: Whether the user accepted the InstaPop Terms and Conditions.
     PlayerRegistrationLocation:
       type: object
       required: [city, region, country]

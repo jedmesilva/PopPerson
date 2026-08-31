@@ -269,6 +269,8 @@ export interface JoinPopPersonBody {
   /** @minLength 1 */
   categoryId: string;
   location: PlayerRegistrationLocation;
+  /** Whether the user accepted the InstaPop Terms and Conditions. */
+  termsAccepted: boolean;
 }
 
 export interface PlayerRegistrationUser {

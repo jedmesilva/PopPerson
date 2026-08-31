@@ -350,6 +350,7 @@ export default function PopPersonCanvas() {
   const [showPlayerSignup, setShowPlayerSignup] = useState(false);
   const [playerRegistration, setPlayerRegistration] = useState(null);
   const [isLoadingPlayerRegistration, setIsLoadingPlayerRegistration] = useState(false);
+  const [hasAcceptedPlayerTerms, setHasAcceptedPlayerTerms] = useState(false);
   const [playerCategoryId, setPlayerCategoryId] = useState("");
   const [isPlayerCategoryPickerOpen, setIsPlayerCategoryPickerOpen] = useState(false);
   const [playerCategorySearch, setPlayerCategorySearch] = useState("");
@@ -1343,6 +1344,7 @@ export default function PopPersonCanvas() {
     setShowPlayerSignup(true);
     setIsLoadingPlayerRegistration(true);
     setJoinPlayerError(null);
+    setHasAcceptedPlayerTerms(false);
     setIsPlayerCategoryPickerOpen(false);
     setPlayerCategorySearch("");
     setExpandedPlayerCategoryIds(new Set());
@@ -1411,7 +1413,7 @@ export default function PopPersonCanvas() {
     }
   }, [accessLocationQuery.data, showPlayerSignup]);
   const joinPlayer = useCallback(async () => {
-    if (!canJoinAsPlayer || isJoiningPlayer || !playerCategoryId || !playerLocationComplete) return;
+    if (!canJoinAsPlayer || isJoiningPlayer || !playerCategoryId || !playerLocationComplete || !hasAcceptedPlayerTerms) return;
     setIsJoiningPlayer(true);
     setJoinPlayerError(null);
     try {
@@ -1421,6 +1423,7 @@ export default function PopPersonCanvas() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           categoryId: playerCategoryId,
+          termsAccepted: hasAcceptedPlayerTerms,
           location: {
             city: playerLocation.city,
             region: playerLocation.region,
@@ -1439,7 +1442,7 @@ export default function PopPersonCanvas() {
     } finally {
       setIsJoiningPlayer(false);
     }
-  }, [bootstrapQuery.refetch, canJoinAsPlayer, isJoiningPlayer, playerCategoryId, playerLocation, playerLocationComplete, stateQuery.refetch]);
+  }, [bootstrapQuery.refetch, canJoinAsPlayer, hasAcceptedPlayerTerms, isJoiningPlayer, playerCategoryId, playerLocation, playerLocationComplete, stateQuery.refetch]);
   const selectCell = useCallback((name) => {
     if (name === ADD_PLAYER_CELL_NAME) {
       void openPlayerSignup();
@@ -2506,8 +2509,21 @@ export default function PopPersonCanvas() {
                   )}
                 </div>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px", paddingTop: "2px" }}>
-                  <button data-testid="button-confirm-player-signup" type="button" onClick={() => void joinPlayer()} disabled={isJoiningPlayer || !playerCategoryId || !playerLocationComplete} style={{ width: "100%", padding: "10px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", fontWeight: 700, fontSize: "13px", border: "none", cursor: isJoiningPlayer ? "default" : "pointer", opacity: isJoiningPlayer || !playerLocationComplete ? 0.6 : 1 }}>{isJoiningPlayer ? "Entrando na disputa…" : "Entrar na disputa"}</button>
+                 <div style={{ display: "flex", flexDirection: "column", gap: "8px", paddingTop: "2px" }}>
+                   <label style={{ display: "flex", alignItems: "flex-start", gap: "9px", padding: "2px 2px 0", color: "#a3a3a3", fontSize: "11px", lineHeight: 1.45, cursor: isJoiningPlayer ? "default" : "pointer" }}>
+                     <input
+                       data-testid="checkbox-player-terms"
+                       type="checkbox"
+                       checked={hasAcceptedPlayerTerms}
+                       onChange={(event) => setHasAcceptedPlayerTerms(event.target.checked)}
+                       disabled={isJoiningPlayer}
+                       style={{ width: "15px", height: "15px", margin: "1px 0 0", flexShrink: 0, accentColor: "#f5f5f5", cursor: isJoiningPlayer ? "default" : "pointer" }}
+                     />
+                     <span>
+                       Ao entrar na disputa de popularidade, declaro que li e concordo com os <strong style={{ color: "#d4d4d4", fontWeight: 700 }}>Termos e Condições do InstaPop</strong>.
+                     </span>
+                   </label>
+                   <button data-testid="button-confirm-player-signup" type="button" onClick={() => void joinPlayer()} disabled={isJoiningPlayer || !playerCategoryId || !playerLocationComplete || !hasAcceptedPlayerTerms} style={{ width: "100%", padding: "10px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", fontWeight: 700, fontSize: "13px", border: "none", cursor: isJoiningPlayer || !hasAcceptedPlayerTerms ? "default" : "pointer", opacity: isJoiningPlayer || !playerLocationComplete || !hasAcceptedPlayerTerms ? 0.6 : 1 }}>{isJoiningPlayer ? "Entrando na disputa…" : "Entrar na disputa"}</button>
                 </div>
               </>
             ) : null}

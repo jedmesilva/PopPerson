@@ -242,7 +242,8 @@ export const JoinPopPersonAsPlayerBody = zod.object({
   "city": zod.string().min(1),
   "region": zod.string().min(1),
   "country": zod.string().min(1)
-})
+}),
+  "termsAccepted": zod.boolean().describe('Whether the user accepted the InstaPop Terms and Conditions.')
 })
 
 export const JoinPopPersonAsPlayerResponse = zod.object({

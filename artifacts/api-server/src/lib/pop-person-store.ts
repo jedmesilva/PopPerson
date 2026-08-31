@@ -735,6 +735,9 @@ export async function joinPopPersonAsPlayer(
   if (!input?.categoryId || !input.location) {
     throw new Error("Categoria e localização são obrigatórias.");
   }
+  if (!input.termsAccepted) {
+    throw new Error("É necessário aceitar os Termos e Condições do InstaPop.");
+  }
   const location = input.location;
   if (
     !location.city.trim() ||
