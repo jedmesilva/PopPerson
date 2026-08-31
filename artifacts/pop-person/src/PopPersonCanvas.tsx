@@ -1306,12 +1306,12 @@ export default function PopPersonCanvas() {
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
-        throw new Error(payload?.error || "Não foi possível concluir sua entrada. Tente novamente.");
+        throw new Error(payload?.error || "Não foi possível obter sua célula. Tente novamente.");
       }
       await Promise.all([bootstrapQuery.refetch(), stateQuery.refetch()]);
       setShowPlayerSignup(false);
     } catch (error) {
-      setJoinPlayerError(error instanceof Error ? error.message : "Não foi possível concluir sua entrada. Tente novamente.");
+      setJoinPlayerError(error instanceof Error ? error.message : "Não foi possível obter sua célula. Tente novamente.");
     } finally {
       setIsJoiningPlayer(false);
     }
@@ -2166,8 +2166,8 @@ export default function PopPersonCanvas() {
                   <Trophy size={18} aria-hidden="true" />
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                  <span id="player-signup-title" style={{ color: "#fff", fontWeight: 800, fontSize: "19px", letterSpacing: "-0.02em" }}>Entrar na competição</span>
-                  <span style={{ color: "#a3a3a3", fontSize: "12px", lineHeight: 1.4 }}>Crie sua célula no mapa e comece a participar.</span>
+                  <span id="player-signup-title" style={{ color: "#fff", fontWeight: 800, fontSize: "19px", letterSpacing: "-0.02em" }}>Obter minha célula</span>
+                  <span style={{ color: "#a3a3a3", fontSize: "12px", lineHeight: 1.4 }}>Informe sua localização e escolha uma categoria para posicionar sua célula no mapa.</span>
                 </div>
               </div>
               <button data-testid="button-close-player-signup" type="button" onClick={() => setShowPlayerSignup(false)} disabled={isJoiningPlayer} style={{ ...closeButtonStyle, flexShrink: 0, opacity: isJoiningPlayer ? 0.45 : 1 }}><X size={13} /></button>
@@ -2280,7 +2280,7 @@ export default function PopPersonCanvas() {
 
                 <div style={{ display: "flex", gap: "10px", marginTop: "2px" }}>
                   <button data-testid="button-cancel-player-signup" type="button" onClick={() => setShowPlayerSignup(false)} disabled={isJoiningPlayer} style={{ flex: 1, padding: "11px", borderRadius: "9999px", backgroundColor: "#262626", color: "#f5f5f5", fontWeight: 700, fontSize: "13px", border: "1px solid #3a3a3a", cursor: isJoiningPlayer ? "default" : "pointer", opacity: isJoiningPlayer ? 0.55 : 1 }}>Cancelar</button>
-                  <button data-testid="button-confirm-player-signup" type="button" onClick={() => void joinPlayer()} disabled={isJoiningPlayer || !playerCategoryId || !playerLocationComplete} style={{ flex: 1, padding: "11px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", fontWeight: 800, fontSize: "13px", border: "none", cursor: isJoiningPlayer ? "default" : "pointer", opacity: isJoiningPlayer || !playerLocationComplete ? 0.6 : 1 }}>{isJoiningPlayer ? "Criando sua célula…" : "Obter minha célula"}</button>
+                  <button data-testid="button-confirm-player-signup" type="button" onClick={() => void joinPlayer()} disabled={isJoiningPlayer || !playerCategoryId || !playerLocationComplete} style={{ flex: 1, padding: "11px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", fontWeight: 800, fontSize: "13px", border: "none", cursor: isJoiningPlayer ? "default" : "pointer", opacity: isJoiningPlayer || !playerLocationComplete ? 0.6 : 1 }}>{isJoiningPlayer ? "Obtendo sua célula…" : "Obter minha célula"}</button>
                 </div>
               </>
             ) : null}

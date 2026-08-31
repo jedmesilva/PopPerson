@@ -744,7 +744,7 @@ export async function joinPopPersonAsPlayer(
     throw new Error("Informe cidade, estado e país.");
   }
   if (!accessLocation) {
-    throw new Error("Não foi possível concluir sua entrada. Tente novamente.");
+    throw new Error("Não foi possível obter sua célula. Tente novamente.");
   }
 
   await db.transaction(async (tx) => {
@@ -826,7 +826,7 @@ export async function joinPopPersonAsPlayer(
         .returning({ id: peopleTable.id });
       personId = created?.id;
     }
-    if (!personId) throw new Error("Não foi possível concluir sua participação.");
+    if (!personId) throw new Error("Não foi possível obter sua célula.");
 
     await tx
       .insert(cellsTable)
