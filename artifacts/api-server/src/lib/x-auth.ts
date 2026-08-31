@@ -13,7 +13,7 @@ export const X_OAUTH_RETURN_TO_COOKIE_NAME = "pop_person_x_return_to";
 
 const AUTH_TTL_SECONDS = 60 * 60 * 24 * 30;
 const OAUTH_COOKIE_TTL_SECONDS = 60 * 10;
-const X_AUTHORIZE_URL = "https://twitter.com/i/oauth2/authorize";
+const X_AUTHORIZE_URL = "https://x.com/i/oauth2/authorize";
 const X_TOKEN_URL = "https://api.x.com/2/oauth2/token";
 const X_USER_URL = "https://api.x.com/2/users/me";
 
@@ -249,7 +249,6 @@ async function exchangeCodeForAccessToken(
     body: new URLSearchParams({
       code,
       grant_type: "authorization_code",
-      client_id: clientId,
       redirect_uri: getXRedirectUri(req),
       code_verifier: verifier,
     }),
