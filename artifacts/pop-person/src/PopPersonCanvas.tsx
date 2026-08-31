@@ -256,38 +256,100 @@ function keepCirclesSeparated(circles) {
   }
 }
 
-function FilterSection({ label, options, selected, onSelect, disabled, disabledHint, showDivider = true }) {
-  const isActive = selected !== "Todos";
+function FilterSearchPicker({
+  label,
+  selectedLabel,
+  options,
+  selected,
+  onSelect,
+  disabled = false,
+  disabledHint,
+  open,
+  onToggle,
+  search,
+  onSearch,
+  inputTestId,
+  buttonTestId,
+  allOptionTestId,
+  listboxLabel,
+  placeholder,
+  allLabel,
+  showDivider = true,
+}) {
+  const query = normalizeLocationValue(search);
+  const visibleOptions = options.filter((option) =>
+    option.value !== "Todos" && (!query || normalizeLocationValue(option.label).includes(query)),
+  );
+
   return (
-    <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", minHeight: "54px", padding: "8px 12px", borderBottom: showDivider ? "1px solid #2d2d2d" : "none", cursor: disabled ? "not-allowed" : "default" }}>
-      <span style={{ display: "flex", flexDirection: "column", gap: "3px", minWidth: 0 }}>
-        <span style={{ color: disabled ? "#737373" : "#d4d4d4", fontSize: "11px", fontWeight: 700, letterSpacing: "0.04em", lineHeight: 1.2, textTransform: "uppercase" }}>{label}</span>
-        {disabled && disabledHint && <span style={{ color: "#737373", fontSize: "10px", lineHeight: 1.25 }}>{disabledHint}</span>}
-      </span>
-      <div style={{ position: "relative", width: "min(54%, 172px)", flexShrink: 0 }}>
-        <select
-          data-testid={`select-filter-${label.toLowerCase()}`}
-          value={selected}
-          onChange={(e) => onSelect(e.target.value)}
-          disabled={disabled}
-          style={{
-            width: "100%", boxSizing: "border-box", appearance: "none", WebkitAppearance: "none", padding: "8px 28px 8px 10px",
-            borderRadius: "8px", border: isActive ? "1px solid rgba(129, 140, 248, 0.75)" : "1px solid #454545",
-            backgroundColor: disabled ? "#202020" : isActive ? "rgba(99, 102, 241, 0.16)" : "#2a2a2a",
-            color: disabled ? "#525252" : isActive ? "#c7d2fe" : "#f5f5f5", fontSize: "12px",
-            fontWeight: isActive ? 700 : 600, cursor: disabled ? "not-allowed" : "pointer",
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          }}
-        >
-          {options.map((opt) => {
-            const value = typeof opt === "string" ? opt : opt.value;
-            const label = typeof opt === "string" ? opt : opt.label;
-            return <option key={value} value={value} style={{ backgroundColor: "#171717", color: "#f5f5f5" }}>{label}</option>;
-          })}
-        </select>
-        <ChevronDown size={14} aria-hidden="true" style={{ position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: disabled ? "#404040" : isActive ? "#c7d2fe" : "#737373" }} />
-      </div>
-    </label>
+    <div style={{ borderBottom: showDivider ? "1px solid #2d2d2d" : "none" }}>
+      <button
+        data-testid={buttonTestId}
+        type="button"
+        onClick={() => onToggle()}
+        disabled={disabled}
+        aria-label={selected === "Todos" ? `Buscar ${label.toLocaleLowerCase("pt-BR")}` : `Editar ${label.toLocaleLowerCase("pt-BR")}`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        style={{ width: "100%", minHeight: "54px", padding: "8px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", border: "none", backgroundColor: "transparent", color: "#f5f5f5", textAlign: "left", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.58 : 1 }}
+      >
+        <span style={{ display: "flex", flexDirection: "column", gap: "3px", minWidth: 0 }}>
+          <span style={{ color: disabled ? "#737373" : "#d4d4d4", fontSize: "11px", fontWeight: 700, letterSpacing: "0.04em", lineHeight: 1.2, textTransform: "uppercase" }}>{label}</span>
+          <span style={{ color: selected !== "Todos" ? "#c7d2fe" : "#a3a3a3", fontSize: "12px", fontWeight: 700, lineHeight: 1.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedLabel}</span>
+          {disabled && disabledHint && <span style={{ color: "#737373", fontSize: "10px", lineHeight: 1.25 }}>{disabledHint}</span>}
+        </span>
+        {open ? <ChevronDown size={16} aria-hidden="true" style={{ flexShrink: 0, color: "#c7d2fe" }} /> : <ChevronRight size={16} aria-hidden="true" style={{ flexShrink: 0, color: disabled ? "#525252" : "#737373" }} />}
+      </button>
+
+      {open && !disabled && (
+        <div role="listbox" aria-label={listboxLabel} style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "0 12px 12px", backgroundColor: "#202020", borderTop: "1px solid #2d2d2d" }}>
+          <div style={{ position: "relative" }}>
+            <Search size={14} aria-hidden="true" style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#737373", pointerEvents: "none" }} />
+            <input
+              data-testid={inputTestId}
+              type="search"
+              value={search}
+              onChange={(event) => onSearch(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") onToggle(false);
+              }}
+              placeholder={placeholder}
+              aria-label={`Buscar ${label.toLocaleLowerCase("pt-BR")}`}
+              autoFocus
+              style={{ width: "100%", boxSizing: "border-box", padding: "9px 10px 9px 30px", borderRadius: "8px", backgroundColor: "#2a2a2a", color: "#f5f5f5", border: "1px solid #454545", fontSize: "12px", outline: "none" }}
+            />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "2px", maxHeight: "190px", overflowY: "auto" }}>
+            <button
+              data-testid={allOptionTestId}
+              type="button"
+              role="option"
+              aria-selected={selected === "Todos"}
+              onClick={() => onSelect("Todos")}
+              style={{ width: "100%", padding: "9px 10px", border: "none", borderRadius: "7px", backgroundColor: selected === "Todos" ? "#363636" : "transparent", color: "#f5f5f5", fontSize: "12px", fontWeight: 700, textAlign: "left", cursor: "pointer" }}
+            >
+              {allLabel}
+            </button>
+            {visibleOptions.length === 0 ? (
+              <span style={{ padding: "12px 10px", color: "#737373", fontSize: "12px", textAlign: "center" }}>Nenhum resultado encontrado.</span>
+            ) : (
+              visibleOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="option"
+                  aria-selected={option.value === selected}
+                  onClick={() => onSelect(option.value)}
+                  style={{ width: "100%", padding: "9px 10px", border: "none", borderRadius: "7px", backgroundColor: option.value === selected ? "#363636" : "transparent", color: option.value === selected ? "#fff" : "#d4d4d4", fontSize: "12px", fontWeight: option.value === selected ? 700 : 600, textAlign: "left", cursor: "pointer" }}
+                >
+                  {option.label}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -339,6 +401,10 @@ export default function PopPersonCanvas() {
   const [dataset, setDataset] = useState([]);
   const [filters, setFilters] = useState({ pais: "Todos", estado: "Todos", cidade: "Todos", categoria: "Todos" });
   const [showFiltersModal, setShowFiltersModal] = useState(false);
+  const [isFilterCountryPickerOpen, setIsFilterCountryPickerOpen] = useState(false);
+  const [filterCountrySearch, setFilterCountrySearch] = useState("");
+  const [isFilterStatePickerOpen, setIsFilterStatePickerOpen] = useState(false);
+  const [filterStateSearch, setFilterStateSearch] = useState("");
   const [isFilterCityPickerOpen, setIsFilterCityPickerOpen] = useState(false);
   const [filterCitySearch, setFilterCitySearch] = useState("");
   const [isFilterCategoryPickerOpen, setIsFilterCategoryPickerOpen] = useState(false);
@@ -546,13 +612,6 @@ export default function PopPersonCanvas() {
       return true;
     });
   }, [expandedFilterCategoryIds, filteredFilterCategoryOptions, filterCategoryOptions, filterCategorySearch]);
-  const filterCityOptions = useMemo(
-    () => cidadeOptions.filter((option) => option.value !== "Todos" && (
-      !normalizeLocationValue(filterCitySearch)
-      || normalizeLocationValue(option.label).includes(normalizeLocationValue(filterCitySearch))
-    )),
-    [cidadeOptions, filterCitySearch],
-  );
   const selectedFilterCategory = useMemo(
     () => filterCategoryOptions.find((category) => category.id === filters.categoria),
     [filterCategoryOptions, filters.categoria],
@@ -568,20 +627,26 @@ export default function PopPersonCanvas() {
   }, []);
   const selectFilterLevel = useCallback((level, value) => {
     setFilterLevel(level, value);
-    if (level === "pais" || level === "estado") {
-      setFilterCitySearch("");
-      setIsFilterCityPickerOpen(false);
-    }
-    if (level === "cidade") {
-      setFilterCitySearch("");
-      setIsFilterCityPickerOpen(false);
-    }
-    if (level === "categoria") {
-      setFilterCategorySearch("");
-      setIsFilterCategoryPickerOpen(false);
-    }
+    setFilterCountrySearch("");
+    setFilterStateSearch("");
+    setFilterCitySearch("");
+    setFilterCategorySearch("");
+    setIsFilterCountryPickerOpen(false);
+    setIsFilterStatePickerOpen(false);
+    setIsFilterCityPickerOpen(false);
+    setIsFilterCategoryPickerOpen(false);
   }, [setFilterLevel]);
-  const clearFilters = useCallback(() => setFilters({ pais: "Todos", estado: "Todos", cidade: "Todos", categoria: "Todos" }), []);
+  const clearFilters = useCallback(() => {
+    setFilters({ pais: "Todos", estado: "Todos", cidade: "Todos", categoria: "Todos" });
+    setFilterCountrySearch("");
+    setFilterStateSearch("");
+    setFilterCitySearch("");
+    setFilterCategorySearch("");
+    setIsFilterCountryPickerOpen(false);
+    setIsFilterStatePickerOpen(false);
+    setIsFilterCityPickerOpen(false);
+    setIsFilterCategoryPickerOpen(false);
+  }, []);
   const activeFilterCount = (filters.pais !== "Todos" ? 1 : 0) + (filters.estado !== "Todos" ? 1 : 0) + (filters.cidade !== "Todos" ? 1 : 0) + (filters.categoria !== "Todos" ? 1 : 0);
   const filteredDataset = useMemo(() => dataset.filter((d) => (filters.pais === "Todos" || d.pais === filters.pais) && (filters.estado === "Todos" || d.estado === filters.estado) && (filters.cidade === "Todos" || d.cidade === filters.cidade) && (filters.categoria === "Todos" || d.categoryPath.some((category) => category.id === filters.categoria))), [dataset, filters]);
   const leaves = useMemo(() => {
@@ -2413,82 +2478,78 @@ export default function PopPersonCanvas() {
               <div style={{ display: "flex", flexDirection: "column", gap: "7px" }}>
                 <span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>Localidade</span>
                 <div style={{ overflow: "hidden", borderRadius: "12px", backgroundColor: "#202020", border: "1px solid #2d2d2d" }}>
-                  <FilterSection label="País" options={paisOptions} selected={filters.pais} onSelect={(v) => selectFilterLevel("pais", v)} />
-                  <FilterSection label="Estado" options={estadoOptions} selected={filters.estado} onSelect={(v) => selectFilterLevel("estado", v)} disabled={filters.pais === "Todos"} disabledHint="Escolha um país primeiro" />
-                  <div style={{ borderBottom: "1px solid #2d2d2d" }}>
-                    <button
-                      data-testid="button-open-filter-city"
-                      type="button"
-                      onClick={() => {
-                        setIsFilterCityPickerOpen((isOpen) => !isOpen);
-                        setFilterCitySearch("");
-                        setIsFilterCategoryPickerOpen(false);
-                      }}
-                      aria-label={filters.cidade === "Todos" ? "Buscar cidade" : "Editar cidade"}
-                      aria-haspopup="listbox"
-                      aria-expanded={isFilterCityPickerOpen}
-                      style={{ width: "100%", minHeight: "54px", padding: "8px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", border: "none", backgroundColor: "transparent", color: "#f5f5f5", textAlign: "left", cursor: "pointer" }}
-                    >
-                      <div style={{ display: "flex", flexDirection: "column", gap: "3px", minWidth: 0 }}>
-                        <span style={{ color: "#d4d4d4", fontSize: "11px", fontWeight: 700, letterSpacing: "0.04em", lineHeight: 1.2, textTransform: "uppercase" }}>Cidade</span>
-                        <span data-testid="text-filter-city" style={{ color: filters.cidade !== "Todos" ? "#c7d2fe" : "#a3a3a3", fontSize: "12px", fontWeight: 700, lineHeight: 1.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {filters.cidade === "Todos" ? "Todas as cidades" : filters.cidade}
-                        </span>
-                      </div>
-                      {isFilterCityPickerOpen ? <ChevronDown size={16} aria-hidden="true" style={{ flexShrink: 0, color: "#c7d2fe" }} /> : <ChevronRight size={16} aria-hidden="true" style={{ flexShrink: 0, color: "#737373" }} />}
-                    </button>
-                    {isFilterCityPickerOpen && (
-                      <div role="listbox" aria-label="Resultados de cidades" style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "0 12px 12px", backgroundColor: "#202020", borderTop: "1px solid #2d2d2d" }}>
-                        <div style={{ position: "relative" }}>
-                          <Search size={14} aria-hidden="true" style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#737373", pointerEvents: "none" }} />
-                          <input
-                            data-testid="input-search-filter-city"
-                            type="search"
-                            value={filterCitySearch}
-                            onChange={(event) => setFilterCitySearch(event.target.value)}
-                            onKeyDown={(event) => {
-                              if (event.key === "Escape") {
-                                setIsFilterCityPickerOpen(false);
-                                setFilterCitySearch("");
-                              }
-                            }}
-                            placeholder="Digite o nome da cidade"
-                            aria-label="Buscar cidade"
-                            autoFocus
-                            style={{ width: "100%", boxSizing: "border-box", padding: "9px 10px 9px 30px", borderRadius: "8px", backgroundColor: "#2a2a2a", color: "#f5f5f5", border: "1px solid #454545", fontSize: "12px", outline: "none" }}
-                          />
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: "2px", maxHeight: "190px", overflowY: "auto" }}>
-                          <button
-                            data-testid="option-filter-city-all"
-                            type="button"
-                            role="option"
-                            aria-selected={filters.cidade === "Todos"}
-                            onClick={() => selectFilterLevel("cidade", "Todos")}
-                            style={{ width: "100%", padding: "9px 10px", border: "none", borderRadius: "7px", backgroundColor: filters.cidade === "Todos" ? "#363636" : "transparent", color: "#f5f5f5", fontSize: "12px", fontWeight: 700, textAlign: "left", cursor: "pointer" }}
-                          >
-                            Todas as cidades
-                          </button>
-                          {filterCityOptions.length === 0 ? (
-                            <span style={{ padding: "12px 10px", color: "#737373", fontSize: "12px", textAlign: "center" }}>Nenhuma cidade encontrada.</span>
-                          ) : (
-                            filterCityOptions.map((option) => (
-                              <button
-                                key={option.value}
-                                type="button"
-                                role="option"
-                                aria-selected={option.value === filters.cidade}
-                                onClick={() => selectFilterLevel("cidade", option.value)}
-                                style={{ width: "100%", padding: "9px 10px", border: "none", borderRadius: "7px", backgroundColor: option.value === filters.cidade ? "#363636" : "transparent", color: option.value === filters.cidade ? "#fff" : "#d4d4d4", fontSize: "12px", fontWeight: option.value === filters.cidade ? 700 : 600, textAlign: "left", cursor: "pointer" }}
-                              >
-                                {option.label}
-                              </button>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  <FilterSearchPicker
+                    label="País"
+                    selectedLabel={filters.pais === "Todos" ? "Todos os países" : filters.pais}
+                    options={paisOptions}
+                    selected={filters.pais}
+                    onSelect={(value) => selectFilterLevel("pais", value)}
+                    open={isFilterCountryPickerOpen}
+                    onToggle={(next) => {
+                      setIsFilterCountryPickerOpen((isOpen) => typeof next === "boolean" ? next : !isOpen);
+                      setFilterCountrySearch("");
+                      setIsFilterStatePickerOpen(false);
+                      setIsFilterCityPickerOpen(false);
+                      setIsFilterCategoryPickerOpen(false);
+                    }}
+                    search={filterCountrySearch}
+                    onSearch={setFilterCountrySearch}
+                    inputTestId="input-search-filter-country"
+                    buttonTestId="button-open-filter-country"
+                    allOptionTestId="option-filter-country-all"
+                    listboxLabel="Resultados de países"
+                    placeholder="Digite o nome do país"
+                    allLabel="Todos os países"
+                  />
+                  <FilterSearchPicker
+                    label="Estado / região"
+                    selectedLabel={filters.estado === "Todos" ? "Todos os estados / regiões" : filters.estado}
+                    options={estadoOptions}
+                    selected={filters.estado}
+                    onSelect={(value) => selectFilterLevel("estado", value)}
+                    disabled={filters.pais === "Todos"}
+                    disabledHint="Escolha um país primeiro"
+                    open={isFilterStatePickerOpen}
+                    onToggle={(next) => {
+                      setIsFilterStatePickerOpen((isOpen) => typeof next === "boolean" ? next : !isOpen);
+                      setFilterStateSearch("");
+                      setIsFilterCountryPickerOpen(false);
+                      setIsFilterCityPickerOpen(false);
+                      setIsFilterCategoryPickerOpen(false);
+                    }}
+                    search={filterStateSearch}
+                    onSearch={setFilterStateSearch}
+                    inputTestId="input-search-filter-state"
+                    buttonTestId="button-open-filter-state"
+                    allOptionTestId="option-filter-state-all"
+                    listboxLabel="Resultados de estados e regiões"
+                    placeholder="Digite o nome do estado ou região"
+                    allLabel="Todos os estados / regiões"
+                  />
+                  <FilterSearchPicker
+                    label="Cidade"
+                    selectedLabel={filters.cidade === "Todos" ? "Todas as cidades" : filters.cidade}
+                    options={cidadeOptions}
+                    selected={filters.cidade}
+                    onSelect={(value) => selectFilterLevel("cidade", value)}
+                    open={isFilterCityPickerOpen}
+                    onToggle={(next) => {
+                      setIsFilterCityPickerOpen((isOpen) => typeof next === "boolean" ? next : !isOpen);
+                      setFilterCitySearch("");
+                      setIsFilterCountryPickerOpen(false);
+                      setIsFilterStatePickerOpen(false);
+                      setIsFilterCategoryPickerOpen(false);
+                    }}
+                    search={filterCitySearch}
+                    onSearch={setFilterCitySearch}
+                    inputTestId="input-search-filter-city"
+                    buttonTestId="button-open-filter-city"
+                    allOptionTestId="option-filter-city-all"
+                    listboxLabel="Resultados de cidades"
+                    placeholder="Digite o nome da cidade"
+                    allLabel="Todas as cidades"
+                    showDivider={false}
+                  />
                 </div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: "7px" }}>
@@ -2500,6 +2561,8 @@ export default function PopPersonCanvas() {
                     onClick={() => {
                       setIsFilterCategoryPickerOpen((isOpen) => !isOpen);
                       setFilterCategorySearch("");
+                      setIsFilterCountryPickerOpen(false);
+                      setIsFilterStatePickerOpen(false);
                       setIsFilterCityPickerOpen(false);
                     }}
                     aria-label={filters.categoria === "Todos" ? "Buscar categoria" : "Editar categoria"}
