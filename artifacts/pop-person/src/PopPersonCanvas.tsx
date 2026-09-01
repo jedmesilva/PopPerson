@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { SlidersHorizontal, ArrowLeft, X, ChevronDown, ChevronRight, Locate, Search, ScanFace, Plus, CircleUserRound, Pencil, CalendarDays, LogOut, Mail, MapPin } from "lucide-react";
+import { SlidersHorizontal, ArrowLeft, ArrowLeftRight, X, ChevronDown, ChevronRight, Locate, Search, ScanFace, Plus, CircleUserRound, Pencil, CalendarDays, LogOut, Mail, MapPin } from "lucide-react";
 import { FaXTwitter } from "react-icons/fa6";
 import {
   useCreatePopPersonAction,
@@ -499,6 +499,76 @@ function AccountModal({ user, onClose, onLogout, isLoggingOut, logoutError, clos
   );
 }
 
+function ConnectXModal({ onClose, onConnect, closeButtonRef }) {
+  return (
+    <div
+      data-testid="connect-modal-backdrop"
+      onClick={onClose}
+      style={{ position: "fixed", inset: 0, zIndex: 110, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px", backgroundColor: "rgba(0,0,0,0.74)", backdropFilter: "blur(3px)" }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="connect-title"
+        aria-describedby="connect-description"
+        onClick={(event) => event.stopPropagation()}
+        style={{ width: "100%", maxWidth: "390px", backgroundColor: "rgba(23,23,23,0.98)", border: "1px solid #333", borderRadius: "16px", padding: "20px", boxSizing: "border-box", boxShadow: "0 14px 44px rgba(0,0,0,0.5)", display: "flex", flexDirection: "column", gap: "18px" }}
+      >
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
+          <div style={{ minWidth: 0 }}>
+            <span id="connect-title" style={{ display: "block", color: "#fff", fontWeight: 800, fontSize: "18px", lineHeight: 1.2, letterSpacing: "-0.02em" }}>Conectar ao X</span>
+            <span id="connect-description" style={{ display: "block", marginTop: "5px", color: "#8f8f8f", fontSize: "12px", lineHeight: 1.45 }}>Conecte seu perfil para participar das interações do InstaPop.</span>
+          </div>
+          <button
+            ref={closeButtonRef}
+            data-testid="button-close-connect"
+            type="button"
+            onClick={onClose}
+            aria-label="Fechar conexão com X"
+            style={{ width: "26px", height: "26px", borderRadius: "9999px", backgroundColor: "#262626", color: "#a3a3a3", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+          >
+            <X size={15} aria-hidden="true" />
+          </button>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "18px", minHeight: "132px", padding: "20px 12px", borderRadius: "13px", backgroundColor: "#202020", border: "1px solid #2d2d2d" }}>
+          <div style={{ width: "72px", height: "72px", display: "grid", placeItems: "center", padding: "12px", boxSizing: "border-box", borderRadius: "18px", backgroundColor: "#171717", border: "1px solid #3a3a3a" }}>
+            <img src="/instapop-mark-192.svg" alt="InstaPop" style={{ display: "block", width: "100%", height: "100%", objectFit: "contain" }} />
+          </div>
+          <ArrowLeftRight size={21} aria-hidden="true" style={{ color: "#8b93d6", flexShrink: 0 }} />
+          <div style={{ width: "72px", height: "72px", display: "grid", placeItems: "center", borderRadius: "18px", backgroundColor: "#171717", border: "1px solid #3a3a3a", color: "#f5f5f5" }}>
+            <FaXTwitter size={31} aria-hidden="true" />
+          </div>
+        </div>
+
+        <p style={{ margin: 0, color: "#a3a3a3", fontSize: "12px", lineHeight: 1.5 }}>
+          Você será redirecionado para <strong style={{ color: "#e5e5e5" }}>x.com</strong> para autorizar a conexão com sua conta.
+        </p>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          <button
+            data-testid="button-connect-x"
+            type="button"
+            onClick={onConnect}
+            style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", minHeight: "42px", padding: "10px 14px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", border: "none", fontSize: "12px", fontWeight: 800, cursor: "pointer" }}
+          >
+            <FaXTwitter size={14} aria-hidden="true" />
+            Conectar com X
+          </button>
+          <button
+            data-testid="button-cancel-connect"
+            type="button"
+            onClick={onClose}
+            style={{ minHeight: "34px", padding: "8px 14px", borderRadius: "9999px", backgroundColor: "transparent", color: "#a3a3a3", border: "1px solid #333", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}
+          >
+            Agora não
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PopPersonCanvas() {
   const bootstrapQuery = useGetPopPerson();
   const accessLocationQuery = useGetAccessLocation({
@@ -526,6 +596,7 @@ export default function PopPersonCanvas() {
   const [draftFilters, setDraftFilters] = useState({ pais: "Todos", estado: "Todos", cidade: "Todos", categoria: "Todos" });
   const [showFiltersModal, setShowFiltersModal] = useState(false);
   const [showAccountModal, setShowAccountModal] = useState(false);
+  const [showConnectModal, setShowConnectModal] = useState(false);
   const [isFilterCountryPickerOpen, setIsFilterCountryPickerOpen] = useState(false);
   const [filterCountrySearch, setFilterCountrySearch] = useState("");
   const [isFilterStatePickerOpen, setIsFilterStatePickerOpen] = useState(false);
@@ -569,6 +640,7 @@ export default function PopPersonCanvas() {
     request: { credentials: "include" },
   });
   const accountCloseButtonRef = useRef(null);
+  const connectCloseButtonRef = useRef(null);
   const submittingActionRef = useRef(false);
   const idempotencyKeyRef = useRef(null);
   const idempotencyPayloadRef = useRef("");
@@ -798,18 +870,24 @@ export default function PopPersonCanvas() {
   const draftFilterCount = (draftFilters.pais !== "Todos" ? 1 : 0) + (draftFilters.estado !== "Todos" ? 1 : 0) + (draftFilters.cidade !== "Todos" ? 1 : 0) + (draftFilters.categoria !== "Todos" ? 1 : 0);
   const filteredDataset = useMemo(() => dataset.filter((d) => (filters.pais === "Todos" || d.pais === filters.pais) && (filters.estado === "Todos" || d.estado === filters.estado) && (filters.cidade === "Todos" || d.cidade === filters.cidade) && (filters.categoria === "Todos" || d.categoryPath.some((category) => category.id === filters.categoria))), [dataset, filters]);
   useEffect(() => {
-    if (!showAccountModal) return undefined;
+    const activeModal = showAccountModal ? "account" : showConnectModal ? "connect" : null;
+    if (!activeModal) return undefined;
 
     const onKeyDown = (event) => {
-      if (event.key === "Escape") setShowAccountModal(false);
+      if (event.key !== "Escape") return;
+      setShowAccountModal(false);
+      setShowConnectModal(false);
     };
     document.addEventListener("keydown", onKeyDown);
-    const focusTimer = window.setTimeout(() => accountCloseButtonRef.current?.focus(), 0);
+    const focusTimer = window.setTimeout(() => {
+      const closeButtonRef = activeModal === "account" ? accountCloseButtonRef : connectCloseButtonRef;
+      closeButtonRef.current?.focus();
+    }, 0);
     return () => {
       document.removeEventListener("keydown", onKeyDown);
       window.clearTimeout(focusTimer);
     };
-  }, [showAccountModal]);
+  }, [showAccountModal, showConnectModal]);
 
   const leaves = useMemo(() => {
     if (!canJoinAsPlayer) return computeLeaves(filteredDataset);
@@ -2609,9 +2687,7 @@ export default function PopPersonCanvas() {
             data-testid="button-auth"
             aria-label="Fazer autenticação"
             title="Fazer autenticação"
-            onClick={() => {
-              window.location.assign(getApiEndpoint("/api/auth/x/start?returnTo=/"));
-            }}
+            onClick={() => setShowConnectModal(true)}
             style={{ flexShrink: 0, width: "36px", height: "36px", borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.72)", backdropFilter: "blur(6px)", border: "1px solid rgba(255, 255, 255, 0.12)", color: "#f5f5f5", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 4px 14px rgba(0,0,0,0.25)" }}
           >
             <Plus size={18} strokeWidth={2.4} aria-hidden="true" />
@@ -2674,6 +2750,15 @@ export default function PopPersonCanvas() {
           isLoggingOut={logoutMutation.isPending}
           logoutError={logoutMutation.error}
           closeButtonRef={accountCloseButtonRef}
+        />
+      )}
+      {showConnectModal && !authenticatedUser && (
+        <ConnectXModal
+          onClose={() => setShowConnectModal(false)}
+          onConnect={() => {
+            window.location.assign(getApiEndpoint("/api/auth/x/start?returnTo=/"));
+          }}
+          closeButtonRef={connectCloseButtonRef}
         />
       )}
       {(playerName || showRecenter) && (
