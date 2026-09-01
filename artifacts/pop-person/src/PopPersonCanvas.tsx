@@ -552,7 +552,6 @@ function ConnectXModal({ onClose, onConnect, closeButtonRef }) {
             onClick={onConnect}
             style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", minHeight: "42px", padding: "10px 14px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", border: "none", fontSize: "12px", fontWeight: 800, cursor: "pointer" }}
           >
-            <FaXTwitter size={14} aria-hidden="true" />
             Conectar com X
           </button>
           <button
