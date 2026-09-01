@@ -394,6 +394,30 @@ function PersonVisual({ person, alt = "", style = {} }) {
   );
 }
 
+function LegalLinks() {
+  return (
+    <nav
+      aria-label="Documentos legais"
+      style={{
+        color: "#737373",
+        fontSize: "11px",
+        lineHeight: 1.5,
+        textAlign: "center",
+      }}
+    >
+      Consulte a{" "}
+      <a href="/privacidade" style={{ color: "#a5b4fc", fontWeight: 700 }}>
+        Política de Privacidade
+      </a>{" "}
+      e os{" "}
+      <a href="/termos-de-servico" style={{ color: "#a5b4fc", fontWeight: 700 }}>
+        Termos de Serviço
+      </a>
+      .
+    </nav>
+  );
+}
+
 function AccountModal({ user, onClose, onLogout, isLoggingOut, logoutError, closeButtonRef }) {
   const initials = (user.name || user.username || "?")
     .split(" ")
@@ -494,6 +518,7 @@ function AccountModal({ user, onClose, onLogout, isLoggingOut, logoutError, clos
           <LogOut size={15} aria-hidden="true" />
           {isLoggingOut ? "Saindo…" : "Sair da conta"}
         </button>
+        <LegalLinks />
       </div>
     </div>
   );
@@ -544,6 +569,7 @@ function ConnectXModal({ onClose, onConnect, closeButtonRef }) {
         <p style={{ margin: 0, color: "#a3a3a3", fontSize: "12px", lineHeight: 1.5 }}>
           Você será redirecionado para <strong style={{ color: "#e5e5e5" }}>x.com</strong> para autorizar a conexão com sua conta.
         </p>
+        <LegalLinks />
 
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
           <button
@@ -643,7 +669,6 @@ export default function PopPersonCanvas() {
   const submittingActionRef = useRef(false);
   const idempotencyKeyRef = useRef(null);
   const idempotencyPayloadRef = useRef("");
-  const locationDefaultsAppliedRef = useRef(false);
   const playerLocationEditedRef = useRef(false);
   const config = bootstrapQuery.data?.config;
   const canJoinAsPlayer = Boolean(
@@ -901,42 +926,6 @@ export default function PopPersonCanvas() {
       },
     ]);
   }, [filteredDataset, canJoinAsPlayer]);
-
-  useEffect(() => {
-    const location = accessLocationQuery.data;
-    if (locationDefaultsAppliedRef.current || !location || dataset.length === 0) return;
-    locationDefaultsAppliedRef.current = true;
-    if (location.source !== "ip") return;
-
-    const countryMatch = dataset.find(
-      (person) => normalizeLocationValue(person.paisCodigo) === normalizeLocationValue(location.countryCode),
-    );
-    const selectedCountry = countryMatch?.pais ?? "Todos";
-    const countryDataset = countryMatch
-      ? dataset.filter((person) => person.pais === selectedCountry)
-      : [];
-    const stateMatch = countryMatch && location.regionCode !== "—"
-      ? countryDataset.find(
-          (person) => normalizeLocationValue(person.estadoCodigo) === normalizeLocationValue(location.regionCode),
-        )
-      : null;
-    const selectedState = stateMatch?.estado ?? "Todos";
-    const stateDataset = stateMatch
-      ? countryDataset.filter((person) => person.estado === selectedState)
-      : [];
-    const cityMatch = stateMatch && location.city !== "—"
-      ? stateDataset.find(
-          (person) => normalizeLocationValue(person.cidade) === normalizeLocationValue(location.city),
-        )
-      : null;
-
-    setFilters({
-      pais: selectedCountry,
-      estado: selectedState,
-      cidade: cityMatch?.cidade ?? "Todos",
-      categoria: "Todos",
-    });
-  }, [accessLocationQuery.data, dataset]);
 
   const leavesRef = useRef([]);
   const selectedCellRef = useRef(null);
@@ -3261,7 +3250,10 @@ export default function PopPersonCanvas() {
                        style={{ width: "15px", height: "15px", margin: "1px 0 0", flexShrink: 0, accentColor: "#f5f5f5", cursor: isJoiningPlayer ? "default" : "pointer" }}
                      />
                      <span>
-                       Ao entrar na disputa de popularidade, declaro que li e concordo com os <strong style={{ color: "#d4d4d4", fontWeight: 700 }}>Termos e Condições do InstaPop</strong>.
+                        Ao entrar na disputa de popularidade, declaro que li e concordo com os{" "}
+                        <a href="/termos-de-servico" style={{ color: "#c7d2fe", fontWeight: 700 }}>Termos de Serviço</a>{" "}
+                        e a{" "}
+                        <a href="/privacidade" style={{ color: "#c7d2fe", fontWeight: 700 }}>Política de Privacidade</a>.
                      </span>
                    </label>
                    <button data-testid="button-confirm-player-signup" type="button" onClick={() => void joinPlayer()} disabled={isJoiningPlayer || !playerCategoryId || !playerLocationComplete || !hasAcceptedPlayerTerms} style={{ width: "100%", padding: "11px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", fontWeight: 700, fontSize: "13px", border: "none", cursor: isJoiningPlayer || !hasAcceptedPlayerTerms ? "default" : "pointer", opacity: isJoiningPlayer || !playerLocationComplete || !hasAcceptedPlayerTerms ? 0.6 : 1 }}>{isJoiningPlayer ? "Entrando na disputa…" : "Entrar na disputa"}</button>
