@@ -241,6 +241,11 @@ export default function LegalPage({
     <main
       style={{
         minHeight: "100vh",
+        height: "100vh",
+        overflowY: "auto",
+        overflowX: "hidden",
+        boxSizing: "border-box",
+        WebkitOverflowScrolling: "touch",
         background: "#090909",
         color: "#f5f5f5",
         fontFamily: "Inter, system-ui, sans-serif",
