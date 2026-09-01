@@ -2795,7 +2795,7 @@ export default function PopPersonCanvas() {
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
               <div style={{ minWidth: 0 }}>
                 <span id="filters-title" style={{ display: "block", color: "#fff", fontWeight: 800, fontSize: "18px", lineHeight: 1.2, letterSpacing: "-0.02em" }}>Filtros</span>
-                <span style={{ display: "block", marginTop: "4px", color: "#a3a3a3", fontSize: "12px", lineHeight: 1.4 }}>Refine as pessoas exibidas no mapa.</span>
+                <span style={{ display: "block", marginTop: "4px", color: "#a3a3a3", fontSize: "12px", lineHeight: 1.4 }}>Refine a visualização de popularidade.</span>
               </div>
               <button data-testid="button-close-filters" type="button" onClick={() => setShowFiltersModal(false)} aria-label="Fechar" title="Fechar" style={{ ...closeButtonStyle, flexShrink: 0 }}><X size={13} aria-hidden="true" /></button>
             </div>
