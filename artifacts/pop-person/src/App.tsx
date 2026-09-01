@@ -1,5 +1,6 @@
 import PopPersonCanvas from './PopPersonCanvas';
 import LegalPage from './LegalPage';
+import NotFoundPage from './NotFoundPage';
 
 function App() {
   const path = window.location.pathname.replace(/\/+$/, '') || '/';
@@ -9,7 +10,9 @@ function App() {
   if (path === '/terms') return <LegalPage kind="terms" locale="en" />;
   if (path === '/termos-de-servico') return <LegalPage kind="terms" locale="pt" />;
 
-  return <PopPersonCanvas />;
+  if (path === '/') return <PopPersonCanvas />;
+
+  return <NotFoundPage />;
 }
 
 export default App;

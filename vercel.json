@@ -8,6 +8,7 @@
     { "source": "/privacy", "destination": "/" },
     { "source": "/privacidade", "destination": "/" },
     { "source": "/terms", "destination": "/" },
-    { "source": "/termos-de-servico", "destination": "/" }
+    { "source": "/termos-de-servico", "destination": "/" },
+    { "source": "/:path*", "destination": "/" }
   ]
 }
