@@ -265,7 +265,7 @@ export async function completeXAuthorization(
   ) {
     throw new Error("X user lookup returned an incomplete profile.");
   }
-  const user: Omit<AuthenticatedUser, "id"> = {
+  const user: Omit<AuthenticatedUser, "id" | "createdAt"> = {
     xUserId: profile.id,
     username: profile.username,
     name: profile.name,

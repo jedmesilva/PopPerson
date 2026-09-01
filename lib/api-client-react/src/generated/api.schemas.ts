@@ -248,6 +248,7 @@ export interface AuthenticatedUser {
   avatarUrl: string | null;
   /** @nullable */
   email: string | null;
+  createdAt: string;
 }
 
 export interface PlayerMembership {

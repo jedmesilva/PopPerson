@@ -240,7 +240,8 @@ export const GetPopPersonResponse = zod.object({
   "name": zod.string(),
   "xLocation": zod.string().nullable(),
   "avatarUrl": zod.string().nullable(),
-  "email": zod.string().nullable()
+  "email": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
 }),zod.null()]),
   "player": zod.object({
   "isPlayer": zod.boolean(),
@@ -344,7 +345,8 @@ export const GetAuthenticatedUserResponse = zod.object({
   "name": zod.string(),
   "xLocation": zod.string().nullable(),
   "avatarUrl": zod.string().nullable(),
-  "email": zod.string().nullable()
+  "email": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
 }),zod.null()])
 })
 

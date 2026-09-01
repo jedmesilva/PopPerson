@@ -1,11 +1,12 @@
 // @ts-nocheck
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { SlidersHorizontal, ArrowLeft, X, ChevronDown, ChevronRight, Locate, Search, ScanFace, Plus, CircleUserRound, Pencil } from "lucide-react";
+import { SlidersHorizontal, ArrowLeft, X, ChevronDown, ChevronRight, Locate, Search, ScanFace, Plus, CircleUserRound, Pencil, CalendarDays, LogOut, Mail, MapPin } from "lucide-react";
 import {
   useCreatePopPersonAction,
   useGetAccessLocation,
   useGetPopPerson,
   useGetPopPersonState,
+  useLogoutAuthenticatedUser,
   searchCountries,
   searchCities,
 } from "@workspace/api-client-react";
@@ -119,6 +120,17 @@ function normalizeLocationValue(value) {
 
 function formatBRL(value) {
   return `R$ ${value.toFixed(2).replace(".", ",")}`;
+}
+
+function formatAccountDate(value) {
+  if (!value) return "Data não informada";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  }).format(date);
 }
 
 function getStableCellTextSize(screenRadius) {
@@ -381,6 +393,111 @@ function PersonVisual({ person, alt = "", style = {} }) {
   );
 }
 
+function AccountModal({ user, onClose, onLogout, isLoggingOut, logoutError, closeButtonRef }) {
+  const initials = (user.name || user.username || "?")
+    .split(" ")
+    .map((part) => part[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
+  return (
+    <div
+      data-testid="account-modal-backdrop"
+      onClick={onClose}
+      style={{ position: "fixed", inset: 0, zIndex: 110, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px", backgroundColor: "rgba(0,0,0,0.74)", backdropFilter: "blur(3px)" }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="account-title"
+        aria-describedby="account-description"
+        onClick={(event) => event.stopPropagation()}
+        style={{ width: "100%", maxWidth: "390px", maxHeight: "min(620px, 90vh)", overflowY: "auto", backgroundColor: "rgba(23,23,23,0.98)", border: "1px solid #333", borderRadius: "16px", padding: "18px", boxSizing: "border-box", boxShadow: "0 14px 44px rgba(0,0,0,0.5)", display: "flex", flexDirection: "column", gap: "16px" }}
+      >
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
+          <div style={{ minWidth: 0 }}>
+            <span id="account-title" style={{ display: "block", color: "#fff", fontWeight: 800, fontSize: "18px", lineHeight: 1.2, letterSpacing: "-0.02em" }}>Sua conta</span>
+            <span id="account-description" style={{ display: "block", marginTop: "4px", color: "#8f8f8f", fontSize: "12px", lineHeight: 1.4 }}>Informações do seu perfil no InstaPop.</span>
+          </div>
+          <button
+            ref={closeButtonRef}
+            data-testid="button-close-account"
+            type="button"
+            onClick={onClose}
+            aria-label="Fechar conta"
+            style={{ width: "26px", height: "26px", borderRadius: "9999px", backgroundColor: "#262626", color: "#a3a3a3", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+          >
+            <X size={15} aria-hidden="true" />
+          </button>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px", borderRadius: "12px", backgroundColor: "#202020", border: "1px solid #2d2d2d" }}>
+          <div data-testid="avatar-account" style={{ position: "relative", width: "54px", height: "54px", flexShrink: 0, overflow: "hidden", borderRadius: "9999px", display: "grid", placeItems: "center", backgroundColor: "#373737", color: "#c7d2fe", border: "1px solid rgba(199,210,254,0.32)", fontSize: "16px", fontWeight: 800, letterSpacing: "-0.03em" }}>
+            <span aria-hidden="true">{initials}</span>
+            {user.avatarUrl && (
+              <img
+                data-testid="image-account-avatar"
+                src={user.avatarUrl}
+                alt={`Imagem de ${user.name || "usuário"}`}
+                onError={(event) => { event.currentTarget.style.display = "none"; }}
+                style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+              />
+            )}
+          </div>
+          <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: "4px" }}>
+            <strong data-testid="text-account-name" style={{ color: "#f5f5f5", fontSize: "15px", lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name || "Nome não informado"}</strong>
+            <span data-testid="text-account-x-username" style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "#c7d2fe", fontSize: "12px", fontWeight: 700 }}>
+              <span aria-hidden="true" style={{ width: "18px", height: "18px", display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "5px", backgroundColor: "#2d2d2d", color: "#f5f5f5", fontSize: "11px", fontWeight: 800 }}>X</span>
+              {user.username ? `@${String(user.username).replace(/^@/, "")}` : "Perfil X não informado"}
+            </span>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: "2px", borderTop: "1px solid #2d2d2d", borderBottom: "1px solid #2d2d2d" }}>
+          <div data-testid="row-account-locality" style={{ display: "flex", alignItems: "flex-start", gap: "11px", padding: "12px 2px" }}>
+            <MapPin size={15} aria-hidden="true" style={{ flexShrink: 0, marginTop: "2px", color: "#8b93d6" }} />
+            <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: "3px" }}>
+              <span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>Localidade</span>
+              <span data-testid="text-account-locality" style={{ color: "#e5e5e5", fontSize: "12px", fontWeight: 600, lineHeight: 1.35 }}>{user.xLocation?.trim() || "Localidade não informada"}</span>
+            </div>
+          </div>
+          <div data-testid="row-account-registration-date" style={{ display: "flex", alignItems: "flex-start", gap: "11px", padding: "12px 2px" }}>
+            <CalendarDays size={15} aria-hidden="true" style={{ flexShrink: 0, marginTop: "2px", color: "#8b93d6" }} />
+            <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: "3px" }}>
+              <span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>Membro desde</span>
+              <span data-testid="text-account-registration-date" style={{ color: "#e5e5e5", fontSize: "12px", fontWeight: 600, lineHeight: 1.35 }}>{formatAccountDate(user.createdAt)}</span>
+            </div>
+          </div>
+          <div data-testid="row-account-email" style={{ display: "flex", alignItems: "flex-start", gap: "11px", padding: "12px 2px" }}>
+            <Mail size={15} aria-hidden="true" style={{ flexShrink: 0, marginTop: "2px", color: "#8b93d6" }} />
+            <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: "3px" }}>
+              <span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>E-mail</span>
+              <span data-testid="text-account-email" style={{ color: "#e5e5e5", fontSize: "12px", fontWeight: 600, lineHeight: 1.35, overflowWrap: "anywhere" }}>{user.email?.trim() || "E-mail não informado"}</span>
+            </div>
+          </div>
+        </div>
+
+        {logoutError && (
+          <span data-testid="status-account-logout-error" role="alert" style={{ color: "#fca5a5", fontSize: "11px", lineHeight: 1.4 }}>
+            Não foi possível sair agora. Tente novamente.
+          </span>
+        )}
+        <button
+          data-testid="button-logout"
+          type="button"
+          onClick={onLogout}
+          disabled={isLoggingOut}
+          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", minHeight: "40px", padding: "10px 14px", borderRadius: "9999px", backgroundColor: isLoggingOut ? "#383838" : "#262626", color: isLoggingOut ? "#8a8a8a" : "#f5f5f5", border: "1px solid #3b3b3b", fontSize: "12px", fontWeight: 800, cursor: isLoggingOut ? "wait" : "pointer" }}
+        >
+          <LogOut size={15} aria-hidden="true" />
+          {isLoggingOut ? "Saindo…" : "Sair da conta"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function PopPersonCanvas() {
   const bootstrapQuery = useGetPopPerson();
   const accessLocationQuery = useGetAccessLocation({
@@ -407,6 +524,7 @@ export default function PopPersonCanvas() {
   const [filters, setFilters] = useState({ pais: "Todos", estado: "Todos", cidade: "Todos", categoria: "Todos" });
   const [draftFilters, setDraftFilters] = useState({ pais: "Todos", estado: "Todos", cidade: "Todos", categoria: "Todos" });
   const [showFiltersModal, setShowFiltersModal] = useState(false);
+  const [showAccountModal, setShowAccountModal] = useState(false);
   const [isFilterCountryPickerOpen, setIsFilterCountryPickerOpen] = useState(false);
   const [filterCountrySearch, setFilterCountrySearch] = useState("");
   const [isFilterStatePickerOpen, setIsFilterStatePickerOpen] = useState(false);
@@ -446,6 +564,10 @@ export default function PopPersonCanvas() {
   const [isSearchingPlayerLocation, setIsSearchingPlayerLocation] = useState(false);
   const [playerLocationSearchError, setPlayerLocationSearchError] = useState(null);
   const [, forceTick] = useState(0);
+  const logoutMutation = useLogoutAuthenticatedUser({
+    request: { credentials: "include" },
+  });
+  const accountCloseButtonRef = useRef(null);
   const submittingActionRef = useRef(false);
   const idempotencyKeyRef = useRef(null);
   const idempotencyPayloadRef = useRef("");
@@ -674,6 +796,20 @@ export default function PopPersonCanvas() {
   const activeFilterCount = (filters.pais !== "Todos" ? 1 : 0) + (filters.estado !== "Todos" ? 1 : 0) + (filters.cidade !== "Todos" ? 1 : 0) + (filters.categoria !== "Todos" ? 1 : 0);
   const draftFilterCount = (draftFilters.pais !== "Todos" ? 1 : 0) + (draftFilters.estado !== "Todos" ? 1 : 0) + (draftFilters.cidade !== "Todos" ? 1 : 0) + (draftFilters.categoria !== "Todos" ? 1 : 0);
   const filteredDataset = useMemo(() => dataset.filter((d) => (filters.pais === "Todos" || d.pais === filters.pais) && (filters.estado === "Todos" || d.estado === filters.estado) && (filters.cidade === "Todos" || d.cidade === filters.cidade) && (filters.categoria === "Todos" || d.categoryPath.some((category) => category.id === filters.categoria))), [dataset, filters]);
+  useEffect(() => {
+    if (!showAccountModal) return undefined;
+
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") setShowAccountModal(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    const focusTimer = window.setTimeout(() => accountCloseButtonRef.current?.focus(), 0);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      window.clearTimeout(focusTimer);
+    };
+  }, [showAccountModal]);
+
   const leaves = useMemo(() => {
     if (!canJoinAsPlayer) return computeLeaves(filteredDataset);
     return computeLeaves([
@@ -2454,9 +2590,9 @@ export default function PopPersonCanvas() {
             data-testid="button-account"
             aria-label="Abrir conta"
             title="Abrir conta"
-            onClick={async () => {
-              await fetch(getApiEndpoint("/api/auth/logout"), { method: "POST", credentials: "include" });
-              window.location.reload();
+            onClick={() => {
+              logoutMutation.reset();
+              setShowAccountModal(true);
             }}
             style={{ flexShrink: 0, width: "36px", height: "36px", padding: 0, overflow: "hidden", borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.72)", backdropFilter: "blur(6px)", border: "1px solid rgba(255, 255, 255, 0.12)", color: "#f5f5f5", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 4px 14px rgba(0,0,0,0.25)" }}
           >
@@ -2521,6 +2657,24 @@ export default function PopPersonCanvas() {
           </div>
         )}
       </div>
+      {showAccountModal && authenticatedUser && (
+        <AccountModal
+          user={authenticatedUser}
+          onClose={() => setShowAccountModal(false)}
+          onLogout={() => {
+            if (logoutMutation.isPending) return;
+            logoutMutation.mutate(undefined, {
+              onSuccess: () => {
+                setShowAccountModal(false);
+                window.location.reload();
+              },
+            });
+          }}
+          isLoggingOut={logoutMutation.isPending}
+          logoutError={logoutMutation.error}
+          closeButtonRef={accountCloseButtonRef}
+        />
+      )}
       {(playerName || showRecenter) && (
         <div style={{ position: "fixed", zIndex: 55, bottom: "calc(env(safe-area-inset-bottom, 0px) + 20px)", right: "calc(env(safe-area-inset-right, 0px) + 16px)", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "10px" }}>
           {playerName && (

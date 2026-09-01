@@ -22,9 +22,10 @@ export type AuthenticatedUser = {
   xLocation: string | null;
   avatarUrl: string | null;
   email: string | null;
+  createdAt: string;
 };
 
-type XProfile = Omit<AuthenticatedUser, "id">;
+type XProfile = Omit<AuthenticatedUser, "id" | "createdAt">;
 
 function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
@@ -159,6 +160,7 @@ export async function createAuthenticatedSession(
     xLocation: result.xLocation,
     avatarUrl: result.avatarUrl,
     email: result.email,
+    createdAt: result.createdAt.toISOString(),
   };
 }
 
@@ -182,6 +184,7 @@ export async function loadAuthenticatedUser(
       xLocation: usersTable.xLocation,
       avatarUrl: usersTable.avatarUrl,
       email: usersTable.email,
+      createdAt: usersTable.createdAt,
     })
     .from(authSessionsTable)
     .innerJoin(usersTable, eq(authSessionsTable.userId, usersTable.id))
@@ -214,6 +217,7 @@ export async function loadAuthenticatedUser(
     xLocation: session.xLocation,
     avatarUrl: session.avatarUrl,
     email: session.email,
+    createdAt: session.createdAt.toISOString(),
   };
 }
 

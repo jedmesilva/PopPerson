@@ -8,3 +8,4 @@
 - [Persistência de auth X](x-auth-persistence.md) — após importar auth, confirme as tabelas reais no banco; o schema TypeScript pode estar à frente do banco de desenvolvimento.
 - [Ciclo da localização de acesso](access-location-lifecycle.md) — resolva e registre IP no primeiro acesso; o modal apenas reutiliza a sessão, e o Preview pode retornar `local` por usar IP privado.
 - [Busca geográfica](geocoding-provider.md) — Open-Meteo foi aceito para localizar cidades globalmente; mantenha a busca mediada pelo backend.
+- [Perfil autenticado](authenticated-profile-contract.md) — dados de conta combinam perfil X com metadados persistidos; createdAt é responsabilidade do banco.
