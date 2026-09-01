@@ -277,10 +277,12 @@ function FilterSearchPicker({
   loading = false,
   emptyMessage = "Nenhum resultado encontrado.",
   showDivider = true,
+  clientFilter = true,
 }) {
   const query = normalizeLocationValue(search);
   const visibleOptions = options.filter((option) =>
-    option.value !== "Todos" && (!query || normalizeLocationValue(option.label).includes(query)),
+    option.value !== "Todos" &&
+    (!clientFilter || !query || normalizeLocationValue(option.label).includes(query)),
   );
 
   return (
@@ -2581,6 +2583,7 @@ export default function PopPersonCanvas() {
                     onSearch={setFilterCountrySearch}
                     loading={isSearchingFilterLocation && activeFilterLocationSearch?.level === "pais"}
                     emptyMessage={filterLocationEmptyMessage}
+                    clientFilter={false}
                     inputTestId="input-search-filter-country"
                     buttonTestId="button-open-filter-country"
                     allOptionTestId="option-filter-country-all"
