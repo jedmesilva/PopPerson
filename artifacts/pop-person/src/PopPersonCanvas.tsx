@@ -463,18 +463,18 @@ function AccountModal({ user, onClose, onLogout, isLoggingOut, logoutError, clos
               <span data-testid="text-account-locality" style={{ color: "#e5e5e5", fontSize: "12px", fontWeight: 600, lineHeight: 1.35 }}>{user.xLocation?.trim() || "Localidade não informada"}</span>
             </div>
           </div>
-          <div data-testid="row-account-registration-date" style={{ display: "flex", alignItems: "flex-start", gap: "11px", padding: "12px 2px" }}>
-            <CalendarDays size={15} aria-hidden="true" style={{ flexShrink: 0, marginTop: "2px", color: "#8b93d6" }} />
-            <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: "3px" }}>
-              <span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>Membro desde</span>
-              <span data-testid="text-account-registration-date" style={{ color: "#e5e5e5", fontSize: "12px", fontWeight: 600, lineHeight: 1.35 }}>{formatAccountDate(user.createdAt)}</span>
-            </div>
-          </div>
           <div data-testid="row-account-email" style={{ display: "flex", alignItems: "flex-start", gap: "11px", padding: "12px 2px" }}>
             <Mail size={15} aria-hidden="true" style={{ flexShrink: 0, marginTop: "2px", color: "#8b93d6" }} />
             <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: "3px" }}>
               <span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>E-mail</span>
               <span data-testid="text-account-email" style={{ color: "#e5e5e5", fontSize: "12px", fontWeight: 600, lineHeight: 1.35, overflowWrap: "anywhere" }}>{user.email?.trim() || "E-mail não informado"}</span>
+            </div>
+          </div>
+          <div data-testid="row-account-registration-date" style={{ display: "flex", alignItems: "flex-start", gap: "11px", padding: "12px 2px" }}>
+            <CalendarDays size={15} aria-hidden="true" style={{ flexShrink: 0, marginTop: "2px", color: "#8b93d6" }} />
+            <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: "3px" }}>
+              <span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>Membro desde</span>
+              <span data-testid="text-account-registration-date" style={{ color: "#e5e5e5", fontSize: "12px", fontWeight: 600, lineHeight: 1.35 }}>{formatAccountDate(user.createdAt)}</span>
             </div>
           </div>
         </div>
