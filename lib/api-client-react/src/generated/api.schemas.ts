@@ -42,6 +42,17 @@ export interface CitySearchResponse {
   results: CitySearchResult[];
 }
 
+export interface CountrySearchResult {
+  code2: string;
+  code3: string;
+  name: string;
+  nameEnglish: string;
+}
+
+export interface CountrySearchResponse {
+  results: CountrySearchResult[];
+}
+
 export type PopPersonStatus = typeof PopPersonStatus[keyof typeof PopPersonStatus];
 
 
@@ -318,6 +329,14 @@ export interface ErrorResponse {
 export type SearchCitiesParams = {
 /**
  * @minLength 2
+ * @maxLength 80
+ */
+q: string;
+};
+
+export type SearchCountriesParams = {
+/**
+ * @minLength 1
  * @maxLength 80
  */
 q: string;

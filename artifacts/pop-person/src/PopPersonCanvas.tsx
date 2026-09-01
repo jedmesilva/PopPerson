@@ -6,6 +6,7 @@ import {
   useGetAccessLocation,
   useGetPopPerson,
   useGetPopPersonState,
+  searchCountries,
   searchCities,
 } from "@workspace/api-client-react";
 
@@ -1578,9 +1579,22 @@ export default function PopPersonCanvas() {
       setIsSearchingFilterLocation(true);
       setFilterLocationSearchError(null);
       try {
+        if (activeFilterLocationSearch.level === "pais") {
+          const data = await searchCountries({ q: query }, { signal: controller.signal });
+          setFilterLocationSearchResults((data.results ?? []).map((result) => ({
+            id: result.code2,
+            city: result.name,
+            region: result.name,
+            country: result.name,
+            countryCode: result.code2,
+            latitude: 0,
+            longitude: 0,
+          })));
+          return;
+        }
+
         const data = await searchCities({ q: query }, { signal: controller.signal });
         const results = (data.results ?? []).filter((result) => {
-          if (activeFilterLocationSearch.level === "pais") return true;
           if (draftFilters.pais !== "Todos" && result.country !== draftFilters.pais) return false;
           if (activeFilterLocationSearch.level === "estado") {
             return result.region && result.region !== result.country;

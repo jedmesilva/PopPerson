@@ -1,7 +1,8 @@
 import { Router, type IRouter, type Request } from "express";
-import { GetAccessLocationResponse, SearchCitiesResponse } from "@workspace/api-zod";
-import { accessEventsTable, db, usersTable } from "@workspace/db";
+import { GetAccessLocationResponse, SearchCitiesResponse, SearchCountriesResponse } from "@workspace/api-zod";
+import { accessEventsTable, countriesTable, db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { normalizeCountryValue } from "../lib/country-catalog";
 
 type IpWhoResponse = {
   success?: boolean;
@@ -153,6 +154,70 @@ async function recordAccessEvent(req: Request, location: Awaited<ReturnType<type
       .where(eq(usersTable.id, authenticatedUserId));
   }
 }
+
+function editDistance(left: string, right: string): number {
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    const current = [leftIndex];
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+      current[rightIndex] = left[leftIndex - 1] === right[rightIndex - 1]
+        ? previous[rightIndex - 1]
+        : Math.min(previous[rightIndex - 1], previous[rightIndex], current[rightIndex - 1]) + 1;
+    }
+    previous.splice(0, previous.length, ...current);
+  }
+  return previous[right.length];
+}
+
+function countryMatchScore(country: typeof countriesTable.$inferSelect, query: string): number {
+  const normalizedQuery = normalizeCountryValue(query);
+  const normalizedCode2 = country.code2.toLowerCase();
+  const normalizedCode3 = country.code3.toLowerCase();
+  if (normalizedQuery === normalizedCode2 || normalizedQuery === normalizedCode3) return 0;
+
+  const aliases = country.aliases.map(normalizeCountryValue).filter(Boolean);
+  if (aliases.some((alias) => alias === normalizedQuery)) return 1;
+  if (normalizedQuery.length <= 2) return Number.POSITIVE_INFINITY;
+  if (aliases.some((alias) => alias.startsWith(normalizedQuery))) return 2;
+  if (aliases.some((alias) => alias.includes(normalizedQuery))) return 3;
+
+  if (normalizedQuery.length < 4) return Number.POSITIVE_INFINITY;
+  const maxDistance = normalizedQuery.length >= 6 ? Math.max(1, Math.floor(normalizedQuery.length * 0.2)) : 1;
+  if (aliases.some((alias) => editDistance(alias, normalizedQuery) <= maxDistance)) return 4;
+  return Number.POSITIVE_INFINITY;
+}
+
+router.get("/access/countries/search", async (req, res): Promise<void> => {
+  const query = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  if (query.length < 1 || query.length > 80) {
+    res.status(400).json({ error: "Digite entre 1 e 80 caracteres para buscar um país." });
+    return;
+  }
+
+  try {
+    const countries = await db.select().from(countriesTable);
+    const results = countries
+      .map((country) => ({ country, score: countryMatchScore(country, query) }))
+      .filter(({ score }) => Number.isFinite(score))
+      .sort((left, right) =>
+        left.score - right.score ||
+        left.country.name.localeCompare(right.country.name, "pt-BR"),
+      )
+      .slice(0, 20)
+      .map(({ country }) => ({
+        code2: country.code2,
+        code3: country.code3,
+        name: country.name,
+        nameEnglish: country.nameEnglish,
+      }));
+
+    res.set("Cache-Control", "public, max-age=300");
+    res.json(SearchCountriesResponse.parse({ results }));
+  } catch (error) {
+    req.log.error({ err: error }, "Country catalog lookup failed");
+    res.status(503).json({ error: "Não foi possível buscar países agora." });
+  }
+});
 
 router.get("/access/location", async (req, res): Promise<void> => {
   const location = await resolveAccessLocation(req);

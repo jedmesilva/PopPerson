@@ -22,6 +22,7 @@ import type {
 import type {
   AccessLocation,
   CitySearchResponse,
+  CountrySearchResponse,
   ErrorResponse,
   GetAuthenticatedUser200,
   HealthStatus,
@@ -33,6 +34,7 @@ import type {
   PopPersonBootstrap,
   PopPersonState,
   SearchCitiesParams,
+  SearchCountriesParams,
   StartXAuthenticationParams
 } from './api.schemas';
 
@@ -292,6 +294,91 @@ export function useSearchCities<TData = Awaited<ReturnType<typeof searchCities>>
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getSearchCitiesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSearchCountriesUrl = (params: SearchCountriesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/access/countries/search?${stringifiedParams}` : `/api/access/countries/search`
+}
+
+/**
+ * Returns countries matching names, translations, aliases, or ISO codes.
+ * @summary Search countries by localized name or code
+ */
+export const searchCountries = async (params: SearchCountriesParams, options?: Parameters<typeof customFetch>[1]): Promise<CountrySearchResponse> => {
+
+  return customFetch<CountrySearchResponse>(getSearchCountriesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getSearchCountriesQueryKey = (params?: SearchCountriesParams,) => {
+    return [
+    `/api/access/countries/search`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getSearchCountriesQueryOptions = <TData = Awaited<ReturnType<typeof searchCountries>>, TError = ErrorType<ErrorResponse>>(params: SearchCountriesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchCountries>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getSearchCountriesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof searchCountries>>> = ({ signal }) => searchCountries(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof searchCountries>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type SearchCountriesQueryResult = NonNullable<Awaited<ReturnType<typeof searchCountries>>>
+export type SearchCountriesQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Search countries by localized name or code
+ */
+
+export function useSearchCountries<TData = Awaited<ReturnType<typeof searchCountries>>, TError = ErrorType<ErrorResponse>>(
+ params: SearchCountriesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchCountries>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getSearchCountriesQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

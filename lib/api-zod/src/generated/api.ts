@@ -59,6 +59,28 @@ export const SearchCitiesResponse = zod.object({
 
 
 /**
+ * Returns countries matching names, translations, aliases, or ISO codes.
+ * @summary Search countries by localized name or code
+ */
+export const searchCountriesQueryQMax = 80;
+
+
+
+export const SearchCountriesQueryParams = zod.object({
+  "q": zod.coerce.string().min(1).max(searchCountriesQueryQMax)
+})
+
+export const SearchCountriesResponse = zod.object({
+  "results": zod.array(zod.object({
+  "code2": zod.string(),
+  "code3": zod.string(),
+  "name": zod.string(),
+  "nameEnglish": zod.string()
+}))
+})
+
+
+/**
  * @summary Get PopPerson configuration and state
  */
 export const getPopPersonResponseConfigLevelsItemStartDelayMsMin = 0;

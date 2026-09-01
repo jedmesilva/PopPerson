@@ -74,6 +74,39 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /access/countries/search:
+    get:
+      operationId: searchCountries
+      tags: [access]
+      summary: Search countries by localized name or code
+      description: Returns countries matching names, translations, aliases, or ISO codes.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 80
+      responses:
+        "200":
+          description: Matching countries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CountrySearchResponse"
+        "400":
+          description: Invalid search query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Country catalog unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /pop-person:
     get:
       operationId: getPopPerson
@@ -250,6 +283,26 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CitySearchResult"
+    CountrySearchResponse:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/CountrySearchResult"
+    CountrySearchResult:
+      type: object
+      required: [code2, code3, name, nameEnglish]
+      properties:
+        code2:
+          type: string
+        code3:
+          type: string
+        name:
+          type: string
+        nameEnglish:
+          type: string
     CitySearchResult:
       type: object
       required: [id, city, region, country, countryCode, latitude, longitude]
