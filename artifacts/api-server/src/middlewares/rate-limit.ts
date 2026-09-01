@@ -1,4 +1,5 @@
 import type { RequestHandler } from "express";
+import { getClientIp } from "../lib/client-ip";
 
 type RateLimitOptions = {
   name: string;
@@ -12,10 +13,6 @@ type Bucket = {
 };
 
 const buckets = new Map<string, Bucket>();
-
-function getClientIp(req: Parameters<RequestHandler>[0]): string {
-  return req.ip || req.socket.remoteAddress || "unknown";
-}
 
 function removeExpiredBuckets(now: number): void {
   if (buckets.size < 10_000) return;

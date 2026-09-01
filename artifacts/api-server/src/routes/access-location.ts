@@ -3,6 +3,7 @@ import { GetAccessLocationResponse, SearchCitiesResponse, SearchCountriesRespons
 import { accessEventsTable, countriesTable, db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { normalizeCountryValue } from "../lib/country-catalog";
+import { getClientIp } from "../lib/client-ip";
 
 type IpWhoResponse = {
   success?: boolean;
@@ -12,6 +13,16 @@ type IpWhoResponse = {
   country?: string;
   country_code?: string;
   timezone?: { id?: string } | string;
+};
+
+type IpApiResponse = {
+  error?: boolean;
+  city?: string;
+  region?: string;
+  region_code?: string;
+  country_name?: string;
+  country_code?: string;
+  timezone?: string;
 };
 
 type OpenMeteoGeocodingResponse = {
@@ -28,10 +39,6 @@ type OpenMeteoGeocodingResponse = {
 };
 
 const router: IRouter = Router();
-
-function getClientIp(req: Request): string {
-  return req.ip || req.socket.remoteAddress || "unknown";
-}
 
 function isLocalIp(ip: string): boolean {
   const normalized = ip.replace(/^::ffff:/, "");
@@ -77,6 +84,139 @@ function unavailableLocation() {
   };
 }
 
+type IpLocation = {
+  city: string;
+  region: string;
+  regionCode: string;
+  country: string;
+  countryCode: string;
+  timezone: string;
+};
+
+type CachedIpLocation = {
+  expiresAt: number;
+  location: IpLocation;
+};
+
+const ipLocationCache = new Map<string, CachedIpLocation>();
+const IP_LOCATION_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const IP_LOCATION_CACHE_MAX_SIZE = 10_000;
+
+function normalizeCountryCode(value: string | undefined): string | null {
+  const code = value?.trim().toUpperCase();
+  return code && /^[A-Z]{2}$/.test(code) ? code : null;
+}
+
+function buildIpWhoLocation(data: IpWhoResponse): IpLocation | null {
+  const countryCode = normalizeCountryCode(data.country_code);
+  const country = data.country?.trim();
+  if (!data.success || !country || !countryCode) return null;
+
+  const timezone =
+    typeof data.timezone === "string" ? data.timezone : data.timezone?.id;
+
+  return {
+    city: data.city?.trim() || "—",
+    region: data.region?.trim() || "—",
+    regionCode: data.region_code?.trim() || "—",
+    country,
+    countryCode,
+    timezone: timezone?.trim() || "—",
+  };
+}
+
+function buildIpApiLocation(data: IpApiResponse): IpLocation | null {
+  const countryCode = normalizeCountryCode(data.country_code);
+  const country = data.country_name?.trim();
+  if (data.error || !country || !countryCode) return null;
+
+  return {
+    city: data.city?.trim() || "—",
+    region: data.region?.trim() || "—",
+    regionCode: data.region_code?.trim() || "—",
+    country,
+    countryCode,
+    timezone: data.timezone?.trim() || "—",
+  };
+}
+
+async function fetchIpWhoLocation(ip: string): Promise<IpLocation | null> {
+  const response = await fetch(
+    `https://ipwho.is/${encodeURIComponent(ip)}`,
+    {
+      signal: AbortSignal.timeout(3500),
+      headers: { Accept: "application/json" },
+    },
+  );
+  if (!response.ok) return null;
+  return buildIpWhoLocation((await response.json()) as IpWhoResponse);
+}
+
+async function fetchIpApiLocation(ip: string): Promise<IpLocation | null> {
+  const response = await fetch(
+    `https://ipapi.co/${encodeURIComponent(ip)}/json/`,
+    {
+      signal: AbortSignal.timeout(3500),
+      headers: { Accept: "application/json" },
+    },
+  );
+  if (!response.ok) return null;
+  return buildIpApiLocation((await response.json()) as IpApiResponse);
+}
+
+function selectIpLocation(
+  locations: Array<{ provider: string; location: IpLocation }>,
+  req: Request,
+): IpLocation | null {
+  if (locations.length === 0) return null;
+
+  const countryCounts = new Map<string, number>();
+  for (const { location } of locations) {
+    countryCounts.set(
+      location.countryCode,
+      (countryCounts.get(location.countryCode) ?? 0) + 1,
+    );
+  }
+
+  const consensusCode = Array.from(countryCounts.entries()).sort(
+    (left, right) => right[1] - left[1],
+  )[0]?.[0];
+  const consensus = locations.find(
+    ({ location }) => location.countryCode === consensusCode,
+  );
+
+  const distinctCodes = Array.from(countryCounts.keys());
+  if (distinctCodes.length > 1) {
+    req.log.warn(
+      { countryCodes: distinctCodes },
+      "IP geolocation providers disagree on country",
+    );
+  }
+
+  return consensus?.location ?? locations[0].location;
+}
+
+function getCachedIpLocation(ip: string): IpLocation | null {
+  const cached = ipLocationCache.get(ip);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    ipLocationCache.delete(ip);
+    return null;
+  }
+  return cached.location;
+}
+
+function cacheIpLocation(ip: string, location: IpLocation): void {
+  if (ipLocationCache.size >= IP_LOCATION_CACHE_MAX_SIZE) {
+    const oldestKey = ipLocationCache.keys().next().value;
+    if (oldestKey) ipLocationCache.delete(oldestKey);
+  }
+  ipLocationCache.set(ip, {
+    expiresAt: Date.now() + IP_LOCATION_CACHE_TTL_MS,
+    location,
+  });
+}
+
 export async function resolveAccessLocation(req: Request) {
   const ip = getClientIp(req);
 
@@ -84,38 +224,37 @@ export async function resolveAccessLocation(req: Request) {
     return localLocation();
   }
 
+  const cachedLocation = getCachedIpLocation(ip);
+  if (cachedLocation) {
+    return { source: "ip" as const, ...cachedLocation };
+  }
+
   try {
-    const response = await fetch(
-      `https://ipwho.is/${encodeURIComponent(ip)}`,
-      {
-        signal: AbortSignal.timeout(3500),
-        headers: { Accept: "application/json" },
-      },
-    );
+    const results = await Promise.allSettled([
+      fetchIpWhoLocation(ip).then((location) => ({ provider: "ipwho", location })),
+      fetchIpApiLocation(ip).then((location) => ({ provider: "ipapi", location })),
+    ]);
+    const locations = results
+      .filter(
+        (result): result is PromiseFulfilledResult<{
+          provider: string;
+          location: IpLocation | null;
+        }> => result.status === "fulfilled",
+      )
+      .map((result) => result.value)
+      .filter(
+        (result): result is { provider: string; location: IpLocation } =>
+          Boolean(result.location),
+      );
+    const selectedLocation = selectIpLocation(locations, req);
 
-    if (!response.ok) {
-      req.log.warn({ statusCode: response.status }, "IP geolocation service returned an error");
+    if (!selectedLocation) {
+      req.log.warn("IP geolocation providers could not resolve this address");
       return unavailableLocation();
     }
 
-    const data = (await response.json()) as IpWhoResponse;
-    const timezone =
-      typeof data.timezone === "string" ? data.timezone : data.timezone?.id;
-
-    if (!data.success || !data.country) {
-      req.log.warn("IP geolocation service could not resolve this address");
-      return unavailableLocation();
-    }
-
-    return {
-      source: "ip" as const,
-      city: data.city || "—",
-      region: data.region || "—",
-      regionCode: data.region_code || "—",
-      country: data.country,
-      countryCode: data.country_code || "—",
-      timezone: timezone || "—",
-    };
+    cacheIpLocation(ip, selectedLocation);
+    return { source: "ip" as const, ...selectedLocation };
   } catch (error) {
     req.log.warn({ err: error }, "IP geolocation lookup failed");
     return unavailableLocation();
