@@ -1,6 +1,7 @@
 // @ts-nocheck
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { SlidersHorizontal, ArrowLeft, X, ChevronDown, ChevronRight, Locate, Search, ScanFace, Plus, CircleUserRound, Pencil, CalendarDays, LogOut, Mail, MapPin } from "lucide-react";
+import { FaXTwitter } from "react-icons/fa6";
 import {
   useCreatePopPersonAction,
   useGetAccessLocation,
@@ -448,7 +449,7 @@ function AccountModal({ user, onClose, onLogout, isLoggingOut, logoutError, clos
           <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: "4px" }}>
             <strong data-testid="text-account-name" style={{ color: "#f5f5f5", fontSize: "15px", lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name || "Nome não informado"}</strong>
             <span data-testid="text-account-x-username" style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "#c7d2fe", fontSize: "12px", fontWeight: 700 }}>
-              <span aria-hidden="true" style={{ width: "18px", height: "18px", display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "5px", backgroundColor: "#2d2d2d", color: "#f5f5f5", fontSize: "11px", fontWeight: 800 }}>X</span>
+              <span aria-hidden="true" style={{ width: "18px", height: "18px", display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "5px", backgroundColor: "#2d2d2d", color: "#f5f5f5" }}><FaXTwitter size={11} /></span>
               {user.username ? `@${String(user.username).replace(/^@/, "")}` : "Perfil X não informado"}
             </span>
           </div>
