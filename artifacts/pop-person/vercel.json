@@ -3,5 +3,12 @@
   "framework": "vite",
   "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
   "buildCommand": "PORT=3000 BASE_PATH=/ pnpm run build",
-  "outputDirectory": "dist/public"
+  "outputDirectory": "dist/public",
+  "rewrites": [
+    { "source": "/privacy", "destination": "/" },
+    { "source": "/privacidade", "destination": "/" },
+    { "source": "/terms", "destination": "/" },
+    { "source": "/termos-de-servico", "destination": "/" },
+    { "source": "/:path*", "destination": "/" }
+  ]
 }
