@@ -50,6 +50,8 @@ const ADD_PLAYER_CELL_NAME = "__instapop_add_player__";
 const ADD_PLAYER_CELL_SCREEN_RADIUS = 30;
 const PLAYER_AUTO_FOCUS_DELAY_MS = 1500;
 const EMPTY_PLAYER_LOCATION = { city: "", region: "", country: "" };
+const PENDING_PLAYER_JOIN_STORAGE_KEY = "instapop:pending-player-join";
+const PENDING_PLAYER_JOIN_MAX_AGE_MS = 15 * 60 * 1000;
 
 function getSuggestedPlayerLocation(accessLocation) {
   if (accessLocation?.source !== "ip") return { ...EMPTY_PLAYER_LOCATION };
@@ -525,6 +527,8 @@ function AccountModal({ user, onClose, onLogout, isLoggingOut, logoutError, clos
 }
 
 function ConnectXModal({ onClose, onConnect, closeButtonRef }) {
+  const [hasAcceptedTerms, setHasAcceptedTerms] = useState(false);
+
   return (
     <div
       data-testid="connect-modal-backdrop"
@@ -541,8 +545,8 @@ function ConnectXModal({ onClose, onConnect, closeButtonRef }) {
       >
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
           <div style={{ minWidth: 0 }}>
-            <span id="connect-title" style={{ display: "block", color: "#fff", fontWeight: 800, fontSize: "18px", lineHeight: 1.2, letterSpacing: "-0.02em" }}>Conectar ao X</span>
-            <span id="connect-description" style={{ display: "block", marginTop: "5px", color: "#8f8f8f", fontSize: "12px", lineHeight: 1.45 }}>Conecte seu perfil para participar das interações do InstaPop.</span>
+            <span id="connect-title" style={{ display: "block", color: "#fff", fontWeight: 800, fontSize: "18px", lineHeight: 1.2, letterSpacing: "-0.02em" }}>Conectar e entrar na disputa</span>
+            <span id="connect-description" style={{ display: "block", marginTop: "5px", color: "#8f8f8f", fontSize: "12px", lineHeight: 1.45 }}>Conecte seu perfil X para criar sua participação no InstaPop.</span>
           </div>
           <button
             ref={closeButtonRef}
@@ -569,6 +573,21 @@ function ConnectXModal({ onClose, onConnect, closeButtonRef }) {
         <p style={{ margin: 0, color: "#a3a3a3", fontSize: "12px", lineHeight: 1.5 }}>
           Você será redirecionado para <strong style={{ color: "#e5e5e5" }}>x.com</strong> para autorizar a conexão com sua conta.
         </p>
+        <label style={{ display: "flex", alignItems: "flex-start", gap: "9px", color: "#a3a3a3", fontSize: "11px", lineHeight: 1.5, cursor: "pointer" }}>
+          <input
+            data-testid="checkbox-connect-player-terms"
+            type="checkbox"
+            checked={hasAcceptedTerms}
+            onChange={(event) => setHasAcceptedTerms(event.target.checked)}
+            style={{ width: "15px", height: "15px", margin: "1px 0 0", flexShrink: 0, accentColor: "#f5f5f5", cursor: "pointer" }}
+          />
+          <span>
+            Ao conectar sua conta X, você entra na disputa de popularidade. Declaro que li e concordo com os{" "}
+            <a href="/termos-de-servico" style={{ color: "#c7d2fe", fontWeight: 700 }}>Termos de Serviço</a>{" "}
+            e a{" "}
+            <a href="/privacidade" style={{ color: "#c7d2fe", fontWeight: 700 }}>Política de Privacidade</a>.
+          </span>
+        </label>
         <LegalLinks />
 
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -576,9 +595,10 @@ function ConnectXModal({ onClose, onConnect, closeButtonRef }) {
             data-testid="button-connect-x"
             type="button"
             onClick={onConnect}
-            style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", minHeight: "42px", padding: "10px 14px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", border: "none", fontSize: "12px", fontWeight: 800, cursor: "pointer" }}
+            disabled={!hasAcceptedTerms}
+            style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", minHeight: "42px", padding: "10px 14px", borderRadius: "9999px", backgroundColor: hasAcceptedTerms ? "#f5f5f5" : "#383838", color: hasAcceptedTerms ? "#0a0a0a" : "#8a8a8a", border: "none", fontSize: "12px", fontWeight: 800, cursor: hasAcceptedTerms ? "pointer" : "default", opacity: hasAcceptedTerms ? 1 : 0.72 }}
           >
-            Conectar com X
+            Conectar com X e entrar na disputa
           </button>
           <button
             data-testid="button-cancel-connect"
@@ -670,9 +690,12 @@ export default function PopPersonCanvas() {
   const idempotencyKeyRef = useRef(null);
   const idempotencyPayloadRef = useRef("");
   const playerLocationEditedRef = useRef(false);
+  const pendingAutoJoinRef = useRef(false);
+  const autoJoinSubmittedRef = useRef(false);
   const config = bootstrapQuery.data?.config;
+  const authenticatedUser = bootstrapQuery.data?.user ?? null;
   const canJoinAsPlayer = Boolean(
-    bootstrapQuery.data?.user && !bootstrapQuery.data?.player?.isPlayer,
+    authenticatedUser && !bootstrapQuery.data?.player?.isPlayer,
   );
   const playerName = bootstrapQuery.data?.player?.isPlayer
     ? bootstrapQuery.data.player.name?.trim() || bootstrapQuery.data.user?.name?.trim() || null
@@ -1697,12 +1720,12 @@ export default function PopPersonCanvas() {
   }, [queue.length > 0, activeActions.length > 0]);
   useEffect(() => { if (queue.length === 0 && activeActions.length === 0) setShowQueueModal(false); }, [queue.length, activeActions.length]);
 
-  const openPlayerSignup = useCallback(async () => {
+  const openPlayerSignup = useCallback(async ({ autoJoin = false } = {}) => {
     if (!canJoinAsPlayer || isJoiningPlayer || isLoadingPlayerRegistration) return;
     setShowPlayerSignup(true);
     setIsLoadingPlayerRegistration(true);
     setJoinPlayerError(null);
-    setHasAcceptedPlayerTerms(false);
+    setHasAcceptedPlayerTerms(autoJoin);
     setIsPlayerCategoryPickerOpen(false);
     setPlayerCategorySearch("");
     setExpandedPlayerCategoryIds(new Set());
@@ -1857,6 +1880,7 @@ export default function PopPersonCanvas() {
         throw new Error(payload?.error || "Não foi possível entrar na disputa. Tente novamente.");
       }
       await Promise.all([bootstrapQuery.refetch(), stateQuery.refetch()]);
+      pendingAutoJoinRef.current = false;
       setShowPlayerSignup(false);
     } catch (error) {
       pendingPlayerFocusRef.current = false;
@@ -1865,6 +1889,64 @@ export default function PopPersonCanvas() {
       setIsJoiningPlayer(false);
     }
   }, [bootstrapQuery.refetch, canJoinAsPlayer, hasAcceptedPlayerTerms, isJoiningPlayer, playerCategoryId, playerLocation, playerLocationComplete, stateQuery.refetch]);
+  useEffect(() => {
+    if (!authenticatedUser || pendingAutoJoinRef.current) return;
+    if (!canJoinAsPlayer) {
+      try {
+        window.sessionStorage.removeItem(PENDING_PLAYER_JOIN_STORAGE_KEY);
+      } catch {
+        // Ignore storage restrictions; the authenticated state is authoritative.
+      }
+      return;
+    }
+    let shouldAutoJoin = false;
+    try {
+      const storedIntent = window.sessionStorage.getItem(PENDING_PLAYER_JOIN_STORAGE_KEY);
+      if (storedIntent) {
+        window.sessionStorage.removeItem(PENDING_PLAYER_JOIN_STORAGE_KEY);
+        if (storedIntent === "1") {
+          shouldAutoJoin = true;
+        } else {
+          const createdAt = Number(JSON.parse(storedIntent)?.createdAt);
+          shouldAutoJoin = Number.isFinite(createdAt)
+            && Date.now() - createdAt >= 0
+            && Date.now() - createdAt <= PENDING_PLAYER_JOIN_MAX_AGE_MS;
+        }
+      }
+    } catch {
+      shouldAutoJoin = false;
+    }
+    if (!shouldAutoJoin) return;
+
+    pendingAutoJoinRef.current = true;
+    autoJoinSubmittedRef.current = false;
+    void openPlayerSignup({ autoJoin: true });
+  }, [authenticatedUser, canJoinAsPlayer, openPlayerSignup]);
+  useEffect(() => {
+    if (
+      !pendingAutoJoinRef.current
+      || autoJoinSubmittedRef.current
+      || !showPlayerSignup
+      || isLoadingPlayerRegistration
+      || !playerRegistration
+      || !playerCategoryId
+      || !playerLocationComplete
+      || !hasAcceptedPlayerTerms
+      || isJoiningPlayer
+    ) return;
+
+    autoJoinSubmittedRef.current = true;
+    void joinPlayer();
+  }, [
+    hasAcceptedPlayerTerms,
+    isJoiningPlayer,
+    isLoadingPlayerRegistration,
+    joinPlayer,
+    playerCategoryId,
+    playerLocationComplete,
+    playerRegistration,
+    showPlayerSignup,
+  ]);
   const selectCell = useCallback((name) => {
     if (name === ADD_PLAYER_CELL_NAME) {
       void openPlayerSignup();
@@ -2643,7 +2725,6 @@ export default function PopPersonCanvas() {
   const closeButtonStyle = { width: "26px", height: "26px", borderRadius: "9999px", backgroundColor: "#262626", color: "#a3a3a3", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" };
   const selectedInitials = selectedCellData ? selectedCellData.name.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase() : "";
   const actionWasRateLimited = createActionMutation.error?.status === 429;
-  const authenticatedUser = bootstrapQuery.data?.user ?? null;
 
   return (
     <div style={{ width: "100%", minHeight: "100vh", backgroundColor: "#0a0a0a", position: "relative" }}>
@@ -2744,6 +2825,14 @@ export default function PopPersonCanvas() {
         <ConnectXModal
           onClose={() => setShowConnectModal(false)}
           onConnect={() => {
+            try {
+              window.sessionStorage.setItem(
+                PENDING_PLAYER_JOIN_STORAGE_KEY,
+                JSON.stringify({ createdAt: Date.now() }),
+              );
+            } catch {
+              // The OAuth callback can still authenticate even if storage is unavailable.
+            }
             window.location.assign(getApiEndpoint("/api/auth/x/start?returnTo=/"));
           }}
           closeButtonRef={connectCloseButtonRef}

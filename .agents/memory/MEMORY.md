@@ -10,3 +10,4 @@
 - [Busca geográfica](geocoding-provider.md) — Open-Meteo foi aceito para localizar cidades globalmente; mantenha a busca mediada pelo backend.
 - [Perfil autenticado](authenticated-profile-contract.md) — dados de conta combinam perfil X com metadados persistidos; createdAt é responsabilidade do banco.
 - [Compatibilidade OpenAPI/Zod](openapi-zod-codegen-compatibility.md) — `format: uri` pode gerar `zod.url()` incompatível com a versão de Zod resolvida no workspace.
+- [Entrada durante OAuth](unified-player-oauth-flow.md) — aceite inicia uma intenção temporária; o callback conclui a entrada ou pede só os dados ausentes.
