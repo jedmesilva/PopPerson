@@ -214,6 +214,7 @@ async function getDataset(roomId: string): Promise<PopPerson[]> {
          gender: peopleTable.gender,
         status: peopleTable.status,
          imageUrl: peopleTable.imageUrl,
+         xUsername: usersTable.username,
         cidade: locationsTable.city,
         estado: locationsTable.state,
         estadoCodigo: locationsTable.stateCode,
@@ -226,6 +227,7 @@ async function getDataset(roomId: string): Promise<PopPerson[]> {
       .innerJoin(peopleTable, eq(cellsTable.personId, peopleTable.id))
       .innerJoin(categoriesTable, eq(peopleTable.categoryId, categoriesTable.id))
       .leftJoin(locationsTable, eq(peopleTable.locationId, locationsTable.id))
+      .leftJoin(usersTable, eq(peopleTable.playerUserId, usersTable.id))
       .where(
         and(
           eq(cellsTable.roomId, roomId),
@@ -302,6 +304,10 @@ async function getDataset(roomId: string): Promise<PopPerson[]> {
       value: toNumber(person.value),
       color: person.color,
        imageUrl: person.imageUrl ?? null,
+       xUsername: person.xUsername ?? null,
+       xProfileUrl: person.xUsername
+         ? `https://x.com/${encodeURIComponent(person.xUsername)}`
+         : null,
     };
   });
 }

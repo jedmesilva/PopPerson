@@ -91,6 +91,16 @@ export interface PopPerson {
      * @nullable
      */
   imageUrl: string | null;
+  /**
+     * X username for a player-linked profile, without the @ prefix.
+     * @nullable
+     */
+  xUsername: string | null;
+  /**
+     * Public X profile URL for a player-linked profile.
+     * @nullable
+     */
+  xProfileUrl: string | null;
 }
 
 export type PopPersonElementGender = typeof PopPersonElementGender[keyof typeof PopPersonElementGender];

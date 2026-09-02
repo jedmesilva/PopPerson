@@ -3274,6 +3274,50 @@ export default function PopPersonCanvas() {
             {selectedCellData && (
                  <div style={{ position: "relative", width: "100%", aspectRatio: "1 / 1", borderRadius: "10px", overflow: "hidden", backgroundColor: selectedCellData.color }}>
                  <PersonVisual person={selectedCellData} alt={`Imagem de ${selectedCellData.name}`} style={{ position: "absolute", inset: 0 }} />
+                 {selectedCellData.xProfileUrl && selectedCellData.xUsername && (
+                   <a
+                     data-testid="link-selected-cell-x-profile"
+                     href={selectedCellData.xProfileUrl}
+                     target="_blank"
+                     rel="noopener noreferrer"
+                     aria-label={`Abrir perfil de @${String(selectedCellData.xUsername).replace(/^@/, "")} no X`}
+                     onClick={(event) => event.stopPropagation()}
+                     onMouseEnter={(event) => {
+                       event.currentTarget.style.backgroundColor = "rgba(15,15,15,0.94)";
+                       event.currentTarget.style.borderColor = "rgba(255,255,255,0.42)";
+                     }}
+                     onMouseLeave={(event) => {
+                       event.currentTarget.style.backgroundColor = "rgba(15,15,15,0.78)";
+                       event.currentTarget.style.borderColor = "rgba(255,255,255,0.18)";
+                     }}
+                     style={{
+                       position: "absolute",
+                       top: "10px",
+                       right: "10px",
+                       zIndex: 2,
+                       display: "inline-flex",
+                       alignItems: "center",
+                       gap: "6px",
+                       maxWidth: "calc(100% - 20px)",
+                       minHeight: "36px",
+                       padding: "0 11px",
+                       border: "1px solid rgba(255,255,255,0.18)",
+                       borderRadius: "9999px",
+                       backgroundColor: "rgba(15,15,15,0.78)",
+                       boxSizing: "border-box",
+                       color: "#f5f5f5",
+                       textDecoration: "none",
+                       backdropFilter: "blur(8px)",
+                       boxShadow: "0 4px 14px rgba(0,0,0,0.24)",
+                       transition: "background-color 140ms ease, border-color 140ms ease, transform 140ms ease",
+                     }}
+                   >
+                     <FaXTwitter size={13} aria-hidden="true" />
+                     <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#f5f5f5", fontSize: "11px", fontWeight: 700 }}>
+                       @{String(selectedCellData.xUsername).replace(/^@/, "")}
+                     </span>
+                   </a>
+                 )}
                 <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "16px 12px 12px", background: "linear-gradient(to top, rgba(0,0,0,0.88), rgba(0,0,0,0.5) 65%, transparent)", display: "flex", flexDirection: "column", gap: "6px" }}>
                    <div style={{ display: "flex", flexDirection: "column", gap: "1px", minWidth: 0 }}><span style={{ color: "rgba(255,255,255,0.65)", fontSize: "11px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedCellData.categoryPath.map((category) => category.name).join(" / ")}</span><span style={{ color: "#fff", fontSize: "16px", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedCellData.name}</span></div>
                   <div style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 }}><span style={{ color: "rgba(255,255,255,0.55)", fontSize: "9px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Localização</span><span style={{ color: "#fff", fontSize: "12px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedCellData.cidade}, {selectedCellData.estado} - {selectedCellData.pais}</span></div>

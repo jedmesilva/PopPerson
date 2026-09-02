@@ -323,7 +323,7 @@ components:
           type: number
     PopPerson:
       type: object
-      required: [name, category, categoryPath, gender, cidade, estado, estadoCodigo, pais, paisCodigo, status, value, color, imageUrl]
+      required: [name, category, categoryPath, gender, cidade, estado, estadoCodigo, pais, paisCodigo, status, value, color, imageUrl, xUsername, xProfileUrl]
       properties:
         name:
           type: string
@@ -356,6 +356,12 @@ components:
         imageUrl:
           type: ["string", "null"]
           description: Optional person image URL. The client keeps the cell color as the fallback background.
+        xUsername:
+          type: ["string", "null"]
+          description: X username for a player-linked profile, without the @ prefix.
+        xProfileUrl:
+          type: ["string", "null"]
+          description: Public X profile URL for a player-linked profile.
     PopPersonCategory:
       type: object
       required: [id, name, slug, parentId]

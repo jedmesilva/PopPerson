@@ -199,7 +199,9 @@ export const GetPopPersonResponse = zod.object({
   "status": zod.enum(['titular', 'candidato']),
   "value": zod.number(),
   "color": zod.string(),
-  "imageUrl": zod.string().nullable().describe('Optional person image URL. The client keeps the cell color as the fallback background.')
+  "imageUrl": zod.string().nullable().describe('Optional person image URL. The client keeps the cell color as the fallback background.'),
+  "xUsername": zod.string().nullable().describe('X username for a player-linked profile, without the @ prefix.'),
+  "xProfileUrl": zod.string().nullable().describe('Public X profile URL for a player-linked profile.')
 })),
   "actions": zod.array(zod.object({
   "id": zod.string(),
@@ -293,7 +295,9 @@ export const JoinPopPersonAsPlayerResponse = zod.object({
   "status": zod.enum(['titular', 'candidato']),
   "value": zod.number(),
   "color": zod.string(),
-  "imageUrl": zod.string().nullable().describe('Optional person image URL. The client keeps the cell color as the fallback background.')
+  "imageUrl": zod.string().nullable().describe('Optional person image URL. The client keeps the cell color as the fallback background.'),
+  "xUsername": zod.string().nullable().describe('X username for a player-linked profile, without the @ prefix.'),
+  "xProfileUrl": zod.string().nullable().describe('Public X profile URL for a player-linked profile.')
 })
 })
 
@@ -410,7 +414,9 @@ export const GetPopPersonStateResponse = zod.object({
   "status": zod.enum(['titular', 'candidato']),
   "value": zod.number(),
   "color": zod.string(),
-  "imageUrl": zod.string().nullable().describe('Optional person image URL. The client keeps the cell color as the fallback background.')
+  "imageUrl": zod.string().nullable().describe('Optional person image URL. The client keeps the cell color as the fallback background.'),
+  "xUsername": zod.string().nullable().describe('X username for a player-linked profile, without the @ prefix.'),
+  "xProfileUrl": zod.string().nullable().describe('Public X profile URL for a player-linked profile.')
 })),
   "actions": zod.array(zod.object({
   "id": zod.string(),
