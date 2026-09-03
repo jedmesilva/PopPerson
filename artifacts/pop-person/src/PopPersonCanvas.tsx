@@ -1176,7 +1176,14 @@ export default function PopPersonCanvas() {
         serverDatasetRef.current = serverDatasetRef.current.map((person) => (
           person.name === targetName ? { ...person, value: finalValue } : person
         ));
+        pendingRadiusAnimationsRef.current.add(targetName);
+        setDataset((prev) => prev.map((person) => (
+          person.name === targetName ? { ...person, value: finalValue } : person
+        )));
       }
+      // The server has already committed the complete action. Remove it from
+      // the HUD now; preserve only the short-lived impact ring on the canvas.
+      removeRealtimeAction(actionId, { preserveImpacts: true });
       realtimeDebug("action:authoritative-update", {
         eventId,
         actionId,
@@ -1194,6 +1201,10 @@ export default function PopPersonCanvas() {
       serverDatasetRef.current = serverDatasetRef.current.map((person) => (
         person.name === targetName ? { ...person, value: finalValue } : person
       ));
+      pendingRadiusAnimationsRef.current.add(targetName);
+      setDataset((prev) => prev.map((person) => (
+        person.name === targetName ? { ...person, value: finalValue } : person
+      )));
     }
     realtimeDebug("action:resolved", {
       eventId,
@@ -1312,7 +1323,7 @@ export default function PopPersonCanvas() {
         : Number.NaN;
     const value = Number.isFinite(eventValue) ? eventValue : resolvedValue;
     const alreadyVisualized = visualizedHitKeysRef.current.has(hitKey);
-    if (targetName && Number.isFinite(value) && !hasContinuousResolution) {
+    if (targetName && Number.isFinite(value)) {
       pendingRadiusAnimationsRef.current.add(targetName);
     }
     const eventVersion = Number(event?.stateVersion);
@@ -1322,11 +1333,13 @@ export default function PopPersonCanvas() {
         eventVersion,
       );
     }
-    // Resolved actions drive the radius continuously from the Canvas loop.
-    // Only commit the final value to React so intermediate hits do not cause
-    // the radius tween to chase a new layout target on every impact.
-    const shouldCommitDataset = !hasContinuousResolution || hitIndex >= totalCount;
-    if (targetName && Number.isFinite(value) && shouldCommitDataset) {
+    // Every confirmed hit changes the cell value immediately. The next
+    // animation frame sees the new layout radius and tweens to it, so the
+    // cell grows/shrinks as impacts land instead of only after a reload.
+    if (targetName && Number.isFinite(value)) {
+      serverDatasetRef.current = serverDatasetRef.current.map((person) => (
+        person.name === targetName ? { ...person, value } : person
+      ));
       setDataset((prev) => prev.map((person) => (
         person.name === targetName ? { ...person, value } : person
       )));
@@ -1536,9 +1549,9 @@ export default function PopPersonCanvas() {
       setActiveActions((prev) => {
         const next = prev.filter((action) => {
           if (incomingActionIds.has(action.id)) return true;
-          if (deferredCompletedActionIdsRef.current.has(action.id)) return true;
-          return projectilesRef.current.some((projectile) => projectile.firingId === action.id)
-            || impactsRef.current.some((impact) => impact.actionId === action.id);
+          // Completed actions may keep canvas-only effects for a few frames,
+          // but they must not remain visible in the pill or action list.
+          return false;
         });
         activeActionIdsRef.current = next.map((action) => action.id);
         return next;
