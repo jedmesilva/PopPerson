@@ -1,5 +1,6 @@
 import type { RequestHandler } from "express";
 import { getClientIp } from "../lib/client-ip";
+import { incrementMetric } from "../lib/runtime-metrics";
 
 type RateLimitOptions = {
   name: string;
@@ -43,6 +44,7 @@ export function rateLimit(options: RateLimitOptions): RequestHandler {
     );
 
     if (limitedBucket) {
+      incrementMetric(`rate_limit.${options.name}.rejected`);
       const retryAfter = Math.max(
         1,
         Math.ceil((limitedBucket.resetAt - now) / 1000),
@@ -64,6 +66,7 @@ export function rateLimit(options: RateLimitOptions): RequestHandler {
     currentBuckets.forEach((bucket) => {
       bucket.count += 1;
     });
+    incrementMetric(`rate_limit.${options.name}.accepted`);
     const resetAt = Math.min(...currentBuckets.map((bucket) => bucket.resetAt));
     res.setHeader("X-RateLimit-Limit", options.max);
     res.setHeader(

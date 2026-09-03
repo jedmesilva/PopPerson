@@ -12,6 +12,11 @@ import {
   POP_PERSON_REALTIME_CHANNEL,
 } from "../lib/pop-person";
 import { logger } from "../lib/logger";
+import {
+  incrementMetric,
+  observeMetric,
+  setMetric,
+} from "../lib/runtime-metrics";
 
 type PopPersonRealtimeMessage = {
   type:
@@ -44,10 +49,14 @@ function sendMessage(socket: WebSocket, message: PopPersonRealtimeMessage): void
   // It will receive a fresh snapshot after reconnecting instead of replaying
   // delayed impacts.
   if (socket.bufferedAmount > 1_000_000) {
+    incrementMetric("realtime.slow_connections");
     socket.close(1013, "Realtime client is too slow");
     return;
   }
-  socket.send(JSON.stringify(message));
+  const serialized = JSON.stringify(message);
+  socket.send(serialized);
+  incrementMetric("realtime.messages_sent");
+  incrementMetric("realtime.bytes_sent", Buffer.byteLength(serialized));
 }
 
 function broadcast(
@@ -155,6 +164,8 @@ async function handleNotificationBatch(
     );
 
     if (actions.length > 0) {
+      incrementMetric("realtime.effect_batches");
+      incrementMetric("realtime.effects_delivered", actions.length);
       const stateVersion = Math.max(
         ...actions.map(({ event }) => Number(event.stateVersion) || 0),
       );
@@ -261,6 +272,14 @@ export async function registerPopPersonRealtime(
   await listener.query(`LISTEN ${POP_PERSON_REALTIME_CHANNEL}`);
 
   webSocketServer.on("connection", async (socket) => {
+    incrementMetric("realtime.connections_opened");
+    setMetric("realtime.connections_active", webSocketServer.clients.size);
+    const connectedAt = Date.now();
+    socket.once("close", () => {
+      incrementMetric("realtime.connections_closed");
+      observeMetric("realtime.connection_ms", Date.now() - connectedAt);
+      setMetric("realtime.connections_active", webSocketServer.clients.size);
+    });
     try {
       sendMessage(socket, {
         type: "snapshot",
@@ -276,10 +295,12 @@ export async function registerPopPersonRealtime(
       try {
         const message = JSON.parse(rawMessage.toString());
         if (message?.type === "resume") {
+          incrementMetric("realtime.replay_requests");
           const requestedVersion = Number(message.stateVersion);
           if (!Number.isFinite(requestedVersion) || requestedVersion < 0) return;
           void getPopPersonRealtimeEventsSince(requestedVersion).then(async (replay) => {
             if (replay.hasMore) {
+              incrementMetric("realtime.replay_snapshots");
               sendMessage(socket, {
                 type: "snapshot",
                 state: await getPopPersonState(),
@@ -288,6 +309,7 @@ export async function registerPopPersonRealtime(
               return;
             }
             if (replay.events.length === 0) return;
+            incrementMetric("realtime.replay_effect_batches");
             sendMessage(socket, {
               type: "effects:batch",
               actions: replay.events,

@@ -42,6 +42,11 @@ import {
   isTimelineComplete,
 } from "@workspace/api-zod";
 import { logger } from "./logger";
+import {
+  incrementMetric,
+  observeMetric,
+  setMetric,
+} from "./runtime-metrics";
 
 const PROCESS_INTERVAL_MS = 500;
 // Keep each worker transaction short. A single action can contain thousands of
@@ -1027,6 +1032,7 @@ export async function createPopPersonAction(
   sessionId?: string,
   userId?: string,
 ): Promise<PopPersonAction> {
+  const acceptanceStartedAt = Date.now();
   const roomId = await getRoomId();
   const idempotencyKey = input.idempotencyKey ?? randomUUID();
   await ensureRoomMembership(roomId, sessionId);
@@ -1179,6 +1185,7 @@ export async function createPopPersonAction(
   });
 
   if (result.created) {
+    incrementMetric("actions.created");
     logger.info(
       {
         actionId: result.action.id,
@@ -1191,7 +1198,10 @@ export async function createPopPersonAction(
       },
       "PopPerson action queued",
     );
+  } else {
+    incrementMetric("actions.duplicates");
   }
+  observeMetric("api.action_accept_ms", Date.now() - acceptanceStartedAt);
   const [response] = await getActions(roomId, result.action.id);
   if (!response) throw new Error("Ação criada, mas não pôde ser carregada.");
   return response;
@@ -1213,6 +1223,8 @@ async function nextActionEventSequence(
 async function processDueActions(): Promise<void> {
   if (processing) return;
   processing = true;
+  incrementMetric("worker.cycles");
+  setMetric("worker.processing", 1);
 
   try {
     await db.transaction(async (tx) => {
@@ -1223,7 +1235,25 @@ async function processDueActions(): Promise<void> {
         lockResult as unknown as { rows?: Array<{ locked?: boolean | string }> }
       ).rows?.[0];
       const lockAcquired = lockRow?.locked === true || lockRow?.locked === "t";
-      if (!lockAcquired) return;
+      if (!lockAcquired) {
+        incrementMetric("worker.lock_contention");
+        return;
+      }
+
+      const [queueStats] = await tx
+        .select({
+          depth: sql<number>`count(*)::int`,
+          oldestAgeMs: sql<number>`
+            COALESCE(
+              EXTRACT(EPOCH FROM (now() - min(${actionsTable.scheduledFor}))) * 1000,
+              0
+            )
+          `,
+        })
+        .from(actionsTable)
+        .where(inArray(actionsTable.status, ["queued", "running"]));
+      setMetric("queue.depth", toNumber(queueStats?.depth));
+      setMetric("queue.oldest_age_ms", toNumber(queueStats?.oldestAgeMs));
 
       const now = new Date();
       const dueActions = await tx
@@ -1249,8 +1279,15 @@ async function processDueActions(): Promise<void> {
         )
         .orderBy(asc(actionsTable.scheduledFor))
         .limit(100);
+      incrementMetric("worker.due_actions", dueActions.length);
 
       for (const action of dueActions) {
+        const actionStartedAt = Date.now();
+        const actionWaitMs = Math.max(
+          0,
+          now.getTime() - action.scheduledFor.getTime(),
+        );
+        observeMetric("queue.wait_ms", actionWaitMs);
         const previousEvents = await tx
           .select({ eventType: actionEventsTable.eventType })
           .from(actionEventsTable)
@@ -1259,6 +1296,7 @@ async function processDueActions(): Promise<void> {
           (event) => event.eventType === "completed",
         );
         if (alreadyResolved) {
+          incrementMetric("worker.already_resolved");
           await tx
             .update(actionsTable)
             .set({
@@ -1339,6 +1377,8 @@ async function processDueActions(): Promise<void> {
           )
           .returning();
         if (!claimed) continue;
+        incrementMetric("actions.resolved");
+        observeMetric("worker.resolve_ms", Date.now() - actionStartedAt);
 
         const [completedRoom] = await tx
           .update(roomsTable)
@@ -1399,9 +1439,11 @@ async function processDueActions(): Promise<void> {
       }
     });
   } catch (error) {
+    incrementMetric("worker.failures");
     logger.error({ err: error }, "Failed to resolve PopPerson actions");
   } finally {
     processing = false;
+    setMetric("worker.processing", 0);
   }
 }
 
