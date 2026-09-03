@@ -78,7 +78,25 @@ export type PopPersonResolvedEvent = {
   stateVersion: number;
   resolvedAt: number;
 };
+export type PopPersonHitEvent = {
+  actionId: string;
+  hitIndex: number;
+  sequence: number;
+  hitAt: number;
+  occurredAt: number;
+  direction: PopPersonAction["mode"];
+  delta: number;
+  targetName: string;
+  value: number;
+  stateVersion: number;
+};
 export type PopPersonRealtimeNotification =
+  | {
+      type: "action:hit";
+      roomId: string;
+      actionId: string;
+      event: PopPersonHitEvent;
+    }
   | {
       type: "action:resolved";
       roomId: string;

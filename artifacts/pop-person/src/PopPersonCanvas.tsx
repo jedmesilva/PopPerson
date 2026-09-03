@@ -1206,41 +1206,6 @@ export default function PopPersonCanvas() {
   }, []);
   const startResolvedActionRef = useRef(startResolvedAction);
   useEffect(() => { startResolvedActionRef.current = startResolvedAction; }, [startResolvedAction]);
-  const enqueueHitEvent = useCallback((event) => {
-    if (!event?.actionId || !Number.isFinite(Number(event.hitIndex))) return;
-    const hitIndex = Math.max(1, Number(event.hitIndex));
-    const key = `${event.actionId}:${hitIndex}`;
-    const normalizedEvent = {
-      ...event,
-      hitIndex,
-      sequence: Number(event.sequence) || hitIndex + 2,
-    };
-    const emitter = emittersRef.current.find((item) => item.id === event.actionId);
-    const hitAt = Number(event.hitAt);
-    if (emitter && Number.isFinite(hitAt)) {
-      emitter.hitAtByIndex.set(hitIndex, hitAt);
-    }
-    // A late confirmation must still reconcile the authoritative cell, but
-    // can never create a second impact after the timeline already rendered it.
-    if (visualizedHitKeysRef.current.has(key)) {
-      pendingHitEventsRef.current.set(key, normalizedEvent);
-      realtimeDebug("hit:confirmation-late", {
-        actionId: event.actionId,
-        hitIndex,
-        stateVersion: event.stateVersion,
-      });
-      return;
-    }
-    if (queuedHitKeysRef.current.has(key)) return;
-    queuedHitKeysRef.current.add(key);
-    pendingHitEventsRef.current.set(key, normalizedEvent);
-    realtimeDebug("hit:confirmation-received", {
-      actionId: event.actionId,
-      hitIndex,
-      hitAt: Number.isFinite(hitAt) ? hitAt : null,
-      stateVersion: event.stateVersion,
-    });
-  }, []);
   const queueAction = useCallback((serverAction) => {
     if (!serverAction?.id) return;
     animationActionsRef.current.set(serverAction.id, serverAction);
@@ -1782,6 +1747,20 @@ export default function PopPersonCanvas() {
             queueAction(message.action);
             return;
           }
+          if (message?.type === "action:hit" && message.event) {
+            if (!acceptRealtimeSequence(message)) return;
+            // Apply confirmed hits immediately. The animation loop may already
+            // have rendered the projectile/impact locally, but the server hit
+            // is what commits the authoritative cell value.
+            commitVisualHit(message.event);
+            realtimeDebug("hit:realtime-delivered", {
+              actionId: message.event.actionId,
+              hitIndex: message.event.hitIndex,
+              value: message.event.value,
+              stateVersion: message.event.stateVersion,
+            });
+            return;
+          }
           if (
             message?.type === "action:resolved"
             && message.action
@@ -1789,6 +1768,15 @@ export default function PopPersonCanvas() {
           ) {
             if (!acceptRealtimeSequence(message)) return;
             startResolvedActionRef.current(message.action, message.event);
+            return;
+          }
+          if (message?.type === "action:completed" && message.actionId) {
+            if (!acceptRealtimeSequence(message)) return;
+            removeRealtimeAction(message.actionId, { preserveImpacts: true });
+            realtimeDebug("action:completed", {
+              actionId: message.actionId,
+              stateVersion: message.stateVersion,
+            });
             return;
           }
           if (message?.type === "action:queued" && message.action) {

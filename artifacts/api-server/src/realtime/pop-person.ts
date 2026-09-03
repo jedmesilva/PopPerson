@@ -2,6 +2,7 @@ import type { WebSocketServer, WebSocket } from "ws";
 import type { PopPersonState } from "@workspace/api-zod";
 import { pool } from "@workspace/db";
 import type {
+  PopPersonHitEvent,
   PopPersonResolvedEvent,
   PopPersonRealtimeNotification,
   PopPersonRealtimeOutboxEvent,
@@ -29,7 +30,9 @@ type PopPersonRealtimeMessage = {
     | "effects:batch"
     | "action:queued"
     | "action:started"
+    | "action:hit"
     | "action:resolved"
+    | "action:completed"
     | "action:cancelled"
     | "resync.required"
     | "clock:pong";
@@ -38,7 +41,7 @@ type PopPersonRealtimeMessage = {
   state?: PopPersonState;
   action?: Awaited<ReturnType<typeof getPopPersonAction>>;
   actionId?: string;
-  event?: PopPersonResolvedEvent;
+  event?: PopPersonHitEvent | PopPersonResolvedEvent;
   reason?: "outbox_gap" | "replay_too_large";
   actions?: Array<{
     action: Awaited<ReturnType<typeof getPopPersonAction>>;
@@ -192,6 +195,27 @@ async function deliverOutboxRows(
       }
       continue;
     }
+    if (payload.type === "action:hit") {
+      broadcast(webSocketServer, {
+        type: "action:hit",
+        actionId: payload.actionId,
+        event: payload.event,
+        stateVersion: payload.event.stateVersion,
+        sequence: row.sequence,
+        serverTime: Date.now(),
+      });
+      continue;
+    }
+    if (payload.type === "action:completed") {
+      broadcast(webSocketServer, {
+        type: "action:completed",
+        actionId: payload.actionId,
+        stateVersion: payload.stateVersion,
+        sequence: row.sequence,
+        serverTime: Date.now(),
+      });
+      continue;
+    }
     if (payload.type === "action:cancelled") {
       broadcast(webSocketServer, {
         type: "action:cancelled",
@@ -269,6 +293,23 @@ async function deliverOutboxRowsToSocket(
           serverTime: Date.now(),
         });
       }
+    } else if (payload.type === "action:hit") {
+      sendMessage(socket, {
+        type: "action:hit",
+        actionId: payload.actionId,
+        event: payload.event,
+        stateVersion: payload.event.stateVersion,
+        sequence: row.sequence,
+        serverTime: Date.now(),
+      });
+    } else if (payload.type === "action:completed") {
+      sendMessage(socket, {
+        type: "action:completed",
+        actionId: payload.actionId,
+        stateVersion: payload.stateVersion,
+        sequence: row.sequence,
+        serverTime: Date.now(),
+      });
     } else if (payload.type === "state:changed") {
       const snapshot = await getPopPersonRealtimeSnapshot();
       sendMessage(socket, {
