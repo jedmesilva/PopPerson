@@ -6,6 +6,7 @@ import {
   eq,
   inArray,
   lte,
+  gt,
   sql,
   type SQL,
 } from "drizzle-orm";
@@ -73,7 +74,13 @@ export type PopPersonRealtimeNotification =
       event: PopPersonResolvedEvent;
     }
   | {
-      type: "action:completed" | "action:cancelled";
+      type: "action:completed";
+      roomId: string;
+      actionId: string;
+      stateVersion?: number;
+    }
+  | {
+      type: "action:cancelled";
       roomId: string;
       actionId: string;
       stateVersion?: number;
@@ -104,6 +111,7 @@ let defaultRoomId: string | null = null;
 let initializationPromise: Promise<void> | null = null;
 let processorTimer: NodeJS.Timeout | null = null;
 let processing = false;
+let processorStarted = false;
 
 type SqlExecutor = {
   execute(query: SQL): Promise<unknown>;
@@ -165,17 +173,30 @@ async function loadConfiguredRoom(): Promise<void> {
   defaultRoomId = room.id;
 }
 
-export async function initializePopPersonStore(): Promise<void> {
+export async function initializePopPersonStore(
+  options: { startWorker?: boolean } = {},
+): Promise<void> {
   if (!initializationPromise) {
-    initializationPromise = loadConfiguredRoom().then(async () => {
-      await processDueActions();
-      processorTimer = setInterval(() => {
-        void processDueActions();
-      }, PROCESS_INTERVAL_MS);
-      processorTimer.unref();
-    });
+    initializationPromise = loadConfiguredRoom();
   }
   await initializationPromise;
+  if (options.startWorker !== false) startPopPersonWorker();
+}
+
+export function startPopPersonWorker(): void {
+  if (processorStarted) return;
+  processorStarted = true;
+  void processDueActions();
+  processorTimer = setInterval(() => {
+    void processDueActions();
+  }, PROCESS_INTERVAL_MS);
+  processorTimer.unref();
+}
+
+export function stopPopPersonWorker(): void {
+  if (processorTimer) clearInterval(processorTimer);
+  processorTimer = null;
+  processorStarted = false;
 }
 
 async function getRoomId(): Promise<string> {
@@ -515,6 +536,62 @@ export async function getPopPersonAction(
 ): Promise<PopPersonAction | null> {
   const [action] = await getActions(roomId, actionId);
   return action ?? null;
+}
+
+export type PopPersonRealtimeReplayEvent = {
+  action: PopPersonAction;
+  event: PopPersonResolvedEvent;
+};
+
+export async function getPopPersonRealtimeEventsSince(
+  stateVersion: number,
+): Promise<{ events: PopPersonRealtimeReplayEvent[]; hasMore: boolean }> {
+  const roomId = await getRoomId();
+  const limit = 500;
+  const rows = await db
+    .select({
+      actionId: actionEventsTable.actionId,
+      stateVersion: actionEventsTable.stateVersion,
+      payload: actionEventsTable.payload,
+      occurredAt: actionEventsTable.occurredAt,
+    })
+    .from(actionEventsTable)
+    .where(
+      and(
+        eq(actionEventsTable.roomId, roomId),
+        eq(actionEventsTable.eventType, "completed"),
+        gt(actionEventsTable.stateVersion, String(Math.max(0, stateVersion))),
+      ),
+    )
+    .orderBy(asc(actionEventsTable.stateVersion))
+    .limit(limit);
+
+  const events = (
+    await Promise.all(
+      rows.map(async (row) => {
+        const action = await getPopPersonAction(roomId, row.actionId);
+        if (!action || !row.payload) return null;
+        const payload = row.payload;
+        const event: PopPersonResolvedEvent = {
+          eventId: String(payload.eventId ?? `${row.actionId}:${row.stateVersion}`),
+          actionId: row.actionId,
+          hitCount: Math.max(1, snapshotNumber(payload.hitCount, "value", 1)),
+          direction: payload.direction === "defender" ? "defender" : "atacar",
+          delta: toNumber(payload.delta),
+          targetName: String(payload.targetName ?? action.targetName),
+          previousValue: toNumber(payload.previousValue),
+          finalValue: toNumber(payload.finalValue),
+          durationMs: Math.max(0, toNumber(payload.durationMs)),
+          intervalMs: Math.max(0, toNumber(payload.intervalMs)),
+          stateVersion: toNumber(row.stateVersion),
+          resolvedAt: toTimestampMs(payload.resolvedAt) ?? row.occurredAt.getTime(),
+        };
+        return { action, event };
+      }),
+    )
+  ).filter((entry): entry is PopPersonRealtimeReplayEvent => Boolean(entry));
+
+  return { events, hasMore: rows.length === limit };
 }
 
 async function currentState(roomId: string): Promise<PopPersonState> {
@@ -1292,6 +1369,7 @@ async function processDueActions(): Promise<void> {
           roomId: claimed.roomId,
           cellId: claimed.cellId,
           sequence: await nextActionEventSequence(tx, claimed.id),
+          stateVersion: String(stateVersion),
           eventType: "completed",
           status: "completed",
           deltaValue: String(resolvedEvent.finalValue - resolvedEvent.previousValue),

@@ -3,8 +3,11 @@ export {
   getPopPersonAction,
   getPopPersonBootstrap,
   getPopPersonState,
+  getPopPersonRealtimeEventsSince,
   getPlayerRegistration,
   initializePopPersonStore,
+  startPopPersonWorker,
+  stopPopPersonWorker,
   joinPopPersonAsPlayer,
 } from "./pop-person-store";
 export {
@@ -13,4 +16,5 @@ export {
 export type {
   PopPersonResolvedEvent,
   PopPersonRealtimeNotification,
+  PopPersonRealtimeReplayEvent,
 } from "./pop-person-store";

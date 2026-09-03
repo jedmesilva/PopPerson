@@ -1615,6 +1615,10 @@ export default function PopPersonCanvas() {
 
       nextSocket.onopen = () => {
         setIsRealtimeConnected(true);
+        nextSocket.send(JSON.stringify({
+          type: "resume",
+          stateVersion: Math.max(0, latestServerStateVersionRef.current),
+        }));
         const clientTime = performance.now();
         nextSocket.send(JSON.stringify({ type: "clock:ping", clientTime }));
         clockTimer = window.setInterval(() => {
@@ -1642,6 +1646,14 @@ export default function PopPersonCanvas() {
           if (Number.isFinite(Number(message?.serverTime))) {
             syncServerClock(message.serverTime);
           }
+          if (message?.type === "effects:batch" && Array.isArray(message.actions)) {
+            message.actions.forEach((delivery) => {
+              if (delivery?.action && delivery?.event) {
+                startResolvedActionRef.current(delivery.action, delivery.event);
+              }
+            });
+            return;
+          }
           if (
             message?.type === "action:resolved"
             && message.action
@@ -1657,7 +1669,12 @@ export default function PopPersonCanvas() {
           }
           if (message?.type === "snapshot") {
             if (!message?.state?.dataset || !Array.isArray(message.state.actions)) return;
-            reconcileServerState(message.state, { resetVisuals: true });
+            reconcileServerState(message.state, {
+              // Only the initial socket snapshot should reset the visual
+              // timeline. Later snapshots update global state without
+              // interrupting effects that are already being rendered.
+              resetVisuals: !serverStateHydratedRef.current,
+            });
             return;
           }
           if (!message?.state?.dataset || !Array.isArray(message.state.actions)) return;
