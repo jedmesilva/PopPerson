@@ -588,7 +588,6 @@ function ConnectXModal({ onClose, onConnect, closeButtonRef }) {
             <a href="/privacidade" style={{ color: "#c7d2fe", fontWeight: 700 }}>Política de Privacidade</a>.
           </span>
         </label>
-        <LegalLinks />
 
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
           <button
