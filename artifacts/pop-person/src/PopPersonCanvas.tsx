@@ -36,6 +36,7 @@ function deterministicUnit(seed) {
 
 const MODE_LABEL = { atacar: "Ataque", defender: "Defesa" };
 const MAX_CONCURRENT_PROJECTILES = 24;
+const MAX_CONCURRENT_IMPACTS = 96;
 const IMPACT_DURATION_MS = 350;
 const PROJECTILE_MAX_LIFETIME_MS = 3000;
 const CIRCLE_GAP = 2.5;
@@ -965,6 +966,11 @@ export default function PopPersonCanvas() {
     clientPerfAt: performance.now(),
   });
   const impactsRef = useRef([]);
+  const visualEffectStatsRef = useRef({
+    droppedImpacts: 0,
+    aggregatedHits: 0,
+    lastReportedAt: 0,
+  });
   const pendingRadiusAnimationsRef = useRef(new Set());
   const pendingPlayerFocusRef = useRef(false);
   const playerFocusTimeoutRef = useRef(null);
@@ -978,6 +984,9 @@ export default function PopPersonCanvas() {
   const processedRealtimeEventIdsRef = useRef(new Set());
   const locallyCreatedActionIdsRef = useRef(new Set());
   const latestServerStateVersionRef = useRef(-1);
+  const latestRealtimeSequenceRef = useRef(-1);
+  const realtimeResyncInFlightRef = useRef(false);
+  const realtimeSequenceGapCountRef = useRef(0);
   const serverStateHydratedRef = useRef(false);
   const lastRealtimeMetricsAtRef = useRef(0);
   const transformRef = useRef({ x: 0, y: 0, scale: 1 });
@@ -1374,7 +1383,7 @@ export default function PopPersonCanvas() {
     const animatedTarget = targetName
       ? animatedCirclesRef.current.get(targetName)
       : null;
-    if (target) {
+    if (target && impactsRef.current.length < MAX_CONCURRENT_IMPACTS) {
       impactsRef.current.push({
         actionId,
         targetName,
@@ -1387,6 +1396,12 @@ export default function PopPersonCanvas() {
         startTime: performance.now(),
         duration: IMPACT_DURATION_MS,
       });
+    } else if (target) {
+      // Impact rings are cosmetic. Preserve the authoritative hit count and
+      // radius progression while folding excess rings into a metric instead
+      // of allowing a burst to grow an unbounded render list.
+      visualEffectStatsRef.current.droppedImpacts += 1;
+      visualEffectStatsRef.current.aggregatedHits += 1;
     }
     projectilesRef.current = projectilesRef.current.filter((projectile) => (
       projectile.firingId !== actionId || projectile.hitIndex !== hitIndex
@@ -1608,16 +1623,69 @@ export default function PopPersonCanvas() {
     let retryTimer;
     let clockTimer;
     let stopped = false;
+    let activeSocket = null;
+
+    function requestRealtimeResync(socketForResync) {
+      if (
+        !socketForResync
+        || socketForResync.readyState !== WebSocket.OPEN
+        || realtimeResyncInFlightRef.current
+      ) return;
+      realtimeResyncInFlightRef.current = true;
+      realtimeDebug("realtime:resync-requested", {
+        sequence: latestRealtimeSequenceRef.current,
+        gapCount: realtimeSequenceGapCountRef.current,
+      });
+      socketForResync.send(JSON.stringify({
+        type: "resume",
+        sequence: Math.max(0, latestRealtimeSequenceRef.current),
+      }));
+    }
+
+    function acceptRealtimeSequence(message) {
+      if (message?.type === "clock:pong") return true;
+      const sequence = Number(message?.sequence);
+      if (!Number.isFinite(sequence)) return true;
+      if (message?.type === "snapshot") {
+        latestRealtimeSequenceRef.current = Math.max(
+          latestRealtimeSequenceRef.current,
+          sequence,
+        );
+        realtimeResyncInFlightRef.current = false;
+        return true;
+      }
+
+      const sequenceStart = Number(message?.sequenceStart ?? sequence);
+      const expected = latestRealtimeSequenceRef.current + 1;
+      if (sequence <= latestRealtimeSequenceRef.current) {
+        realtimeDebug("realtime:duplicate-discarded", { sequence });
+        return false;
+      }
+      if (sequenceStart > expected) {
+        realtimeSequenceGapCountRef.current += 1;
+        realtimeDebug("realtime:sequence-gap", {
+          expected,
+          received: sequenceStart,
+          gapCount: realtimeSequenceGapCountRef.current,
+        });
+        requestRealtimeResync(activeSocket);
+        return false;
+      }
+      latestRealtimeSequenceRef.current = sequence;
+      realtimeResyncInFlightRef.current = false;
+      return true;
+    }
 
     function connect() {
       const nextSocket = new WebSocket(getWebSocketUrl());
       socket = nextSocket;
+      activeSocket = nextSocket;
 
       nextSocket.onopen = () => {
         setIsRealtimeConnected(true);
         nextSocket.send(JSON.stringify({
           type: "resume",
-          stateVersion: Math.max(0, latestServerStateVersionRef.current),
+          sequence: Math.max(0, latestRealtimeSequenceRef.current),
         }));
         const clientTime = performance.now();
         nextSocket.send(JSON.stringify({ type: "clock:ping", clientTime }));
@@ -1647,6 +1715,7 @@ export default function PopPersonCanvas() {
             syncServerClock(message.serverTime);
           }
           if (message?.type === "effects:batch" && Array.isArray(message.actions)) {
+            if (!acceptRealtimeSequence(message)) return;
             message.actions.forEach((delivery) => {
               if (delivery?.action && delivery?.event) {
                 startResolvedActionRef.current(delivery.action, delivery.event);
@@ -1659,16 +1728,24 @@ export default function PopPersonCanvas() {
             && message.action
             && message.event
           ) {
+            if (!acceptRealtimeSequence(message)) return;
             startResolvedActionRef.current(message.action, message.event);
             return;
           }
+          if (message?.type === "action:queued" && message.action) {
+            if (!acceptRealtimeSequence(message)) return;
+            queueAction(message.action);
+            return;
+          }
           if (message?.type === "action:cancelled" && message.actionId) {
+            if (!acceptRealtimeSequence(message)) return;
             removeRealtimeAction(message.actionId, { preserveImpacts: true });
             realtimeDebug("action:cancelled", { actionId: message.actionId });
             return;
           }
           if (message?.type === "snapshot") {
             if (!message?.state?.dataset || !Array.isArray(message.state.actions)) return;
+             if (!acceptRealtimeSequence(message)) return;
             reconcileServerState(message.state, {
               // Only the initial socket snapshot should reset the visual
               // timeline. Later snapshots update global state without
@@ -1687,6 +1764,8 @@ export default function PopPersonCanvas() {
 
       nextSocket.onclose = () => {
         setIsRealtimeConnected(false);
+        if (activeSocket === nextSocket) activeSocket = null;
+        realtimeResyncInFlightRef.current = false;
         window.clearInterval(clockTimer);
         if (!stopped) retryTimer = window.setTimeout(connect, 2000);
       };
@@ -1704,6 +1783,7 @@ export default function PopPersonCanvas() {
   }, [
     config,
     removeRealtimeAction,
+    queueAction,
     reconcileServerState,
     syncServerClock,
   ]);
@@ -2404,6 +2484,8 @@ export default function PopPersonCanvas() {
           count: projectilesRef.current.length,
           oldestAgeMs: Math.round(oldestProjectile),
           actionCount: emittersRef.current.length,
+          droppedImpacts: visualEffectStatsRef.current.droppedImpacts,
+          aggregatedHits: visualEffectStatsRef.current.aggregatedHits,
         });
         lastRealtimeMetricsAtRef.current = now;
       }

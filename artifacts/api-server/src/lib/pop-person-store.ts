@@ -5,8 +5,10 @@ import {
   desc,
   eq,
   inArray,
+  isNotNull,
   lte,
   gt,
+  lt,
   sql,
   type SQL,
 } from "drizzle-orm";
@@ -21,6 +23,7 @@ import {
   itemsTable,
   locationsTable,
   peopleTable,
+  realtimeOutboxTable,
   roomMembersTable,
   roomsTable,
   usersTable,
@@ -79,6 +82,12 @@ export type PopPersonRealtimeNotification =
       event: PopPersonResolvedEvent;
     }
   | {
+      type: "action:queued";
+      roomId: string;
+      actionId: string;
+      stateVersion: number;
+    }
+  | {
       type: "action:completed";
       roomId: string;
       actionId: string;
@@ -123,12 +132,26 @@ type SqlExecutor = {
 };
 
 async function enqueueRealtimeNotification(
-  tx: SqlExecutor,
+  tx: SqlExecutor & {
+    insert(table: typeof realtimeOutboxTable): any;
+  },
   notification: PopPersonRealtimeNotification,
-): Promise<void> {
+): Promise<number> {
+  const [outboxEvent] = await tx
+    .insert(realtimeOutboxTable)
+    .values({
+      roomId: notification.roomId,
+      actionId: "actionId" in notification ? notification.actionId : null,
+      topic: notification.type,
+      payload: notification as unknown as Record<string, unknown>,
+      retentionUntil: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    })
+    .returning({ sequence: realtimeOutboxTable.sequence });
+  const sequence = toNumber(outboxEvent?.sequence);
   await tx.execute(
-    sql`SELECT pg_notify(${POP_PERSON_REALTIME_CHANNEL}, ${JSON.stringify(notification)})`,
+    sql`SELECT pg_notify(${POP_PERSON_REALTIME_CHANNEL}, ${String(sequence)})`,
   );
+  return sequence;
 }
 
 function toNumber(value: unknown, fallback = 0): number {
@@ -543,60 +566,80 @@ export async function getPopPersonAction(
   return action ?? null;
 }
 
-export type PopPersonRealtimeReplayEvent = {
-  action: PopPersonAction;
-  event: PopPersonResolvedEvent;
+export type PopPersonRealtimeOutboxEvent = {
+  id: string;
+  sequence: number;
+  topic: string;
+  payload: Record<string, unknown>;
+  createdAt: Date;
 };
 
-export async function getPopPersonRealtimeEventsSince(
-  stateVersion: number,
-): Promise<{ events: PopPersonRealtimeReplayEvent[]; hasMore: boolean }> {
+export async function getPopPersonRealtimeSequence(): Promise<number> {
+  const [row] = await db
+    .select({
+      sequence: sql<number>`COALESCE(MAX(${realtimeOutboxTable.sequence}), 0)`,
+    })
+    .from(realtimeOutboxTable);
+  return toNumber(row?.sequence);
+}
+
+export async function getPopPersonRealtimeOutboxSince(
+  sequence: number,
+  limit = 500,
+): Promise<{ events: PopPersonRealtimeOutboxEvent[]; hasMore: boolean }> {
   const roomId = await getRoomId();
-  const limit = 500;
   const rows = await db
     .select({
-      actionId: actionEventsTable.actionId,
-      stateVersion: actionEventsTable.stateVersion,
-      payload: actionEventsTable.payload,
-      occurredAt: actionEventsTable.occurredAt,
+      id: realtimeOutboxTable.id,
+      sequence: realtimeOutboxTable.sequence,
+      topic: realtimeOutboxTable.topic,
+      payload: realtimeOutboxTable.payload,
+      createdAt: realtimeOutboxTable.createdAt,
     })
-    .from(actionEventsTable)
+    .from(realtimeOutboxTable)
     .where(
       and(
-        eq(actionEventsTable.roomId, roomId),
-        eq(actionEventsTable.eventType, "completed"),
-        gt(actionEventsTable.stateVersion, String(Math.max(0, stateVersion))),
+        eq(realtimeOutboxTable.roomId, roomId),
+        gt(realtimeOutboxTable.sequence, sequence),
       ),
     )
-    .orderBy(asc(actionEventsTable.stateVersion))
+    .orderBy(asc(realtimeOutboxTable.sequence))
     .limit(limit);
 
-  const events = (
-    await Promise.all(
-      rows.map(async (row) => {
-        const action = await getPopPersonAction(roomId, row.actionId);
-        if (!action || !row.payload) return null;
-        const payload = row.payload;
-        const event: PopPersonResolvedEvent = {
-          eventId: String(payload.eventId ?? `${row.actionId}:${row.stateVersion}`),
-          actionId: row.actionId,
-          hitCount: Math.max(1, snapshotNumber(payload.hitCount, "value", 1)),
-          direction: payload.direction === "defender" ? "defender" : "atacar",
-          delta: toNumber(payload.delta),
-          targetName: String(payload.targetName ?? action.targetName),
-          previousValue: toNumber(payload.previousValue),
-          finalValue: toNumber(payload.finalValue),
-          durationMs: Math.max(0, toNumber(payload.durationMs)),
-          intervalMs: Math.max(0, toNumber(payload.intervalMs)),
-          stateVersion: toNumber(row.stateVersion),
-          resolvedAt: toTimestampMs(payload.resolvedAt) ?? row.occurredAt.getTime(),
-        };
-        return { action, event };
-      }),
-    )
-  ).filter((entry): entry is PopPersonRealtimeReplayEvent => Boolean(entry));
+  return {
+    events: rows.map((row) => ({
+      ...row,
+      sequence: toNumber(row.sequence),
+    })),
+    hasMore: rows.length === limit,
+  };
+}
 
-  return { events, hasMore: rows.length === limit };
+export async function markPopPersonRealtimeOutboxPublished(
+  ids: string[],
+): Promise<void> {
+  if (ids.length === 0) return;
+  await db
+    .update(realtimeOutboxTable)
+    .set({
+      publishedAt: new Date(),
+      attemptCount: sql`${realtimeOutboxTable.attemptCount} + 1`,
+      lastError: null,
+    })
+    .where(inArray(realtimeOutboxTable.id, ids));
+}
+
+export async function cleanupPopPersonRealtimeOutbox(): Promise<number> {
+  const deleted = await db
+    .delete(realtimeOutboxTable)
+    .where(
+      and(
+        lt(realtimeOutboxTable.retentionUntil, new Date()),
+        isNotNull(realtimeOutboxTable.publishedAt),
+      ),
+    )
+    .returning({ id: realtimeOutboxTable.id });
+  return deleted.length;
 }
 
 async function currentState(roomId: string): Promise<PopPersonState> {
@@ -1177,10 +1220,26 @@ export async function createPopPersonAction(
     }
     if (!action) throw new Error("Não foi possível criar a ação.");
 
+    const [queuedRoom] = await tx
+      .update(roomsTable)
+      .set({
+        stateVersion: sql`${roomsTable.stateVersion} + 1`,
+        updatedAt: now,
+      })
+      .where(eq(roomsTable.id, roomId))
+      .returning({ stateVersion: roomsTable.stateVersion });
+    const stateVersion = toNumber(queuedRoom?.stateVersion);
+    await enqueueRealtimeNotification(tx, {
+      type: "action:queued",
+      roomId,
+      actionId: action.id,
+      stateVersion,
+    });
+
     return {
       action,
       created: true,
-      stateVersion: null,
+      stateVersion,
     };
   });
 
@@ -1220,7 +1279,333 @@ async function nextActionEventSequence(
   return String(toNumber(lastEvent?.sequence, 0) + 1);
 }
 
+type DueActionCandidate = {
+  id: string;
+  cellId: string;
+  scheduledFor: Date;
+};
+
+type ClaimedDueAction = {
+  id: string;
+  roomId: string;
+  cellId: string;
+  mode: PopPersonAction["mode"];
+  scheduledFor: Date;
+  effectiveImpact: string | null;
+  ruleSnapshot: Record<string, unknown>;
+  targetName: string;
+};
+
+const WORKER_CONCURRENCY = Math.max(
+  1,
+  Math.min(32, Number(process.env.POP_PERSON_WORKER_CONCURRENCY ?? 8)),
+);
+
+async function resolveDueAction(
+  candidate: DueActionCandidate,
+): Promise<boolean> {
+  const actionStartedAt = Date.now();
+  return db.transaction(async (tx) => {
+    const lockResult = await tx.execute(
+      sql`SELECT pg_try_advisory_xact_lock(hashtextextended(${candidate.cellId}, 0)) AS locked`,
+    );
+    const lockRow = (
+      lockResult as unknown as { rows?: Array<{ locked?: boolean | string }> }
+    ).rows?.[0];
+    const lockAcquired = lockRow?.locked === true || lockRow?.locked === "t";
+    if (!lockAcquired) {
+      incrementMetric("worker.target_lock_contention");
+      return false;
+    }
+
+    const actionResult = await tx.execute(sql`
+      SELECT
+        a.id,
+        a.room_id AS "roomId",
+        a.cell_id AS "cellId",
+        a.mode,
+        a.scheduled_for AS "scheduledFor",
+        a.effective_impact AS "effectiveImpact",
+        a.rule_snapshot AS "ruleSnapshot",
+        p.name AS "targetName"
+      FROM actions a
+      INNER JOIN cells c ON c.id = a.cell_id
+      INNER JOIN people p ON p.id = c.person_id
+      WHERE a.id = ${candidate.id}
+        AND a.cell_id = ${candidate.cellId}
+        AND a.status IN ('queued', 'running')
+        AND a.scheduled_for <= now()
+      FOR UPDATE SKIP LOCKED
+    `);
+    const action = (
+      actionResult as unknown as { rows?: ClaimedDueAction[] }
+    ).rows?.[0];
+    if (!action) return false;
+
+    const now = new Date();
+    await tx
+      .update(actionsTable)
+      .set({
+        status: "running",
+        claimedAt: now,
+        claimedBy: process.env.POP_PERSON_WORKER_ID ?? "pop-person-worker",
+        attemptCount: sql`${actionsTable.attemptCount} + 1`,
+        lastError: null,
+        updatedAt: now,
+      })
+      .where(eq(actionsTable.id, action.id));
+    const previousEvents = await tx
+      .select({ eventType: actionEventsTable.eventType })
+      .from(actionEventsTable)
+      .where(eq(actionEventsTable.actionId, action.id));
+    const alreadyResolved = previousEvents.some(
+      (event) => event.eventType === "completed",
+    );
+    if (alreadyResolved) {
+      incrementMetric("worker.already_resolved");
+      await tx
+        .update(actionsTable)
+        .set({
+          status: "completed",
+          completedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(actionsTable.id, action.id));
+      return true;
+    }
+
+    const hitCount = Math.max(
+      1,
+      Math.floor(snapshotNumber(action.ruleSnapshot, "count", 1)),
+    );
+    const previousHitCount = previousEvents.filter(
+      (event) => event.eventType === "hit",
+    ).length;
+    const remainingHitCount = Math.max(0, hitCount - previousHitCount);
+    const direction = action.mode === "defender" ? 1 : -1;
+    const growthPerHit = snapshotNumber(
+      action.ruleSnapshot,
+      "growthPerHit",
+      toNumber(action.effectiveImpact) / hitCount,
+    );
+    const delta = growthPerHit * direction;
+    const durationMs = Math.max(
+      0,
+      snapshotNumber(action.ruleSnapshot, "durationMs", 0),
+    );
+    const intervalMs = Math.max(
+      0,
+      snapshotNumber(action.ruleSnapshot, "staggerMs", 0),
+    );
+
+    const [cell] = await tx
+      .select({
+        currentValue: cellsTable.currentValue,
+        minimumValue: cellsTable.minimumValue,
+      })
+      .from(cellsTable)
+      .where(eq(cellsTable.id, action.cellId))
+      .limit(1);
+    if (!cell) {
+      throw new Error(`Ação ${action.id} perdeu seu alvo durante a resolução.`);
+    }
+
+    const previousValue = toNumber(cell.currentValue);
+    const finalValue = Math.max(
+      toNumber(cell.minimumValue),
+      previousValue + delta * remainingHitCount,
+    );
+    const [updatedCell] = await tx
+      .update(cellsTable)
+      .set({
+        currentValue: String(finalValue),
+        stateVersion: sql`${cellsTable.stateVersion} + 1`,
+        updatedAt: now,
+      })
+      .where(eq(cellsTable.id, action.cellId))
+      .returning({ currentValue: cellsTable.currentValue });
+    if (!updatedCell) {
+      throw new Error(`Ação ${action.id} não conseguiu atualizar sua célula.`);
+    }
+
+    const [completed] = await tx
+      .update(actionsTable)
+      .set({
+        status: "completed",
+        completedAt: now,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(actionsTable.id, action.id),
+          inArray(actionsTable.status, ["queued", "running"]),
+        ),
+      )
+      .returning();
+    if (!completed) return false;
+
+    const [completedRoom] = await tx
+      .update(roomsTable)
+      .set({
+        stateVersion: sql`${roomsTable.stateVersion} + 1`,
+        updatedAt: now,
+      })
+      .where(eq(roomsTable.id, action.roomId))
+      .returning({ stateVersion: roomsTable.stateVersion });
+    const stateVersion = toNumber(completedRoom?.stateVersion);
+    const resolvedEvent: PopPersonResolvedEvent = {
+      eventId: action.id,
+      actionId: action.id,
+      hitCount,
+      direction: action.mode,
+      delta,
+      targetName: action.targetName,
+      previousValue,
+      finalValue: toNumber(updatedCell.currentValue),
+      durationMs,
+      intervalMs,
+      stateVersion,
+      resolvedAt: now.getTime(),
+    };
+
+    await tx.insert(actionEventsTable).values({
+      actionId: completed.id,
+      roomId: completed.roomId,
+      cellId: completed.cellId,
+      sequence: await nextActionEventSequence(tx, completed.id),
+      stateVersion: String(stateVersion),
+      eventType: "completed",
+      status: "completed",
+      deltaValue: String(resolvedEvent.finalValue - resolvedEvent.previousValue),
+      payload: {
+        kind: "action:resolved",
+        ...resolvedEvent,
+        resolvedAt: now.toISOString(),
+      },
+    });
+    await enqueueRealtimeNotification(tx, {
+      type: "action:resolved",
+      roomId: completed.roomId,
+      actionId: completed.id,
+      event: resolvedEvent,
+    });
+
+    incrementMetric("actions.resolved");
+    observeMetric("worker.resolve_ms", Date.now() - actionStartedAt);
+    observeMetric(
+      "queue.wait_ms",
+      Math.max(0, now.getTime() - action.scheduledFor.getTime()),
+    );
+    logger.info(
+      {
+        actionId: completed.id,
+        cellId: completed.cellId,
+        targetName: resolvedEvent.targetName,
+        hitCount: resolvedEvent.hitCount,
+        previousValue: resolvedEvent.previousValue,
+        finalValue: resolvedEvent.finalValue,
+        stateVersion,
+      },
+      "PopPerson action resolved",
+    );
+    return true;
+  });
+}
+
 async function processDueActions(): Promise<void> {
+  if (processing) return;
+  processing = true;
+  incrementMetric("worker.cycles");
+  setMetric("worker.processing", 1);
+
+  try {
+    const [queueStats] = await db
+      .select({
+        depth: sql<number>`count(*)::int`,
+        oldestAgeMs: sql<number>`
+          COALESCE(
+            EXTRACT(EPOCH FROM (now() - min(${actionsTable.scheduledFor}))) * 1000,
+            0
+          )
+        `,
+      })
+      .from(actionsTable)
+      .where(inArray(actionsTable.status, ["queued", "running"]));
+    setMetric("queue.depth", toNumber(queueStats?.depth));
+    setMetric("queue.oldest_age_ms", toNumber(queueStats?.oldestAgeMs));
+
+    const now = new Date();
+    const candidates = await db
+      .select({
+        id: actionsTable.id,
+        cellId: actionsTable.cellId,
+        scheduledFor: actionsTable.scheduledFor,
+      })
+      .from(actionsTable)
+      .where(
+        and(
+          inArray(actionsTable.status, ["queued", "running"]),
+          lte(actionsTable.scheduledFor, now),
+        ),
+      )
+      .orderBy(
+        asc(actionsTable.scheduledFor),
+        asc(actionsTable.requestedAt),
+        asc(actionsTable.id),
+      )
+      .limit(500);
+
+    const firstByCell = new Map<string, DueActionCandidate>();
+    candidates.forEach((candidate) => {
+      if (!firstByCell.has(candidate.cellId)) {
+        firstByCell.set(candidate.cellId, candidate);
+      }
+    });
+    const selected = [...firstByCell.values()].slice(0, WORKER_CONCURRENCY);
+    incrementMetric("worker.due_actions", selected.length);
+
+    await Promise.all(
+      selected.map(async (candidate) => {
+        try {
+          await resolveDueAction(candidate);
+        } catch (error) {
+          incrementMetric("worker.failures");
+          void db
+            .update(actionsTable)
+            .set({
+              status: "queued",
+              lastError: error instanceof Error ? error.message : String(error),
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(actionsTable.id, candidate.id),
+                eq(actionsTable.status, "running"),
+              ),
+            )
+            .catch((updateError) => {
+              logger.error(
+                { err: updateError, actionId: candidate.id },
+                "Failed to persist PopPerson retry state",
+              );
+            });
+          logger.error(
+            { err: error, actionId: candidate.id, cellId: candidate.cellId },
+            "Failed to resolve PopPerson action; it will be retried",
+          );
+        }
+      }),
+    );
+  } catch (error) {
+    incrementMetric("worker.failures");
+    logger.error({ err: error }, "Failed to poll PopPerson action queue");
+  } finally {
+    processing = false;
+    setMetric("worker.processing", 0);
+  }
+}
+
+async function processDueActionsLegacyLock(): Promise<void> {
   if (processing) return;
   processing = true;
   incrementMetric("worker.cycles");

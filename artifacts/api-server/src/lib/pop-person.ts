@@ -3,7 +3,10 @@ export {
   getPopPersonAction,
   getPopPersonBootstrap,
   getPopPersonState,
-  getPopPersonRealtimeEventsSince,
+  getPopPersonRealtimeOutboxSince,
+  getPopPersonRealtimeSequence,
+  markPopPersonRealtimeOutboxPublished,
+  cleanupPopPersonRealtimeOutbox,
   getPlayerRegistration,
   initializePopPersonStore,
   startPopPersonWorker,
@@ -16,5 +19,5 @@ export {
 export type {
   PopPersonResolvedEvent,
   PopPersonRealtimeNotification,
-  PopPersonRealtimeReplayEvent,
+  PopPersonRealtimeOutboxEvent,
 } from "./pop-person-store";

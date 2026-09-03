@@ -64,6 +64,10 @@ export const actionsTable = pgTable(
     activatedAt: timestamp("activated_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
+    claimedBy: text("claimed_by"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    lastError: text("last_error"),
     effectiveImpact: numeric("effective_impact", { precision: 14, scale: 6 }),
     priceCharged: numeric("price_charged", { precision: 14, scale: 2 }),
     ruleSnapshot: jsonb("rule_snapshot").$type<Record<string, unknown>>().notNull(),
@@ -84,6 +88,7 @@ export const actionsTable = pgTable(
     index("actions_cell_requested_at_idx").on(table.cellId, table.requestedAt),
     index("actions_source_cell_idx").on(table.sourceCellId),
     index("actions_scheduled_for_idx").on(table.status, table.scheduledFor),
+    index("actions_claimed_at_idx").on(table.status, table.claimedAt),
   ],
 );
 
