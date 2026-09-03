@@ -27,6 +27,7 @@ type PopPersonRealtimeMessage = {
     | "snapshot"
     | "effects:batch"
     | "action:queued"
+    | "action:started"
     | "action:resolved"
     | "action:cancelled"
     | "clock:pong";
@@ -130,6 +131,20 @@ async function deliverOutboxRows(
       }
       continue;
     }
+    if (payload.type === "action:started") {
+      const action = await getPopPersonAction(payload.roomId, payload.actionId);
+      if (action) {
+        broadcast(webSocketServer, {
+          type: "action:started",
+          action,
+          actionId: payload.actionId,
+          stateVersion: payload.stateVersion,
+          sequence: row.sequence,
+          serverTime: Date.now(),
+        });
+      }
+      continue;
+    }
     if (payload.type === "action:cancelled") {
       broadcast(webSocketServer, {
         type: "action:cancelled",
@@ -187,6 +202,18 @@ async function deliverOutboxRowsToSocket(
       if (action) {
         sendMessage(socket, {
           type: "action:queued",
+          action,
+          actionId: payload.actionId,
+          sequence: row.sequence,
+          stateVersion: payload.stateVersion,
+          serverTime: Date.now(),
+        });
+      }
+    } else if (payload.type === "action:started") {
+      const action = await getPopPersonAction(payload.roomId, payload.actionId);
+      if (action) {
+        sendMessage(socket, {
+          type: "action:started",
           action,
           actionId: payload.actionId,
           sequence: row.sequence,
@@ -269,6 +296,7 @@ export async function registerPopPersonRealtime(
     incrementMetric("realtime.connections_opened");
     setMetric("realtime.connections_active", webSocketServer.clients.size);
     const connectedAt = Date.now();
+    let replayChain = Promise.resolve();
     socket.once("close", () => {
       incrementMetric("realtime.connections_closed");
       observeMetric("realtime.connection_ms", Date.now() - connectedAt);
@@ -276,10 +304,12 @@ export async function registerPopPersonRealtime(
     });
 
     try {
+      const snapshotSequence = await getPopPersonRealtimeSequence();
+      const snapshotState = await getPopPersonState();
       sendMessage(socket, {
         type: "snapshot",
-        state: await getPopPersonState(),
-        sequence: await getPopPersonRealtimeSequence(),
+        state: snapshotState,
+        sequence: snapshotSequence,
         serverTime: Date.now(),
       });
     } catch (error) {
@@ -300,14 +330,21 @@ export async function registerPopPersonRealtime(
           const requestedSequence = Number(message.sequence ?? message.stateVersion);
           if (!Number.isFinite(requestedSequence) || requestedSequence < 0) return;
           incrementMetric("realtime.replay_requests");
-          void getPopPersonRealtimeOutboxSince(requestedSequence, 500)
+          replayChain = replayChain
+            .then(() => getPopPersonRealtimeOutboxSince(
+              requestedSequence,
+              500,
+              { detectGap: true },
+            ))
             .then(async (replay) => {
-              if (replay.hasMore) {
+              if (replay.gap || replay.hasMore) {
                 incrementMetric("realtime.replay_snapshots");
+                const snapshotSequence = await getPopPersonRealtimeSequence();
+                const snapshotState = await getPopPersonState();
                 sendMessage(socket, {
                   type: "snapshot",
-                  state: await getPopPersonState(),
-                  sequence: await getPopPersonRealtimeSequence(),
+                  state: snapshotState,
+                  sequence: snapshotSequence,
                   serverTime: Date.now(),
                 });
                 return;

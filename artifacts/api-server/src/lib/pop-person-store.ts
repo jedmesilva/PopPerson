@@ -82,6 +82,12 @@ export type PopPersonRealtimeNotification =
       event: PopPersonResolvedEvent;
     }
   | {
+      type: "action:started";
+      roomId: string;
+      actionId: string;
+      stateVersion: number;
+    }
+  | {
       type: "action:queued";
       roomId: string;
       actionId: string;
@@ -586,8 +592,21 @@ export async function getPopPersonRealtimeSequence(): Promise<number> {
 export async function getPopPersonRealtimeOutboxSince(
   sequence: number,
   limit = 500,
-): Promise<{ events: PopPersonRealtimeOutboxEvent[]; hasMore: boolean }> {
+  options: { detectGap?: boolean } = {},
+): Promise<{
+  events: PopPersonRealtimeOutboxEvent[];
+  hasMore: boolean;
+  gap: boolean;
+}> {
   const roomId = await getRoomId();
+  const [oldest] = options.detectGap
+    ? await db
+        .select({
+          sequence: sql<number>`MIN(${realtimeOutboxTable.sequence})`,
+        })
+        .from(realtimeOutboxTable)
+        .where(eq(realtimeOutboxTable.roomId, roomId))
+    : [];
   const rows = await db
     .select({
       id: realtimeOutboxTable.id,
@@ -612,6 +631,12 @@ export async function getPopPersonRealtimeOutboxSince(
       sequence: toNumber(row.sequence),
     })),
     hasMore: rows.length === limit,
+    gap: Boolean(
+      options.detectGap
+      && oldest?.sequence !== null
+      && oldest?.sequence !== undefined
+      && toNumber(oldest.sequence) > sequence + 1,
+    ),
   };
 }
 
@@ -1096,6 +1121,28 @@ export async function createPopPersonAction(
       if (existing) return { action: existing, created: false, stateVersion: null };
     }
 
+    const [globalBacklog] = await tx
+      .select({ count: sql<number>`count(*)::int` })
+      .from(actionsTable)
+      .where(inArray(actionsTable.status, ["queued", "running"]));
+    if (toNumber(globalBacklog?.count) >= MAX_ACTIVE_ACTIONS_GLOBAL) {
+      throw new Error("A fila global está temporariamente cheia. Tente novamente em instantes.");
+    }
+    if (sessionId) {
+      const [sessionBacklog] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(actionsTable)
+        .where(
+          and(
+            eq(actionsTable.sessionId, sessionId),
+            inArray(actionsTable.status, ["queued", "running"]),
+          ),
+        );
+      if (toNumber(sessionBacklog?.count) >= MAX_ACTIVE_ACTIONS_PER_SESSION) {
+        throw new Error("Você atingiu o limite de ações pendentes. Aguarde a resolução.");
+      }
+    }
+
     const [target] = await tx
       .select({
         cellId: cellsTable.id,
@@ -1290,7 +1337,9 @@ type ClaimedDueAction = {
   roomId: string;
   cellId: string;
   mode: PopPersonAction["mode"];
+  status: PopPersonAction["status"];
   scheduledFor: Date;
+  completesAt: Date;
   effectiveImpact: string | null;
   ruleSnapshot: Record<string, unknown>;
   targetName: string;
@@ -1299,6 +1348,14 @@ type ClaimedDueAction = {
 const WORKER_CONCURRENCY = Math.max(
   1,
   Math.min(32, Number(process.env.POP_PERSON_WORKER_CONCURRENCY ?? 8)),
+);
+const MAX_ACTIVE_ACTIONS_GLOBAL = Math.max(
+  100,
+  Number(process.env.POP_PERSON_MAX_ACTIVE_ACTIONS_GLOBAL ?? 10_000),
+);
+const MAX_ACTIVE_ACTIONS_PER_SESSION = Math.max(
+  1,
+  Number(process.env.POP_PERSON_MAX_ACTIVE_ACTIONS_PER_SESSION ?? 100),
 );
 
 async function resolveDueAction(
@@ -1324,7 +1381,9 @@ async function resolveDueAction(
         a.room_id AS "roomId",
         a.cell_id AS "cellId",
         a.mode,
+        a.status,
         a.scheduled_for AS "scheduledFor",
+        a.completes_at AS "completesAt",
         a.effective_impact AS "effectiveImpact",
         a.rule_snapshot AS "ruleSnapshot",
         p.name AS "targetName"
@@ -1343,17 +1402,8 @@ async function resolveDueAction(
     if (!action) return false;
 
     const now = new Date();
-    await tx
-      .update(actionsTable)
-      .set({
-        status: "running",
-        claimedAt: now,
-        claimedBy: process.env.POP_PERSON_WORKER_ID ?? "pop-person-worker",
-        attemptCount: sql`${actionsTable.attemptCount} + 1`,
-        lastError: null,
-        updatedAt: now,
-      })
-      .where(eq(actionsTable.id, action.id));
+    const scheduledFor = new Date(action.scheduledFor);
+    const completesAt = new Date(action.completesAt);
     const previousEvents = await tx
       .select({ eventType: actionEventsTable.eventType })
       .from(actionEventsTable)
@@ -1371,6 +1421,86 @@ async function resolveDueAction(
           updatedAt: now,
         })
         .where(eq(actionsTable.id, action.id));
+      return true;
+    }
+
+    if (
+      action.status === "running"
+      && completesAt.getTime() > now.getTime()
+    ) {
+      // A running action is the head of its target's serial stream. Do not
+      // resolve it before its persisted visual timeline has elapsed.
+      return false;
+    }
+
+    if (action.status === "queued") {
+      const [started] = await tx
+        .update(actionsTable)
+        .set({
+          status: "running",
+          activatedAt: scheduledFor,
+          claimedAt: now,
+          claimedBy: process.env.POP_PERSON_WORKER_ID ?? "pop-person-worker",
+          attemptCount: sql`${actionsTable.attemptCount} + 1`,
+          lastError: null,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(actionsTable.id, action.id),
+            eq(actionsTable.status, "queued"),
+          ),
+        )
+        .returning();
+      if (!started) return false;
+
+      const stateUpdate = await tx
+        .update(roomsTable)
+        .set({
+          stateVersion: sql`${roomsTable.stateVersion} + 1`,
+          updatedAt: now,
+        })
+        .where(eq(roomsTable.id, action.roomId))
+        .returning({ stateVersion: roomsTable.stateVersion });
+      const stateVersion = toNumber(stateUpdate[0]?.stateVersion);
+      const startedSequence = await nextActionEventSequence(tx, action.id);
+      await tx.insert(actionEventsTable).values({
+        actionId: action.id,
+        roomId: action.roomId,
+        cellId: action.cellId,
+        sequence: startedSequence,
+        stateVersion: String(stateVersion),
+        eventType: "started",
+        status: "running",
+        payload: {
+          kind: "action:started",
+          actionId: action.id,
+          executeAt: scheduledFor.getTime(),
+          completesAt: completesAt.getTime(),
+          startedAt: now.toISOString(),
+        },
+      });
+      await enqueueRealtimeNotification(tx, {
+        type: "action:started",
+        roomId: action.roomId,
+        actionId: action.id,
+        stateVersion,
+      });
+      incrementMetric("actions.started");
+      observeMetric(
+        "queue.wait_ms",
+        Math.max(0, now.getTime() - scheduledFor.getTime()),
+      );
+      logger.info(
+        {
+          actionId: action.id,
+          cellId: action.cellId,
+          executeAt: scheduledFor.getTime(),
+          completesAt: completesAt.getTime(),
+          stateVersion,
+        },
+        "PopPerson action started",
+      );
       return true;
     }
 
@@ -1494,7 +1624,7 @@ async function resolveDueAction(
     observeMetric("worker.resolve_ms", Date.now() - actionStartedAt);
     observeMetric(
       "queue.wait_ms",
-      Math.max(0, now.getTime() - action.scheduledFor.getTime()),
+      Math.max(0, now.getTime() - scheduledFor.getTime()),
     );
     logger.info(
       {
@@ -1540,6 +1670,7 @@ async function processDueActions(): Promise<void> {
         id: actionsTable.id,
         cellId: actionsTable.cellId,
         scheduledFor: actionsTable.scheduledFor,
+          status: actionsTable.status,
       })
       .from(actionsTable)
       .where(

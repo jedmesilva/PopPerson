@@ -966,6 +966,7 @@ export default function PopPersonCanvas() {
     clientPerfAt: performance.now(),
   });
   const impactsRef = useRef([]);
+  const aggregatedImpactsRef = useRef(new Map());
   const visualEffectStatsRef = useRef({
     droppedImpacts: 0,
     aggregatedHits: 0,
@@ -1146,6 +1147,7 @@ export default function PopPersonCanvas() {
            resolvedAt: Number(resolvedEvent?.resolvedAt),
         });
       }
+      deferredCompletedActionIdsRef.current.add(actionId);
       if (targetName && Number.isFinite(finalValue)) {
         serverDatasetRef.current = serverDatasetRef.current.map((person) => (
           person.name === targetName ? { ...person, value: finalValue } : person
@@ -1160,49 +1162,23 @@ export default function PopPersonCanvas() {
       return;
     }
 
-    // Keep the server's resolved value separate from the value rendered by the
-    // canvas. The visual dataset advances only when each projectile lands.
+    // A resolved event is authoritative state, not a request to replay an old
+    // animation. If the started event was missed, the next snapshot already
+    // contains the current value and only the remaining live actions should be
+    // animated.
     if (targetName && Number.isFinite(finalValue)) {
       serverDatasetRef.current = serverDatasetRef.current.map((person) => (
         person.name === targetName ? { ...person, value: finalValue } : person
       ));
     }
-
-    const count = Math.max(1, Number(resolvedEvent?.hitCount) || Number(serverAction.count) || 1);
-    const staggerMs = Math.max(
-      0,
-      Number(resolvedEvent?.intervalMs) || Number(serverAction.staggerMs) || 0,
-    );
-    const duration = Math.max(
-      0,
-      Number(resolvedEvent?.durationMs) || Number(serverAction.duration) || 0,
-    );
-    const animationAction = {
-      ...serverAction,
-      status: "running",
-      executeAt: serverNow,
-      completesAt: serverNow + duration + Math.max(0, count - 1) * staggerMs,
-      count,
-      hitCount: 0,
-      resolvedPreviousValue: Number.isFinite(previousValue) ? previousValue : null,
-      resolvedFinalValue: Number.isFinite(finalValue) ? finalValue : null,
-      resolvedDelta: Number.isFinite(eventDelta) ? eventDelta : null,
-      resolvedStateVersion: Number(resolvedEvent?.stateVersion),
-       resolvedAt: Number(resolvedEvent?.resolvedAt),
-      resolvedFirstImpactAtServer: serverNow + duration,
-      resolvedIntervalMs: staggerMs,
-    };
-    animationActionsRef.current.set(actionId, animationAction);
-    deferredCompletedActionIdsRef.current.add(actionId);
     realtimeDebug("action:resolved", {
       eventId,
       actionId,
       targetName,
-      hitCount: count,
+      replayed: false,
       finalValue: Number.isFinite(finalValue) ? finalValue : null,
       previousValue: Number.isFinite(previousValue) ? previousValue : null,
     });
-    executeActionRef.current(animationAction);
   }, []);
   const startResolvedActionRef = useRef(startResolvedAction);
   useEffect(() => { startResolvedActionRef.current = startResolvedAction; }, [startResolvedAction]);
@@ -1316,6 +1292,9 @@ export default function PopPersonCanvas() {
     if (!preserveImpacts) {
       impactsRef.current = impactsRef.current.filter((impact) => impact.actionId !== actionId);
     }
+    for (const key of aggregatedImpactsRef.current.keys()) {
+      if (key.startsWith(`${actionId}:`)) aggregatedImpactsRef.current.delete(key);
+    }
     shakeActionIdsRef.current.delete(actionId);
     realtimeDebug("action:removed", { actionId, preserveImpacts });
   }, []);
@@ -1398,10 +1377,23 @@ export default function PopPersonCanvas() {
       });
     } else if (target) {
       // Impact rings are cosmetic. Preserve the authoritative hit count and
-      // radius progression while folding excess rings into a metric instead
-      // of allowing a burst to grow an unbounded render list.
+      // radius progression while folding excess rings into an explicit
+      // per-action counter instead of allowing a burst to grow an unbounded
+      // render list.
       visualEffectStatsRef.current.droppedImpacts += 1;
       visualEffectStatsRef.current.aggregatedHits += 1;
+      const aggregateKey = `${actionId}:${targetName}`;
+      const aggregate = aggregatedImpactsRef.current.get(aggregateKey);
+      aggregatedImpactsRef.current.set(aggregateKey, {
+        actionId,
+        targetName,
+        color: (event?.direction || action?.mode) === "defender"
+          ? "34, 197, 94"
+          : "239, 68, 68",
+        count: (aggregate?.count || 0) + 1,
+        startedAt: aggregate?.startedAt ?? performance.now(),
+        lastHitAt: performance.now(),
+      });
     }
     projectilesRef.current = projectilesRef.current.filter((projectile) => (
       projectile.firingId !== actionId || projectile.hitIndex !== hitIndex
@@ -1445,6 +1437,7 @@ export default function PopPersonCanvas() {
       emittersRef.current = [];
       projectilesRef.current = [];
       impactsRef.current = [];
+      aggregatedImpactsRef.current.clear();
       deferredCompletedActionIdsRef.current.clear();
       animationActionsRef.current.clear();
       latestServerActionsRef.current.clear();
@@ -1588,6 +1581,14 @@ export default function PopPersonCanvas() {
         incomingActionIds.has(projectile.firingId)
         || deferredCompletedActionIdsRef.current.has(projectile.firingId)
       ));
+      for (const [key, aggregate] of aggregatedImpactsRef.current) {
+        if (
+          !incomingActionIds.has(aggregate.actionId)
+          && !deferredCompletedActionIdsRef.current.has(aggregate.actionId)
+        ) {
+          aggregatedImpactsRef.current.delete(key);
+        }
+      }
       shakeActionIdsRef.current.forEach((id) => {
         if (!incomingActionIds.has(id)) shakeActionIdsRef.current.delete(id);
       });
@@ -1721,6 +1722,11 @@ export default function PopPersonCanvas() {
                 startResolvedActionRef.current(delivery.action, delivery.event);
               }
             });
+            return;
+          }
+          if (message?.type === "action:started" && message.action) {
+            if (!acceptRealtimeSequence(message)) return;
+            queueAction(message.action);
             return;
           }
           if (
@@ -2395,6 +2401,26 @@ export default function PopPersonCanvas() {
       ctx.lineWidth = 2.5 / t.scale;
       ctx.strokeStyle = `rgba(${imp.color}, 0.82)`;
       ctx.stroke();
+      ctx.restore();
+    });
+    aggregatedImpactsRef.current.forEach((aggregate) => {
+      const impactTarget = animatedCirclesRef.current.get(aggregate.targetName)
+        ?? leavesRef.current.find((leaf) => leaf.name === aggregate.targetName);
+      if (!impactTarget) return;
+      const pulse = 0.82 + Math.sin((now - aggregate.lastHitAt) / 90) * 0.12;
+      const radius = (impactTarget.r ?? 20) * pulse;
+      ctx.save();
+      ctx.globalAlpha = 0.78;
+      ctx.beginPath();
+      ctx.arc(impactTarget.x, impactTarget.y, radius, 0, Math.PI * 2);
+      ctx.lineWidth = 2.5 / t.scale;
+      ctx.strokeStyle = `rgba(${aggregate.color}, 0.9)`;
+      ctx.stroke();
+      ctx.font = `700 ${Math.max(10, 12 / t.scale)}px -apple-system, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      ctx.fillStyle = `rgba(${aggregate.color}, 0.98)`;
+      ctx.fillText(`+${aggregate.count}`, impactTarget.x, impactTarget.y - radius - 5 / t.scale);
       ctx.restore();
     });
     projectilesRef.current.forEach((p) => {
