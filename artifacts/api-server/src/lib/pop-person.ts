@@ -4,7 +4,9 @@ export {
   getPopPersonBootstrap,
   getPopPersonState,
   getPopPersonRealtimeOutboxSince,
+  getPopPersonRealtimeSnapshot,
   getPopPersonRealtimeSequence,
+  markPopPersonRealtimeOutboxFailed,
   markPopPersonRealtimeOutboxPublished,
   cleanupPopPersonRealtimeOutbox,
   getPlayerRegistration,
@@ -12,6 +14,7 @@ export {
   startPopPersonWorker,
   stopPopPersonWorker,
   joinPopPersonAsPlayer,
+  PopPersonOverloadError,
 } from "./pop-person-store";
 export {
   POP_PERSON_REALTIME_CHANNEL,

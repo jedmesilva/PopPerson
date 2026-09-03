@@ -247,6 +247,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Action backlog is full
+          headers:
+            Retry-After:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthStatus:
@@ -502,7 +512,7 @@ components:
           type: ["string", "null"]
         status:
           type: string
-          enum: [queued, running, completed]
+          enum: [queued, running, completed, failed]
         executeAt:
           type: number
           minimum: 0

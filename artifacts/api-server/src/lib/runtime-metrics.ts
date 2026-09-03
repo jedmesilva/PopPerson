@@ -54,6 +54,7 @@ export function getRuntimeMetrics(): {
       sum: number;
       max: number;
       average: number;
+       p50: number;
       p95: number;
       p99: number;
     }
@@ -71,6 +72,7 @@ export function getRuntimeMetrics(): {
           sum: value.sum,
           max: value.max,
           average: value.count === 0 ? 0 : value.sum / value.count,
+          p50: percentile(value.samples, 0.5),
           p95: percentile(value.samples, 0.95),
           p99: percentile(value.samples, 0.99),
         },

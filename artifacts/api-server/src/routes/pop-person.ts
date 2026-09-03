@@ -14,6 +14,7 @@ import {
   getPopPersonBootstrap,
   getPopPersonState,
   joinPopPersonAsPlayer,
+  PopPersonOverloadError,
 } from "../lib/pop-person";
 import { actionRateLimit } from "../middlewares/rate-limit";
 import { resolveAccessLocation } from "./access-location";
@@ -97,6 +98,15 @@ router.post("/pop-person/actions", actionRateLimit, async (req, res): Promise<vo
     );
     res.status(201).json(CreatePopPersonActionResponse.parse(action));
   } catch (error) {
+    if (error instanceof PopPersonOverloadError) {
+      res.set("Retry-After", "1");
+      res.status(error.statusCode).json({
+        error: error.message,
+        code: error.code,
+        retryAfterMs: 1_000,
+      });
+      return;
+    }
     res.status(400).json({
       error: error instanceof Error ? error.message : "Ação inválida.",
     });

@@ -67,6 +67,10 @@ export const actionsTable = pgTable(
     claimedAt: timestamp("claimed_at", { withTimezone: true }),
     claimedBy: text("claimed_by"),
     attemptCount: integer("attempt_count").notNull().default(0),
+    maxAttempts: integer("max_attempts").notNull().default(5),
+    retryAt: timestamp("retry_at", { withTimezone: true }),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    deadLetteredAt: timestamp("dead_lettered_at", { withTimezone: true }),
     lastError: text("last_error"),
     effectiveImpact: numeric("effective_impact", { precision: 14, scale: 6 }),
     priceCharged: numeric("price_charged", { precision: 14, scale: 2 }),
@@ -89,6 +93,8 @@ export const actionsTable = pgTable(
     index("actions_source_cell_idx").on(table.sourceCellId),
     index("actions_scheduled_for_idx").on(table.status, table.scheduledFor),
     index("actions_claimed_at_idx").on(table.status, table.claimedAt),
+    index("actions_retry_at_idx").on(table.status, table.retryAt),
+    index("actions_lease_expires_at_idx").on(table.status, table.leaseExpiresAt),
   ],
 );
 

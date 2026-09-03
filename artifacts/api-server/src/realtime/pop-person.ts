@@ -8,9 +8,10 @@ import type {
 } from "../lib/pop-person-store";
 import {
   getPopPersonAction,
+  getPopPersonRealtimeSnapshot,
   getPopPersonRealtimeOutboxSince,
   getPopPersonRealtimeSequence,
-  getPopPersonState,
+  markPopPersonRealtimeOutboxFailed,
   markPopPersonRealtimeOutboxPublished,
   cleanupPopPersonRealtimeOutbox,
   POP_PERSON_REALTIME_CHANNEL,
@@ -30,6 +31,7 @@ type PopPersonRealtimeMessage = {
     | "action:started"
     | "action:resolved"
     | "action:cancelled"
+    | "resync.required"
     | "clock:pong";
   sequence?: number;
   sequenceStart?: number;
@@ -37,9 +39,11 @@ type PopPersonRealtimeMessage = {
   action?: Awaited<ReturnType<typeof getPopPersonAction>>;
   actionId?: string;
   event?: PopPersonResolvedEvent;
+  reason?: "outbox_gap" | "replay_too_large";
   actions?: Array<{
     action: Awaited<ReturnType<typeof getPopPersonAction>>;
     event: PopPersonResolvedEvent;
+    sequence: number;
   }>;
   serverTime?: number;
   clientTime?: number;
@@ -52,17 +56,60 @@ type ResolvedDelivery = {
   event: PopPersonResolvedEvent;
 };
 
+const MAX_SOCKET_QUEUE_BYTES = 1_000_000;
+const REALTIME_BATCH_LIMIT = Math.max(
+  1,
+  Number.parseInt(process.env.REALTIME_BATCH_LIMIT ?? "100", 10) || 100,
+);
+const REALTIME_BATCH_WINDOW_MS = Math.max(
+  0,
+  Number.parseInt(process.env.REALTIME_BATCH_WINDOW_MS ?? "25", 10) || 0,
+);
+
+type SocketQueue = {
+  messages: string[];
+  bytes: number;
+  flushing: boolean;
+};
+
+const socketQueues = new WeakMap<WebSocket, SocketQueue>();
+
+function flushSocketQueue(socket: WebSocket, queue: SocketQueue): void {
+  if (queue.flushing || socket.readyState !== socket.OPEN) return;
+  const serialized = queue.messages.shift();
+  if (!serialized) return;
+  queue.bytes -= Buffer.byteLength(serialized);
+  queue.flushing = true;
+  socket.send(serialized, (error) => {
+    queue.flushing = false;
+    if (error) {
+      incrementMetric("realtime.delivery_errors");
+      return;
+    }
+    incrementMetric("realtime.messages_sent");
+    incrementMetric("realtime.bytes_sent", Buffer.byteLength(serialized));
+    flushSocketQueue(socket, queue);
+  });
+}
+
 function sendMessage(socket: WebSocket, message: PopPersonRealtimeMessage): void {
   if (socket.readyState !== socket.OPEN) return;
-  if (socket.bufferedAmount > 1_000_000) {
+  const serialized = JSON.stringify(message);
+  const queue = socketQueues.get(socket) ?? {
+    messages: [],
+    bytes: 0,
+    flushing: false,
+  };
+  const messageBytes = Buffer.byteLength(serialized);
+  if (socket.bufferedAmount + queue.bytes + messageBytes > MAX_SOCKET_QUEUE_BYTES) {
     incrementMetric("realtime.slow_connections");
     socket.close(1013, "Realtime client is too slow");
     return;
   }
-  const serialized = JSON.stringify(message);
-  socket.send(serialized);
-  incrementMetric("realtime.messages_sent");
-  incrementMetric("realtime.bytes_sent", Buffer.byteLength(serialized));
+  queue.messages.push(serialized);
+  queue.bytes += messageBytes;
+  socketQueues.set(socket, queue);
+  flushSocketQueue(socket, queue);
 }
 
 function broadcast(
@@ -98,7 +145,7 @@ async function deliverOutboxRows(
     );
     broadcast(webSocketServer, {
       type: "effects:batch",
-      actions: actions.map(({ action, event }) => ({ action, event })),
+      actions: actions.map(({ action, event, sequence }) => ({ action, event, sequence })),
       serverTime: Date.now(),
       sequence: actions[actions.length - 1].sequence,
       sequenceStart: actions[0].sequence,
@@ -156,10 +203,11 @@ async function deliverOutboxRows(
       continue;
     }
     if (payload.type === "state:changed") {
+      const snapshot = await getPopPersonRealtimeSnapshot();
       broadcast(webSocketServer, {
         type: "snapshot",
-        state: await getPopPersonState(),
-        sequence: row.sequence,
+        state: snapshot.state,
+        sequence: snapshot.sequence,
         stateVersion: payload.stateVersion,
         serverTime: Date.now(),
       });
@@ -179,7 +227,7 @@ async function deliverOutboxRowsToSocket(
     resolved = [];
     sendMessage(socket, {
       type: "effects:batch",
-      actions: actions.map(({ action, event }) => ({ action, event })),
+      actions: actions.map(({ action, event, sequence }) => ({ action, event, sequence })),
       sequence: actions[actions.length - 1].sequence,
       sequenceStart: actions[0].sequence,
       stateVersion: Math.max(
@@ -222,10 +270,11 @@ async function deliverOutboxRowsToSocket(
         });
       }
     } else if (payload.type === "state:changed") {
+      const snapshot = await getPopPersonRealtimeSnapshot();
       sendMessage(socket, {
         type: "snapshot",
-        state: await getPopPersonState(),
-        sequence: row.sequence,
+        state: snapshot.state,
+        sequence: snapshot.sequence,
         stateVersion: payload.stateVersion,
         serverTime: Date.now(),
       });
@@ -253,29 +302,73 @@ export async function registerPopPersonRealtime(
 
   const drainOutbox = async (): Promise<void> => {
     const startedAt = Date.now();
-    const result = await getPopPersonRealtimeOutboxSince(
+    let result = await getPopPersonRealtimeOutboxSince(
       lastOutboxSequence,
-      250,
+      REALTIME_BATCH_LIMIT,
       { detectGap: true },
     );
     if (result.events.length === 0) return;
     if (result.gap) {
       incrementMetric("realtime.gateway_snapshots");
-      const snapshotSequence = await getPopPersonRealtimeSequence();
-      const snapshotState = await getPopPersonState();
+      const snapshot = await getPopPersonRealtimeSnapshot();
       broadcast(webSocketServer, {
-        type: "snapshot",
-        state: snapshotState,
-        sequence: snapshotSequence,
+        type: "resync.required",
+        reason: "outbox_gap",
+        sequence: snapshot.sequence,
         serverTime: Date.now(),
       });
-      lastOutboxSequence = snapshotSequence;
+      broadcast(webSocketServer, {
+        type: "snapshot",
+        state: snapshot.state,
+        sequence: snapshot.sequence,
+        serverTime: Date.now(),
+      });
+      lastOutboxSequence = snapshot.sequence;
       setMetric("realtime.outbox_cursor", lastOutboxSequence);
       observeMetric("realtime.outbox_to_gateway_ms", Date.now() - startedAt);
       return;
     }
-    await deliverOutboxRows(webSocketServer, result.events);
-    await markPopPersonRealtimeOutboxPublished(result.events.map((event) => event.id));
+
+    if (REALTIME_BATCH_WINDOW_MS > 0) {
+      await new Promise((resolve) => setTimeout(resolve, REALTIME_BATCH_WINDOW_MS));
+      result = await getPopPersonRealtimeOutboxSince(
+        lastOutboxSequence,
+        REALTIME_BATCH_LIMIT,
+        { detectGap: true },
+      );
+      if (result.gap) {
+        incrementMetric("realtime.gateway_snapshots");
+        const snapshot = await getPopPersonRealtimeSnapshot();
+        broadcast(webSocketServer, {
+          type: "resync.required",
+          reason: "outbox_gap",
+          sequence: snapshot.sequence,
+          serverTime: Date.now(),
+        });
+        broadcast(webSocketServer, {
+          type: "snapshot",
+          state: snapshot.state,
+          sequence: snapshot.sequence,
+          serverTime: Date.now(),
+        });
+        lastOutboxSequence = snapshot.sequence;
+        setMetric("realtime.outbox_cursor", lastOutboxSequence);
+        observeMetric("realtime.outbox_to_gateway_ms", Date.now() - startedAt);
+        return;
+      }
+      if (result.events.length === 0) return;
+    }
+
+    try {
+      await deliverOutboxRows(webSocketServer, result.events);
+      await markPopPersonRealtimeOutboxPublished(result.events.map((event) => event.id));
+    } catch (error) {
+      await markPopPersonRealtimeOutboxFailed(
+        result.events.map((event) => event.id),
+        error,
+      );
+      throw error;
+    }
     lastOutboxSequence = result.events[result.events.length - 1].sequence;
     observeMetric("realtime.outbox_to_gateway_ms", Date.now() - startedAt);
     setMetric("realtime.outbox_cursor", lastOutboxSequence);
@@ -317,18 +410,18 @@ export async function registerPopPersonRealtime(
     const connectedAt = Date.now();
     let replayChain = Promise.resolve();
     socket.once("close", () => {
+      socketQueues.delete(socket);
       incrementMetric("realtime.connections_closed");
       observeMetric("realtime.connection_ms", Date.now() - connectedAt);
       setMetric("realtime.connections_active", webSocketServer.clients.size);
     });
 
     try {
-      const snapshotSequence = await getPopPersonRealtimeSequence();
-      const snapshotState = await getPopPersonState();
+      const snapshot = await getPopPersonRealtimeSnapshot();
       sendMessage(socket, {
         type: "snapshot",
-        state: snapshotState,
-        sequence: snapshotSequence,
+        state: snapshot.state,
+        sequence: snapshot.sequence,
         serverTime: Date.now(),
       });
     } catch (error) {
@@ -358,12 +451,17 @@ export async function registerPopPersonRealtime(
             .then(async (replay) => {
               if (replay.gap || replay.hasMore) {
                 incrementMetric("realtime.replay_snapshots");
-                const snapshotSequence = await getPopPersonRealtimeSequence();
-                const snapshotState = await getPopPersonState();
+                const snapshot = await getPopPersonRealtimeSnapshot();
+                sendMessage(socket, {
+                  type: "resync.required",
+                  reason: replay.gap ? "outbox_gap" : "replay_too_large",
+                  sequence: snapshot.sequence,
+                  serverTime: Date.now(),
+                });
                 sendMessage(socket, {
                   type: "snapshot",
-                  state: snapshotState,
-                  sequence: snapshotSequence,
+                  state: snapshot.state,
+                  sequence: snapshot.sequence,
                   serverTime: Date.now(),
                 });
                 return;

@@ -5,10 +5,12 @@ import {
   desc,
   eq,
   inArray,
+  isNull,
   isNotNull,
   lte,
   gt,
   lt,
+  or,
   sql,
   type SQL,
 } from "drizzle-orm";
@@ -60,12 +62,14 @@ const MAX_HITS_PER_TRANSACTION = 50;
 // action worker at the database level so two workers cannot lock the same
 // action/cell/room rows in different orders and deadlock each other.
 const POP_PERSON_WORKER_LOCK_KEY = 29184731;
+const POP_PERSON_ACTION_ADMISSION_LOCK_KEY = 29184732;
 export type PopPersonResolvedEvent = {
   eventId: string;
   actionId: string;
   hitCount: number;
   direction: PopPersonAction["mode"];
   delta: number;
+  cellId: string;
   targetName: string;
   previousValue: number;
   finalValue: number;
@@ -127,6 +131,20 @@ type ResolvedAccessLocation = {
 
 export const POP_PERSON_REALTIME_CHANNEL = "pop_person_live";
 
+export class PopPersonOverloadError extends Error {
+  readonly statusCode = 429;
+  readonly code: "global_backlog_full" | "session_backlog_full";
+
+  constructor(
+    message: string,
+    code: "global_backlog_full" | "session_backlog_full",
+  ) {
+    super(message);
+    this.name = "PopPersonOverloadError";
+    this.code = code;
+  }
+}
+
 let defaultRoomId: string | null = null;
 let initializationPromise: Promise<void> | null = null;
 let processorTimer: NodeJS.Timeout | null = null;
@@ -136,6 +154,7 @@ let processorStarted = false;
 type SqlExecutor = {
   execute(query: SQL): Promise<unknown>;
 };
+type DbReader = Pick<typeof db, "select">;
 
 async function enqueueRealtimeNotification(
   tx: SqlExecutor & {
@@ -188,8 +207,10 @@ function snapshotBoolean(snapshot: unknown, key: string, fallback: boolean): boo
   return typeof value === "boolean" ? value : fallback;
 }
 
-function toActionStatus(status: string): "queued" | "running" | "completed" {
-  return status === "running" || status === "completed" ? status : "queued";
+function toActionStatus(status: string): "queued" | "running" | "completed" | "failed" {
+  return status === "running" || status === "completed" || status === "failed"
+    ? status
+    : "queued";
 }
 
 async function loadConfiguredRoom(): Promise<void> {
@@ -257,9 +278,11 @@ async function ensureRoomMembership(roomId: string, sessionId: string | undefine
     });
 }
 
-async function getDataset(roomId: string): Promise<PopPerson[]> {
-  const [rows, categories] = await Promise.all([
-    db
+async function getDataset(
+  roomId: string,
+  executor: DbReader = db,
+): Promise<PopPerson[]> {
+  const rows = await executor
       .select({
         name: peopleTable.name,
         categoryId: peopleTable.categoryId,
@@ -291,8 +314,8 @@ async function getDataset(roomId: string): Promise<PopPerson[]> {
           eq(categoriesTable.active, true),
         ),
       )
-      .orderBy(asc(cellsTable.createdAt)),
-    db
+      .orderBy(asc(cellsTable.createdAt));
+  const categories = await executor
       .select({
         id: categoriesTable.id,
         name: categoriesTable.name,
@@ -300,8 +323,7 @@ async function getDataset(roomId: string): Promise<PopPerson[]> {
         parentId: categoriesTable.parentId,
       })
       .from(categoriesTable)
-      .where(eq(categoriesTable.active, true)),
-  ]);
+      .where(eq(categoriesTable.active, true));
 
   const categoryById = new Map(categories.map((category) => [category.id, category]));
   const pathCache = new Map<string, PopPersonCategory[]>();
@@ -398,8 +420,9 @@ function toPopPersonElement(item: {
 async function getActions(
   roomId: string,
   actionId?: string,
+  executor: DbReader = db,
 ): Promise<PopPersonAction[]> {
-  const rows = await db
+  const rows = await executor
     .select({
       id: actionsTable.id,
       sourceCellId: actionsTable.sourceCellId,
@@ -448,7 +471,7 @@ async function getActions(
     .map((action) => action.sourceCellId)
     .filter((cellId): cellId is string => Boolean(cellId));
   const sourceRows = sourceCellIds.length > 0
-    ? await db
+    ? await executor
         .select({
           cellId: cellsTable.id,
           name: peopleTable.name,
@@ -466,7 +489,7 @@ async function getActions(
     { hitCount: number; lastHitAt: Date | null }
   >();
   if (rows.length > 0) {
-    const hitRows = await db
+    const hitRows = await executor
       .select({
         actionId: actionEventsTable.actionId,
         hitCount: sql<number>`count(*)::int`,
@@ -645,6 +668,21 @@ export async function markPopPersonRealtimeOutboxPublished(
     .where(inArray(realtimeOutboxTable.id, ids));
 }
 
+export async function markPopPersonRealtimeOutboxFailed(
+  ids: string[],
+  error: unknown,
+): Promise<void> {
+  if (ids.length === 0) return;
+  const message = error instanceof Error ? error.message : String(error);
+  await db
+    .update(realtimeOutboxTable)
+    .set({
+      attemptCount: sql`${realtimeOutboxTable.attemptCount} + 1`,
+      lastError: message.slice(0, 2_000),
+    })
+    .where(inArray(realtimeOutboxTable.id, ids));
+}
+
 export async function cleanupPopPersonRealtimeOutbox(): Promise<number> {
   const deleted = await db
     .delete(realtimeOutboxTable)
@@ -658,16 +696,17 @@ export async function cleanupPopPersonRealtimeOutbox(): Promise<number> {
   return deleted.length;
 }
 
-async function currentState(roomId: string): Promise<PopPersonState> {
-  const [[room], dataset, actions] = await Promise.all([
-    db
+async function currentState(
+  roomId: string,
+  executor: DbReader = db,
+): Promise<PopPersonState> {
+  const [room] = await executor
       .select({ stateVersion: roomsTable.stateVersion })
       .from(roomsTable)
       .where(eq(roomsTable.id, roomId))
-      .limit(1),
-    getDataset(roomId),
-    getActions(roomId),
-  ]);
+      .limit(1);
+  const dataset = await getDataset(roomId, executor);
+  const actions = await getActions(roomId, undefined, executor);
   if (!room) throw new Error("PopPerson room is unavailable.");
   return { stateVersion: room.stateVersion, dataset, actions };
 }
@@ -802,6 +841,25 @@ export async function getPopPersonState(
   const roomId = await getRoomId();
   await ensureRoomMembership(roomId, sessionId);
   return currentState(roomId);
+}
+
+export async function getPopPersonRealtimeSnapshot(): Promise<{
+  sequence: number;
+  state: PopPersonState;
+}> {
+  const roomId = await getRoomId();
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({
+        sequence: sql<number>`COALESCE(MAX(${realtimeOutboxTable.sequence}), 0)`,
+      })
+      .from(realtimeOutboxTable)
+      .where(eq(realtimeOutboxTable.roomId, roomId));
+    return {
+      sequence: toNumber(row?.sequence),
+      state: await currentState(roomId, tx),
+    };
+  });
 }
 
 export async function getPlayerRegistration(
@@ -1098,6 +1156,11 @@ export async function createPopPersonAction(
   const now = new Date();
 
   const result = await db.transaction(async (tx) => {
+    // Admission is serialized only for the short counting/insertion
+    // transaction. Resolution remains partitioned by target cell.
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(${POP_PERSON_ACTION_ADMISSION_LOCK_KEY})`,
+    );
     if (sessionId) {
       const [existing] = await tx
         .select()
@@ -1117,7 +1180,10 @@ export async function createPopPersonAction(
       .from(actionsTable)
       .where(inArray(actionsTable.status, ["queued", "running"]));
     if (toNumber(globalBacklog?.count) >= MAX_ACTIVE_ACTIONS_GLOBAL) {
-      throw new Error("A fila global está temporariamente cheia. Tente novamente em instantes.");
+      throw new PopPersonOverloadError(
+        "A fila global está temporariamente cheia. Tente novamente em instantes.",
+        "global_backlog_full",
+      );
     }
     if (sessionId) {
       const [sessionBacklog] = await tx
@@ -1130,7 +1196,10 @@ export async function createPopPersonAction(
           ),
         );
       if (toNumber(sessionBacklog?.count) >= MAX_ACTIVE_ACTIONS_PER_SESSION) {
-        throw new Error("Você atingiu o limite de ações pendentes. Aguarde a resolução.");
+        throw new PopPersonOverloadError(
+          "Você atingiu o limite de ações pendentes. Aguarde a resolução.",
+          "session_backlog_full",
+        );
       }
     }
 
@@ -1348,6 +1417,18 @@ const MAX_ACTIVE_ACTIONS_PER_SESSION = Math.max(
   1,
   Number(process.env.POP_PERSON_MAX_ACTIVE_ACTIONS_PER_SESSION ?? 100),
 );
+const WORKER_LEASE_GRACE_MS = Math.max(
+  5_000,
+  Number(process.env.POP_PERSON_WORKER_LEASE_GRACE_MS ?? 30_000),
+);
+const ACTION_RETRY_BASE_MS = Math.max(
+  100,
+  Number(process.env.POP_PERSON_ACTION_RETRY_BASE_MS ?? 1_000),
+);
+const ACTION_RETRY_MAX_MS = Math.max(
+  ACTION_RETRY_BASE_MS,
+  Number(process.env.POP_PERSON_ACTION_RETRY_MAX_MS ?? 60_000),
+);
 
 async function resolveDueAction(
   candidate: DueActionCandidate,
@@ -1399,6 +1480,9 @@ async function resolveDueAction(
       .select({ eventType: actionEventsTable.eventType })
       .from(actionEventsTable)
       .where(eq(actionEventsTable.actionId, action.id));
+    const alreadyStarted = previousEvents.some(
+      (event) => event.eventType === "started",
+    );
     const alreadyResolved = previousEvents.some(
       (event) => event.eventType === "completed",
     );
@@ -1432,6 +1516,9 @@ async function resolveDueAction(
           activatedAt: scheduledFor,
           claimedAt: now,
           claimedBy: process.env.POP_PERSON_WORKER_ID ?? "pop-person-worker",
+          leaseExpiresAt: new Date(
+            Math.max(completesAt.getTime(), now.getTime()) + WORKER_LEASE_GRACE_MS,
+          ),
           attemptCount: sql`${actionsTable.attemptCount} + 1`,
           lastError: null,
           updatedAt: now,
@@ -1454,29 +1541,31 @@ async function resolveDueAction(
         .where(eq(roomsTable.id, action.roomId))
         .returning({ stateVersion: roomsTable.stateVersion });
       const stateVersion = toNumber(stateUpdate[0]?.stateVersion);
-      const startedSequence = await nextActionEventSequence(tx, action.id);
-      await tx.insert(actionEventsTable).values({
-        actionId: action.id,
-        roomId: action.roomId,
-        cellId: action.cellId,
-        sequence: startedSequence,
-        stateVersion: String(stateVersion),
-        eventType: "started",
-        status: "running",
-        payload: {
-          kind: "action:started",
+      if (!alreadyStarted) {
+        const startedSequence = await nextActionEventSequence(tx, action.id);
+        await tx.insert(actionEventsTable).values({
           actionId: action.id,
-          executeAt: scheduledFor.getTime(),
-          completesAt: completesAt.getTime(),
-          startedAt: now.toISOString(),
-        },
-      });
-      await enqueueRealtimeNotification(tx, {
-        type: "action:started",
-        roomId: action.roomId,
-        actionId: action.id,
-        stateVersion,
-      });
+          roomId: action.roomId,
+          cellId: action.cellId,
+          sequence: startedSequence,
+          stateVersion: String(stateVersion),
+          eventType: "started",
+          status: "running",
+          payload: {
+            kind: "action:started",
+            actionId: action.id,
+            executeAt: scheduledFor.getTime(),
+            completesAt: completesAt.getTime(),
+            startedAt: now.toISOString(),
+          },
+        });
+        await enqueueRealtimeNotification(tx, {
+          type: "action:started",
+          roomId: action.roomId,
+          actionId: action.id,
+          stateVersion,
+        });
+      }
       incrementMetric("actions.started");
       observeMetric(
         "queue.wait_ms",
@@ -1554,6 +1643,8 @@ async function resolveDueAction(
       .set({
         status: "completed",
         completedAt: now,
+        retryAt: null,
+        leaseExpiresAt: null,
         updatedAt: now,
       })
       .where(
@@ -1580,6 +1671,7 @@ async function resolveDueAction(
       hitCount,
       direction: action.mode,
       delta,
+      cellId: action.cellId,
       targetName: action.targetName,
       previousValue,
       finalValue: toNumber(updatedCell.currentValue),
@@ -1666,8 +1758,25 @@ async function processDueActions(): Promise<void> {
       .from(actionsTable)
       .where(
         and(
-          inArray(actionsTable.status, ["queued", "running"]),
-          lte(actionsTable.scheduledFor, now),
+          or(
+            and(
+              eq(actionsTable.status, "queued"),
+              lte(actionsTable.scheduledFor, now),
+              or(
+                isNull(actionsTable.retryAt),
+                lte(actionsTable.retryAt, now),
+              ),
+            ),
+            and(
+              eq(actionsTable.status, "running"),
+              lte(actionsTable.scheduledFor, now),
+              lte(actionsTable.completesAt, now),
+              or(
+                isNull(actionsTable.leaseExpiresAt),
+                lte(actionsTable.leaseExpiresAt, now),
+              ),
+            ),
+          ),
         ),
       )
       .orderBy(
@@ -1692,28 +1801,53 @@ async function processDueActions(): Promise<void> {
           await resolveDueAction(candidate);
         } catch (error) {
           incrementMetric("worker.failures");
-          void db
-            .update(actionsTable)
-            .set({
-              status: "queued",
-              lastError: error instanceof Error ? error.message : String(error),
-              updatedAt: new Date(),
-            })
-            .where(
-              and(
-                eq(actionsTable.id, candidate.id),
-                eq(actionsTable.status, "running"),
-              ),
-            )
-            .catch((updateError) => {
-              logger.error(
-                { err: updateError, actionId: candidate.id },
-                "Failed to persist PopPerson retry state",
+          const errorMessage = (error instanceof Error ? error.message : String(error))
+            .slice(0, 2_000);
+          try {
+            const [current] = await db
+              .select({
+                attemptCount: actionsTable.attemptCount,
+                maxAttempts: actionsTable.maxAttempts,
+              })
+              .from(actionsTable)
+              .where(eq(actionsTable.id, candidate.id))
+              .limit(1);
+            const attemptCount = toNumber(current?.attemptCount);
+            const maxAttempts = Math.max(1, toNumber(current?.maxAttempts, 5));
+            const deadLettered = attemptCount >= maxAttempts;
+            const retryDelayMs = Math.min(
+              ACTION_RETRY_MAX_MS,
+              ACTION_RETRY_BASE_MS * (2 ** Math.max(0, attemptCount - 1)),
+            );
+            await db
+              .update(actionsTable)
+              .set({
+                status: deadLettered ? "failed" : "queued",
+                retryAt: deadLettered
+                  ? null
+                  : new Date(Date.now() + retryDelayMs),
+                leaseExpiresAt: null,
+                deadLetteredAt: deadLettered ? new Date() : null,
+                failureReason: deadLettered ? errorMessage : null,
+                lastError: errorMessage,
+                updatedAt: new Date(),
+              })
+              .where(
+                and(
+                  eq(actionsTable.id, candidate.id),
+                  eq(actionsTable.status, "running"),
+                ),
               );
-            });
+            incrementMetric(deadLettered ? "worker.dead_lettered" : "worker.retries");
+          } catch (updateError) {
+            logger.error(
+              { err: updateError, actionId: candidate.id },
+              "Failed to persist PopPerson retry state",
+            );
+          }
           logger.error(
             { err: error, actionId: candidate.id, cellId: candidate.cellId },
-            "Failed to resolve PopPerson action; it will be retried",
+            "Failed to resolve PopPerson action",
           );
         }
       }),
@@ -1780,8 +1914,25 @@ async function processDueActionsLegacyLock(): Promise<void> {
         .innerJoin(peopleTable, eq(cellsTable.personId, peopleTable.id))
         .where(
           and(
-            inArray(actionsTable.status, ["queued", "running"]),
-            lte(actionsTable.scheduledFor, now),
+            or(
+              and(
+                eq(actionsTable.status, "queued"),
+                lte(actionsTable.scheduledFor, now),
+                or(
+                  isNull(actionsTable.retryAt),
+                  lte(actionsTable.retryAt, now),
+                ),
+              ),
+              and(
+                eq(actionsTable.status, "running"),
+                lte(actionsTable.scheduledFor, now),
+                lte(actionsTable.completesAt, now),
+                or(
+                  isNull(actionsTable.leaseExpiresAt),
+                  lte(actionsTable.leaseExpiresAt, now),
+                ),
+              ),
+            ),
           ),
         )
         .orderBy(asc(actionsTable.scheduledFor))
@@ -1902,6 +2053,7 @@ async function processDueActionsLegacyLock(): Promise<void> {
           hitCount,
           direction: action.mode,
           delta,
+          cellId: action.cellId,
           targetName: action.targetName,
           previousValue,
           finalValue: toNumber(updatedCell.currentValue),

@@ -35,8 +35,11 @@ function deterministicUnit(seed) {
 }
 
 const MODE_LABEL = { atacar: "Ataque", defender: "Defesa" };
-const MAX_CONCURRENT_PROJECTILES = 24;
-const MAX_CONCURRENT_IMPACTS = 96;
+const DEFAULT_VISUAL_BUDGET = {
+  maxProjectiles: 24,
+  maxImpacts: 96,
+  hudEntries: 6,
+};
 const IMPACT_DURATION_MS = 350;
 const PROJECTILE_MAX_LIFETIME_MS = 3000;
 const CIRCLE_GAP = 2.5;
@@ -53,6 +56,17 @@ const PLAYER_AUTO_FOCUS_DELAY_MS = 1500;
 const EMPTY_PLAYER_LOCATION = { city: "", region: "", country: "" };
 const PENDING_PLAYER_JOIN_STORAGE_KEY = "instapop:pending-player-join";
 const PENDING_PLAYER_JOIN_MAX_AGE_MS = 15 * 60 * 1000;
+
+function getVisualBudget() {
+  if (typeof window === "undefined") return DEFAULT_VISUAL_BUDGET;
+  const mobile = window.matchMedia("(max-width: 700px)").matches;
+  const dpr = window.devicePixelRatio || 1;
+  const cpuCount = navigator.hardwareConcurrency || 8;
+  const constrained = mobile || dpr >= 2.5 || cpuCount <= 4;
+  return constrained
+    ? { maxProjectiles: 12, maxImpacts: 36, hudEntries: 3 }
+    : DEFAULT_VISUAL_BUDGET;
+}
 
 function getSuggestedPlayerLocation(accessLocation) {
   if (accessLocation?.source !== "ip") return { ...EMPTY_PLAYER_LOCATION };
@@ -976,6 +990,7 @@ export default function PopPersonCanvas() {
   const pendingPlayerFocusRef = useRef(false);
   const playerFocusTimeoutRef = useRef(null);
   const visualizedHitKeysRef = useRef(new Set());
+  const visualBudgetRef = useRef(getVisualBudget());
   const deferredCompletedActionIdsRef = useRef(new Set());
   const personImagesRef = useRef(new Map());
   const shakeActionIdsRef = useRef(new Set());
@@ -995,6 +1010,14 @@ export default function PopPersonCanvas() {
   const fitTransformRef = useRef({ x: 0, y: 0, scale: 1 });
   const recenterAnimRef = useRef(null);
   const showRecenterRef = useRef(false);
+  useEffect(() => {
+    const updateVisualBudget = () => {
+      visualBudgetRef.current = getVisualBudget();
+    };
+    updateVisualBudget();
+    window.addEventListener("resize", updateVisualBudget);
+    return () => window.removeEventListener("resize", updateVisualBudget);
+  }, []);
   useEffect(() => { leavesRef.current = leaves; }, [leaves]);
   useEffect(() => { selectedCellRef.current = selectedCell; }, [selectedCell]);
   useEffect(() => { activeActionIdsRef.current = activeActions.map((a) => a.id); }, [activeActions]);
@@ -1362,7 +1385,7 @@ export default function PopPersonCanvas() {
     const animatedTarget = targetName
       ? animatedCirclesRef.current.get(targetName)
       : null;
-    if (target && impactsRef.current.length < MAX_CONCURRENT_IMPACTS) {
+    if (target && impactsRef.current.length < visualBudgetRef.current.maxImpacts) {
       impactsRef.current.push({
         actionId,
         targetName,
@@ -1648,12 +1671,55 @@ export default function PopPersonCanvas() {
       const sequence = Number(message?.sequence);
       if (!Number.isFinite(sequence)) return true;
       if (message?.type === "snapshot") {
+        if (sequence < latestRealtimeSequenceRef.current) {
+          realtimeDebug("realtime:stale-snapshot-discarded", {
+            sequence,
+            latest: latestRealtimeSequenceRef.current,
+          });
+          return false;
+        }
         latestRealtimeSequenceRef.current = Math.max(
           latestRealtimeSequenceRef.current,
           sequence,
         );
         realtimeResyncInFlightRef.current = false;
         return true;
+      }
+
+      if (message?.type === "effects:batch" && Array.isArray(message.actions)) {
+        const itemSequences = message.actions.map((delivery) => Number(delivery?.sequence));
+        const hasCompleteSequenceMetadata = itemSequences.every((itemSequence) => (
+          Number.isFinite(itemSequence)
+        ));
+        if (hasCompleteSequenceMetadata && itemSequences.length > 0) {
+          const unseenSequences = itemSequences.filter(
+            (itemSequence) => itemSequence > latestRealtimeSequenceRef.current,
+          );
+          if (unseenSequences.length === 0) {
+            realtimeDebug("realtime:duplicate-batch-discarded", {
+              sequence: itemSequences[itemSequences.length - 1],
+            });
+            return false;
+          }
+          const expected = latestRealtimeSequenceRef.current + 1;
+          const hasGap = unseenSequences[0] !== expected
+            || unseenSequences.some((itemSequence, index) => (
+              itemSequence !== expected + index
+            ));
+          if (hasGap) {
+            realtimeSequenceGapCountRef.current += 1;
+            realtimeDebug("realtime:batch-sequence-gap", {
+              expected,
+              received: unseenSequences[0],
+              gapCount: realtimeSequenceGapCountRef.current,
+            });
+            requestRealtimeResync(activeSocket);
+            return false;
+          }
+          latestRealtimeSequenceRef.current = unseenSequences[unseenSequences.length - 1];
+          realtimeResyncInFlightRef.current = false;
+          return true;
+        }
       }
 
       const sequenceStart = Number(message?.sequenceStart ?? sequence);
@@ -1714,6 +1780,11 @@ export default function PopPersonCanvas() {
           }
           if (Number.isFinite(Number(message?.serverTime))) {
             syncServerClock(message.serverTime);
+          }
+          if (message?.type === "resync.required") {
+            realtimeResyncInFlightRef.current = false;
+            requestRealtimeResync(activeSocket);
+            return;
           }
           if (message?.type === "effects:batch" && Array.isArray(message.actions)) {
             if (!acceptRealtimeSequence(message)) return;
@@ -2091,34 +2162,9 @@ export default function PopPersonCanvas() {
           submittingActionRef.current = false;
           idempotencyKeyRef.current = null;
           idempotencyPayloadRef.current = "";
-           // A successful POST is already a durable action. Start the visual
-           // fallback immediately so a lost/reconnecting WebSocket cannot make
-           // the action appear to vanish. A later resolved event reconciles the
-           // predicted final value with the server's authoritative value.
-           const previousValue = Number(
-             leavesRef.current.find((person) => person.name === action.targetName)?.value,
-           );
-           const direction = action.mode === "defender" ? 1 : -1;
-           const count = Math.max(1, Number(action.count) || 1);
-           const growthPerHit = Number(action.growthPerHit) || 0;
-           if (!activeActionIdsRef.current.includes(action.id)) {
-             startResolvedActionRef.current(action, {
-               eventId: `local:${action.id}`,
-               actionId: action.id,
-               hitCount: count,
-               direction: action.mode,
-               delta: growthPerHit * direction * count,
-               targetName: action.targetName,
-               previousValue: Number.isFinite(previousValue) ? previousValue : 0,
-               finalValue: Number.isFinite(previousValue)
-                 ? previousValue + growthPerHit * direction * count
-                 : Number.NaN,
-               durationMs: Number(action.duration) || 0,
-               intervalMs: Number(action.staggerMs) || 0,
-               stateVersion: latestServerStateVersionRef.current,
-               resolvedAt: Date.now(),
-             });
-           }
+          // POST only confirms durable admission. The worker's started event
+          // is the first authoritative signal allowed to start an animation.
+          queueAction(action);
           closeModal();
           setSelectedCell(null);
         },
@@ -2129,7 +2175,7 @@ export default function PopPersonCanvas() {
         },
       },
     );
-  }, [pendingMode, modalElement, modalLevel, selectedCell, closeModal, createActionMutation]);
+  }, [pendingMode, modalElement, modalLevel, selectedCell, closeModal, createActionMutation, queueAction]);
   const selectedCellData = useMemo(() => leaves.find((l) => l.name === selectedCell) || null, [leaves, selectedCell]);
 
   function cssSize() {
@@ -2526,7 +2572,7 @@ export default function PopPersonCanvas() {
         let cursor = emitterCursorRef.current % emitterCount;
         while (
           spawnedThisFrame < 4
-          && projectilesRef.current.length < MAX_CONCURRENT_PROJECTILES
+          && projectilesRef.current.length < visualBudgetRef.current.maxProjectiles
         ) {
           let progressedInRound = false;
           for (
@@ -2944,9 +2990,11 @@ export default function PopPersonCanvas() {
                 .sort((a, b) => a.localExecuteAt - b.localExecuteAt)
                 .map((action) => ({ kind: "queued", ...action })),
             ];
+            const visibleEntries = entries.slice(0, visualBudgetRef.current.hudEntries);
+            const hiddenEntryCount = Math.max(0, entries.length - visibleEntries.length);
             return (
               <div style={{ display: "flex", alignItems: "center", gap: "6px", maxWidth: "100%", overflowX: "auto", padding: "2px 0", scrollbarWidth: "none" }}>
-                {entries.map((entry) => {
+                {visibleEntries.map((entry) => {
                   const actionColor = entry.mode === "defender" ? "#22c55e" : "#ef4444";
                   const { timeLabel, progress } = getActionTiming(entry, performance.now());
                   return (
@@ -2957,6 +3005,15 @@ export default function PopPersonCanvas() {
                     </button>
                   );
                 })}
+                {hiddenEntryCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowQueueModal(true)}
+                    style={{ flexShrink: 0, padding: "8px 12px", borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.72)", border: "1px solid rgba(255, 255, 255, 0.12)", color: "#d4d4d4", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}
+                  >
+                    +{hiddenEntryCount} ações
+                  </button>
+                )}
               </div>
             );
           })()}
