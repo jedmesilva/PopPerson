@@ -571,7 +571,7 @@ function ConnectXModal({ onClose, onConnect, closeButtonRef }) {
         </div>
 
         <p style={{ margin: 0, color: "#a3a3a3", fontSize: "12px", lineHeight: 1.5 }}>
-          Você será redirecionado para <strong style={{ color: "#e5e5e5" }}>x.com</strong> para autorizar a conexão com sua conta.
+          Você será redirecionado para <strong style={{ color: "#e5e5e5" }}>x.com</strong> para autorizar a conexão com sua conta. Ao concluir, seu perfil será incluído na disputa de popularidade.
         </p>
         <label style={{ display: "flex", alignItems: "flex-start", gap: "9px", color: "#a3a3a3", fontSize: "11px", lineHeight: 1.5, cursor: "pointer" }}>
           <input
@@ -582,7 +582,7 @@ function ConnectXModal({ onClose, onConnect, closeButtonRef }) {
             style={{ width: "15px", height: "15px", margin: "1px 0 0", flexShrink: 0, accentColor: "#f5f5f5", cursor: "pointer" }}
           />
           <span>
-            Ao conectar sua conta X, você entra na disputa de popularidade. Declaro que li e concordo com os{" "}
+            Li e concordo com os{" "}
             <a href="/termos-de-servico" style={{ color: "#c7d2fe", fontWeight: 700 }}>Termos de Serviço</a>{" "}
             e a{" "}
             <a href="/privacidade" style={{ color: "#c7d2fe", fontWeight: 700 }}>Política de Privacidade</a>.
