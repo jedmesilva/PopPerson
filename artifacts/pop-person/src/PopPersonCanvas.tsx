@@ -643,7 +643,9 @@ export default function PopPersonCanvas() {
       enabled: Boolean(bootstrapQuery.data),
       // WebSocket is the primary transport. Poll only while it is unavailable
       // so a stale REST response cannot race a realtime snapshot.
-      refetchInterval: isRealtimeConnected ? false : 1000,
+      // Realtime normally carries progress. If it drops, poll as a safety net
+      // without opening a new database request every second during an outage.
+      refetchInterval: isRealtimeConnected ? false : 3000,
     },
   });
   const createActionMutation = useCreatePopPersonAction();
@@ -973,6 +975,7 @@ export default function PopPersonCanvas() {
   const emitterCursorRef = useRef(0);
   const projectilesRef = useRef([]);
   const pendingHitEventsRef = useRef(new Map());
+  const pendingRealtimeHitEventsRef = useRef([]);
   const queuedHitKeysRef = useRef(new Set());
   const visualHitCountsRef = useRef(new Map());
   const nextHitSpawnAtRef = useRef(0);
@@ -1414,6 +1417,7 @@ export default function PopPersonCanvas() {
       // A snapshot is the present, not a replay buffer. It updates the board
       // and never starts an old animation.
       pendingHitEventsRef.current.clear();
+      pendingRealtimeHitEventsRef.current = [];
       queuedHitKeysRef.current.clear();
       visualizedHitKeysRef.current.clear();
       visualHitCountsRef.current.clear();
@@ -1762,16 +1766,12 @@ export default function PopPersonCanvas() {
           }
           if (message?.type === "action:hit" && message.event) {
             if (!acceptRealtimeSequence(message)) return;
-            // Apply confirmed hits immediately. The animation loop may already
-            // have rendered the projectile/impact locally, but the server hit
-            // is what commits the authoritative cell value.
-            commitVisualHit(message.event);
-            realtimeDebug("hit:realtime-delivered", {
-              actionId: message.event.actionId,
-              hitIndex: message.event.hitIndex,
-              value: message.event.value,
-              stateVersion: message.event.stateVersion,
-            });
+            // Queue confirmed hits for the canvas loop. A large replay can
+            // contain hundreds of events; applying all React state updates in
+            // one WebSocket callback freezes the HUD and delays new actions.
+            // Nothing is dropped: the loop drains this queue over successive
+            // frames.
+            pendingRealtimeHitEventsRef.current.push(message.event);
             return;
           }
           if (
@@ -2548,6 +2548,25 @@ export default function PopPersonCanvas() {
       const serverNow = serverClockRef.current.serverTime
         + (now - serverClockRef.current.clientPerfAt);
       let spawnedThisFrame = 0;
+
+      // Drain realtime hits in a bounded batch so replay bursts remain
+      // observable without monopolizing the main thread.
+      const realtimeHitBudget = 24;
+      for (
+        let processed = 0;
+        processed < realtimeHitBudget && pendingRealtimeHitEventsRef.current.length > 0;
+        processed += 1
+      ) {
+        const event = pendingRealtimeHitEventsRef.current.shift();
+        if (!event) break;
+        commitVisualHit(event);
+        realtimeDebug("hit:realtime-delivered", {
+          actionId: event.actionId,
+          hitIndex: event.hitIndex,
+          value: event.value,
+          stateVersion: event.stateVersion,
+        });
+      }
 
       // Expire finished visual objects before scheduling new ones. This keeps
       // the concurrency limit from becoming a hidden clock: a slow/late hit

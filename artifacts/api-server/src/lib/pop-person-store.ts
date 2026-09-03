@@ -58,6 +58,13 @@ const PROCESS_INTERVAL_MS = 500;
 // projectiles, and processing all due hits at once holds cell/room locks long
 // enough to block new action requests and other worker instances.
 const MAX_HITS_PER_TRANSACTION = 20;
+// Rendering and replaying thousands of individual impacts makes both the
+// worker and browser unresponsive. This is also applied to legacy snapshots
+// when they are resumed after a restart.
+const configuredMaxActionHits = Number(process.env.POP_PERSON_MAX_ACTION_HITS ?? 100);
+const MAX_ACTION_HITS = Number.isFinite(configuredMaxActionHits)
+  ? Math.max(1, Math.min(100, Math.floor(configuredMaxActionHits)))
+  : 100;
 // Multiple API processes may be connected to the same database. Serialize the
 // action worker at the database level so two workers cannot lock the same
 // action/cell/room rows in different orders and deadlock each other.
@@ -168,6 +175,8 @@ let initializationPromise: Promise<void> | null = null;
 let processorTimer: NodeJS.Timeout | null = null;
 let processing = false;
 let processorStarted = false;
+let popPersonConfigCache: PopPersonConfig | null = null;
+let popPersonConfigPromise: Promise<PopPersonConfig> | null = null;
 
 type SqlExecutor = {
   execute(query: SQL): Promise<unknown>;
@@ -190,11 +199,11 @@ async function enqueueRealtimeNotification(
       retentionUntil: new Date(Date.now() + 24 * 60 * 60 * 1000),
     })
     .returning({ sequence: realtimeOutboxTable.sequence });
-  const sequence = toNumber(outboxEvent?.sequence);
-  await tx.execute(
-    sql`SELECT pg_notify(${POP_PERSON_REALTIME_CHANNEL}, ${String(sequence)})`,
-  );
-  return sequence;
+  // The realtime service polls this durable outbox continuously. Avoid an
+  // additional NOTIFY query for every hit: on the Supabase session pooler it
+  // needlessly keeps the action transaction busy and can leave the cell lock
+  // held while the listener catches up.
+  return toNumber(outboxEvent?.sequence);
 }
 
 function toNumber(value: unknown, fallback = 0): number {
@@ -544,7 +553,10 @@ async function getActions(
       impactPower: action.elementForce,
       price: action.elementPrice,
     });
-    const count = snapshotNumber(action.ruleSnapshot, "count", action.levelCount);
+    const count = Math.min(
+      MAX_ACTION_HITS,
+      Math.max(1, snapshotNumber(action.ruleSnapshot, "count", action.levelCount)),
+    );
     const staggerMs = snapshotNumber(
       action.ruleSnapshot,
       "staggerMs",
@@ -729,7 +741,7 @@ async function currentState(
   return { stateVersion: room.stateVersion, dataset, actions };
 }
 
-async function getPopPersonConfig(): Promise<PopPersonConfig> {
+async function loadPopPersonConfig(): Promise<PopPersonConfig> {
   const [dbItems, dbLevels, dbRules] = await Promise.all([
     db
       .select({
@@ -837,6 +849,19 @@ async function getPopPersonConfig(): Promise<PopPersonConfig> {
       }),
     ),
   };
+}
+
+async function getPopPersonConfig(): Promise<PopPersonConfig> {
+  if (popPersonConfigCache) return popPersonConfigCache;
+  if (popPersonConfigPromise) return popPersonConfigPromise;
+
+  popPersonConfigPromise = loadPopPersonConfig();
+  try {
+    popPersonConfigCache = await popPersonConfigPromise;
+    return popPersonConfigCache;
+  } finally {
+    popPersonConfigPromise = null;
+  }
 }
 
 export async function getPopPersonBootstrap(
@@ -1132,7 +1157,8 @@ function calculateActionValues(
   } | undefined,
 ) {
   const startDelayMs = rule?.startDelayMs ?? level.startDelayMs;
-  const count = rule?.projectileCount ?? level.projectileCount;
+  const rawCount = rule?.projectileCount ?? level.projectileCount;
+  const count = Math.min(MAX_ACTION_HITS, Math.max(1, rawCount));
   const staggerMs = rule?.staggerMs ?? level.staggerMs;
   const durationMs = rule?.durationMs ?? level.durationMs;
   const growthPerHit =
@@ -1423,10 +1449,12 @@ type ClaimedDueAction = {
   targetName: string;
 };
 
-const WORKER_CONCURRENCY = Math.max(
-  1,
-  Math.min(32, Number(process.env.POP_PERSON_WORKER_CONCURRENCY ?? 8)),
+const configuredWorkerConcurrency = Number(
+  process.env.POP_PERSON_WORKER_CONCURRENCY ?? 2,
 );
+const WORKER_CONCURRENCY = Number.isFinite(configuredWorkerConcurrency)
+  ? Math.max(1, Math.min(8, Math.floor(configuredWorkerConcurrency)))
+  : 2;
 const MAX_ACTIVE_ACTIONS_GLOBAL = Math.max(
   100,
   Number(process.env.POP_PERSON_MAX_ACTIVE_ACTIONS_GLOBAL ?? 10_000),
@@ -1593,9 +1621,9 @@ async function resolveDueAction(
       return true;
     }
 
-    const hitCount = Math.max(
-      1,
-      Math.floor(snapshotNumber(action.ruleSnapshot, "count", 1)),
+    const hitCount = Math.min(
+      MAX_ACTION_HITS,
+      Math.max(1, Math.floor(snapshotNumber(action.ruleSnapshot, "count", 1))),
     );
     const recordedHitCount = previousEvents.filter(
       (event) => event.eventType === "hit",
