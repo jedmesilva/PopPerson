@@ -976,7 +976,6 @@ export default function PopPersonCanvas() {
   const projectilesRef = useRef([]);
   const pendingHitEventsRef = useRef(new Map());
   const pendingRealtimeHitEventsRef = useRef([]);
-  const queuedHitKeysRef = useRef(new Set());
   const visualHitCountsRef = useRef(new Map());
   const nextHitSpawnAtRef = useRef(0);
   const serverClockRef = useRef({
@@ -1089,7 +1088,6 @@ export default function PopPersonCanvas() {
     for (let historicalHit = 1; historicalHit <= hitCount; historicalHit += 1) {
       visualizedHitKeysRef.current.add(`${actionId}:${historicalHit}`);
       pendingHitEventsRef.current.delete(`${actionId}:${historicalHit}`);
-      queuedHitKeysRef.current.delete(`${actionId}:${historicalHit}`);
     }
     emittersRef.current.push({
       id: actionId,
@@ -1133,6 +1131,118 @@ export default function PopPersonCanvas() {
   }, []);
   const executeActionRef = useRef(executeAction);
   useEffect(() => { executeActionRef.current = executeAction; }, [executeAction]);
+  const applyConfirmedHit = useCallback((event, options = {}) => {
+    const actionId = event?.actionId;
+    const hitIndex = Math.max(1, Number(event?.hitIndex) || 0);
+    if (!actionId || !hitIndex) return false;
+
+    const hitKey = `${actionId}:${hitIndex}`;
+    const action = animationActionsRef.current.get(actionId)
+      ?? latestServerActionsRef.current.get(actionId);
+    const targetName = event?.targetName || action?.targetName;
+    const value = Number(event?.value);
+    const stateVersion = Number(event?.stateVersion);
+    const updateDisplayedValue = options.updateDisplayedValue !== false;
+
+    pendingHitEventsRef.current.delete(hitKey);
+    if (Number.isFinite(stateVersion)) {
+      latestServerStateVersionRef.current = Math.max(
+        latestServerStateVersionRef.current,
+        stateVersion,
+      );
+    }
+
+    if (targetName && Number.isFinite(value)) {
+      serverDatasetRef.current = serverDatasetRef.current.map((person) => (
+        person.name === targetName ? { ...person, value } : person
+      ));
+      if (updateDisplayedValue) {
+        pendingRadiusAnimationsRef.current.add(targetName);
+        setDataset((prev) => prev.map((person) => (
+          person.name === targetName ? { ...person, value } : person
+        )));
+      }
+    }
+
+    realtimeDebug("hit:confirmed", {
+      actionId,
+      hitIndex,
+      targetName,
+      value: Number.isFinite(value) ? value : null,
+      stateVersion: Number.isFinite(stateVersion) ? stateVersion : null,
+      displayed: updateDisplayedValue,
+    });
+    return true;
+  }, []);
+
+  const renderScheduledHit = useCallback((actionId, hitIndex) => {
+    const action = animationActionsRef.current.get(actionId)
+      ?? latestServerActionsRef.current.get(actionId);
+    if (!action) return false;
+
+    const normalizedHitIndex = Math.max(1, Number(hitIndex) || 0);
+    const hitKey = `${actionId}:${normalizedHitIndex}`;
+    const confirmation = pendingHitEventsRef.current.get(hitKey);
+    if (visualizedHitKeysRef.current.has(hitKey)) {
+      if (confirmation) applyConfirmedHit(confirmation);
+      return false;
+    }
+
+    const targetName = confirmation?.targetName || action.targetName;
+    const target = targetName
+      ? leavesRef.current.find((leaf) => leaf.name === targetName)
+      : null;
+    const animatedTarget = targetName
+      ? animatedCirclesRef.current.get(targetName)
+      : null;
+
+    // This is the visual timeline. It is intentionally independent from the
+    // realtime hit delivery. A missing/late hit must never hold the emitter.
+    visualizedHitKeysRef.current.add(hitKey);
+    if (target) {
+      impactsRef.current.push({
+        actionId,
+        targetName,
+        x: animatedTarget?.x ?? target.x,
+        y: animatedTarget?.y ?? target.y,
+        r: animatedTarget?.r ?? target.r,
+        color: action.mode === "defender" ? "34, 197, 94" : "239, 68, 68",
+        startTime: performance.now(),
+        duration: IMPACT_DURATION_MS,
+      });
+    }
+
+    projectilesRef.current = projectilesRef.current.filter((projectile) => (
+      projectile.firingId !== actionId || projectile.hitIndex !== normalizedHitIndex
+    ));
+
+    const actionTotalCount = Math.max(1, Number(action.count) || normalizedHitIndex);
+    const previousCount = visualHitCountsRef.current.get(actionId) || 0;
+    const visualCount = Math.min(
+      actionTotalCount,
+      Math.max(previousCount, normalizedHitIndex),
+    );
+    visualHitCountsRef.current.set(actionId, visualCount);
+    setActiveActions((prev) => prev.map((activeAction) => activeAction.id === actionId
+      ? {
+          ...activeAction,
+          hitCount: visualCount,
+          lastHitAt: Number.isFinite(Number(confirmation?.hitAt))
+            ? Number(confirmation.hitAt)
+            : activeAction.lastHitAt,
+        }
+      : activeAction));
+
+    if (confirmation) applyConfirmedHit(confirmation);
+    realtimeDebug("hit:scheduled-rendered", {
+      actionId,
+      hitIndex: normalizedHitIndex,
+      confirmed: Boolean(confirmation),
+      targetName,
+    });
+    return true;
+  }, [applyConfirmedHit]);
+
   const startResolvedAction = useCallback((serverAction, resolvedEvent) => {
     const actionId = serverAction?.id || resolvedEvent?.actionId;
     const eventId = resolvedEvent?.eventId || actionId;
@@ -1142,8 +1252,6 @@ export default function PopPersonCanvas() {
       const oldestEventId = processedRealtimeEventIdsRef.current.values().next().value;
       processedRealtimeEventIdsRef.current.delete(oldestEventId);
     }
-    const serverNow = serverClockRef.current.serverTime
-      + (performance.now() - serverClockRef.current.clientPerfAt);
     const targetName = resolvedEvent?.targetName || serverAction.targetName;
     const eventPreviousValue = Number(resolvedEvent?.previousValue);
     const eventDelta = Number(resolvedEvent?.delta);
@@ -1160,33 +1268,40 @@ export default function PopPersonCanvas() {
         ? previousValue + eventDelta
         : Number.NaN;
 
-    if (activeActionIdsRef.current.includes(actionId)) {
-      const existingAction = animationActionsRef.current.get(actionId);
-      if (existingAction) {
-        animationActionsRef.current.set(actionId, {
-          ...existingAction,
-          ...serverAction,
-          status: "running",
-          resolvedPreviousValue: Number.isFinite(previousValue) ? previousValue : null,
-          resolvedFinalValue: Number.isFinite(finalValue) ? finalValue : null,
-          resolvedDelta: Number.isFinite(eventDelta) ? eventDelta : null,
-          resolvedStateVersion: Number(resolvedEvent?.stateVersion),
-           resolvedAt: Number(resolvedEvent?.resolvedAt),
-        });
-      }
+    const existingAction = animationActionsRef.current.get(actionId)
+      ?? latestServerActionsRef.current.get(actionId)
+      ?? serverAction;
+    const hasVisualState = emittersRef.current.some((emitter) => emitter.id === actionId)
+      || projectilesRef.current.some((projectile) => projectile.firingId === actionId)
+      || impactsRef.current.some((impact) => impact.actionId === actionId);
+
+    animationActionsRef.current.set(actionId, {
+      ...existingAction,
+      ...serverAction,
+      status: "completed",
+      resolvedPreviousValue: Number.isFinite(previousValue) ? previousValue : null,
+      resolvedFinalValue: Number.isFinite(finalValue) ? finalValue : null,
+      resolvedDelta: Number.isFinite(eventDelta) ? eventDelta : null,
+      resolvedStateVersion: Number(resolvedEvent?.stateVersion),
+      resolvedAt: Number(resolvedEvent?.resolvedAt),
+    });
+
+    if (targetName && Number.isFinite(finalValue)) {
+      serverDatasetRef.current = serverDatasetRef.current.map((person) => (
+        person.name === targetName ? { ...person, value: finalValue } : person
+      ));
+    }
+
+    if (activeActionIdsRef.current.includes(actionId) || hasVisualState) {
       deferredCompletedActionIdsRef.current.add(actionId);
-      if (targetName && Number.isFinite(finalValue)) {
-        serverDatasetRef.current = serverDatasetRef.current.map((person) => (
-          person.name === targetName ? { ...person, value: finalValue } : person
-        ));
-        pendingRadiusAnimationsRef.current.add(targetName);
-        setDataset((prev) => prev.map((person) => (
-          person.name === targetName ? { ...person, value: finalValue } : person
-        )));
-      }
-      // The server has already committed the complete action. Remove it from
-      // the HUD now; preserve only the short-lived impact ring on the canvas.
-      removeRealtimeAction(actionId, { preserveImpacts: true });
+      setQueue((prev) => prev.filter((action) => action.id !== actionId));
+      setActiveActions((prev) => {
+        const next = prev.filter((action) => action.id !== actionId);
+        activeActionIdsRef.current = next.map((action) => action.id);
+        return next;
+      });
+      // Resolution ends the logical action, not its visual timeline. The
+      // renderer will apply the final value after its last projectile/impact.
       realtimeDebug("action:authoritative-update", {
         eventId,
         actionId,
@@ -1197,13 +1312,9 @@ export default function PopPersonCanvas() {
     }
 
     // A resolved event is authoritative state, not a request to replay an old
-    // animation. If the started event was missed, the next snapshot already
-    // contains the current value and only the remaining live actions should be
-    // animated.
+    // animation. If the started event was missed, update the displayed board
+    // immediately because there is no visual timeline left to preserve.
     if (targetName && Number.isFinite(finalValue)) {
-      serverDatasetRef.current = serverDatasetRef.current.map((person) => (
-        person.name === targetName ? { ...person, value: finalValue } : person
-      ));
       pendingRadiusAnimationsRef.current.add(targetName);
       setDataset((prev) => prev.map((person) => (
         person.name === targetName ? { ...person, value: finalValue } : person
@@ -1269,13 +1380,23 @@ export default function PopPersonCanvas() {
   const removeRealtimeAction = useCallback((actionId, options = {}) => {
     if (!actionId) return;
     const preserveImpacts = options.preserveImpacts === true;
+    const finalizeValue = options.finalizeValue === true;
+    const visualAction = animationActionsRef.current.get(actionId);
+    const targetName = visualAction?.targetName;
+    const finalValue = Number(visualAction?.resolvedFinalValue);
+    if (finalizeValue && targetName && Number.isFinite(finalValue)) {
+      serverDatasetRef.current = serverDatasetRef.current.map((person) => (
+        person.name === targetName ? { ...person, value: finalValue } : person
+      ));
+      pendingRadiusAnimationsRef.current.add(targetName);
+      setDataset((prev) => prev.map((person) => (
+        person.name === targetName ? { ...person, value: finalValue } : person
+      )));
+    }
     latestServerActionsRef.current.delete(actionId);
     animationActionsRef.current.delete(actionId);
     locallyCreatedActionIdsRef.current.delete(actionId);
     deferredCompletedActionIdsRef.current.delete(actionId);
-    for (const key of queuedHitKeysRef.current) {
-      if (key.startsWith(`${actionId}:`)) queuedHitKeysRef.current.delete(key);
-    }
     for (const key of pendingHitEventsRef.current.keys()) {
       if (key.startsWith(`${actionId}:`)) pendingHitEventsRef.current.delete(key);
     }
@@ -1301,110 +1422,30 @@ export default function PopPersonCanvas() {
     shakeActionIdsRef.current.delete(actionId);
     realtimeDebug("action:removed", { actionId, preserveImpacts });
   }, []);
-  const commitVisualHit = useCallback((event) => {
-    const actionId = event?.actionId;
-    const hitIndex = Math.max(1, Number(event?.hitIndex) || 0);
-    if (!actionId || !hitIndex) return false;
-    const hitKey = `${actionId}:${hitIndex}`;
-    const action = animationActionsRef.current.get(event?.actionId);
-    const targetName = event?.targetName || action?.targetName;
-    const totalCount = Math.max(1, Number(action?.count) || hitIndex);
-    const eventValue = Number(event?.value);
-    const resolvedPreviousValue = Number(action?.resolvedPreviousValue);
-    const resolvedFinalValue = Number(action?.resolvedFinalValue);
-    const resolvedDelta = Number(action?.resolvedDelta);
-    const hasContinuousResolution = Number.isFinite(resolvedPreviousValue)
-      && (Number.isFinite(resolvedFinalValue) || Number.isFinite(resolvedDelta));
-    const resolvedValue = Number.isFinite(resolvedPreviousValue)
-      && Number.isFinite(resolvedFinalValue)
-      ? resolvedPreviousValue
-        + (resolvedFinalValue - resolvedPreviousValue)
-          * (Math.min(totalCount, hitIndex) / totalCount)
-      : Number.isFinite(resolvedPreviousValue) && Number.isFinite(resolvedDelta)
-        ? resolvedPreviousValue
-          + resolvedDelta * (Math.min(totalCount, hitIndex) / totalCount)
-        : Number.NaN;
-    const value = Number.isFinite(eventValue) ? eventValue : resolvedValue;
-    const alreadyVisualized = visualizedHitKeysRef.current.has(hitKey);
-    if (targetName && Number.isFinite(value)) {
-      pendingRadiusAnimationsRef.current.add(targetName);
-    }
-    const eventVersion = Number(event?.stateVersion);
-    if (Number.isFinite(eventVersion)) {
-      latestServerStateVersionRef.current = Math.max(
-        latestServerStateVersionRef.current,
-        eventVersion,
-      );
-    }
-    // Every confirmed hit changes the cell value immediately. The next
-    // animation frame sees the new layout radius and tweens to it, so the
-    // cell grows/shrinks as impacts land instead of only after a reload.
-    if (targetName && Number.isFinite(value)) {
-      serverDatasetRef.current = serverDatasetRef.current.map((person) => (
-        person.name === targetName ? { ...person, value } : person
-      ));
-      setDataset((prev) => prev.map((person) => (
-        person.name === targetName ? { ...person, value } : person
-      )));
-    }
-    pendingHitEventsRef.current.delete(hitKey);
-    queuedHitKeysRef.current.delete(hitKey);
-    if (alreadyVisualized) {
-      realtimeDebug("hit:authoritative-value-reconciled", {
-        actionId,
-        hitIndex,
-        value: Number.isFinite(value) ? value : null,
-        stateVersion: eventVersion,
-      });
-      return false;
-    }
-
-    visualizedHitKeysRef.current.add(hitKey);
-    const target = targetName
-      ? leavesRef.current.find((leaf) => leaf.name === targetName)
-      : null;
-    const emitter = emittersRef.current.find((item) => item.id === actionId);
-    const animatedTarget = targetName
-      ? animatedCirclesRef.current.get(targetName)
-      : null;
-    if (target) {
-      impactsRef.current.push({
-        actionId,
-        targetName,
-        x: animatedTarget?.x ?? target.x,
-        y: animatedTarget?.y ?? target.y,
-        r: animatedTarget?.r ?? target.r,
-        color: (event?.direction || action?.mode) === "defender"
-          ? "34, 197, 94"
-          : "239, 68, 68",
-        startTime: performance.now(),
-        duration: IMPACT_DURATION_MS,
+  const finishActionFromServer = useCallback((actionId) => {
+    if (!actionId) return;
+    const action = animationActionsRef.current.get(actionId);
+    if (action) {
+      animationActionsRef.current.set(actionId, {
+        ...action,
+        status: "completed",
       });
     }
-    projectilesRef.current = projectilesRef.current.filter((projectile) => (
-      projectile.firingId !== actionId || projectile.hitIndex !== hitIndex
-    ));
-    const actionTotalCount = Math.max(1, Number(action?.count) || Number(emitter?.count) || hitIndex);
-    const previousCount = visualHitCountsRef.current.get(actionId) || 0;
-    const visualCount = Math.min(actionTotalCount, Math.max(previousCount, hitIndex));
-    visualHitCountsRef.current.set(actionId, visualCount);
-    setActiveActions((prev) => prev.map((activeAction) => activeAction.id === actionId
-      ? {
-          ...activeAction,
-          hitCount: visualCount,
-          lastHitAt: Number.isFinite(Number(event?.hitAt))
-            ? Number(event.hitAt)
-            : activeAction.lastHitAt,
-        }
-      : activeAction));
-    realtimeDebug("hit:rendered", {
-      actionId,
-      hitIndex,
-      value: Number.isFinite(value) ? value : null,
-      stateVersion: eventVersion,
-      activeProjectiles: projectilesRef.current.length,
+    latestServerActionsRef.current.delete(actionId);
+    deferredCompletedActionIdsRef.current.add(actionId);
+    setQueue((prev) => prev.filter((queuedAction) => queuedAction.id !== actionId));
+    setActiveActions((prev) => {
+      const next = prev.filter((activeAction) => activeAction.id !== actionId);
+      activeActionIdsRef.current = next.map((activeAction) => activeAction.id);
+      return next;
     });
-    return true;
+    realtimeDebug("action:logical-completed", {
+      actionId,
+      hasEmitter: emittersRef.current.some((emitter) => emitter.id === actionId),
+      activeProjectiles: projectilesRef.current.filter(
+        (projectile) => projectile.firingId === actionId,
+      ).length,
+    });
   }, []);
   const reconcileServerState = useCallback((serverState, options = {}) => {
     const incomingStateVersion = Number(serverState?.stateVersion);
@@ -1418,7 +1459,6 @@ export default function PopPersonCanvas() {
       // and never starts an old animation.
       pendingHitEventsRef.current.clear();
       pendingRealtimeHitEventsRef.current = [];
-      queuedHitKeysRef.current.clear();
       visualizedHitKeysRef.current.clear();
       visualHitCountsRef.current.clear();
       emittersRef.current = [];
@@ -1785,7 +1825,7 @@ export default function PopPersonCanvas() {
           }
           if (message?.type === "action:completed" && message.actionId) {
             if (!acceptRealtimeSequence(message)) return;
-            removeRealtimeAction(message.actionId, { preserveImpacts: true });
+            finishActionFromServer(message.actionId);
             realtimeDebug("action:completed", {
               actionId: message.actionId,
               stateVersion: message.stateVersion,
@@ -1842,6 +1882,7 @@ export default function PopPersonCanvas() {
     };
   }, [
     config,
+    finishActionFromServer,
     removeRealtimeAction,
     queueAction,
     reconcileServerState,
@@ -2559,12 +2600,31 @@ export default function PopPersonCanvas() {
       ) {
         const event = pendingRealtimeHitEventsRef.current.shift();
         if (!event) break;
-        commitVisualHit(event);
+        const actionId = event.actionId;
+        const hitIndex = Math.max(1, Number(event.hitIndex) || 0);
+        const hitKey = `${actionId}:${hitIndex}`;
+        const previousEvent = pendingHitEventsRef.current.get(hitKey);
+        if (!previousEvent || Number(event.stateVersion) >= Number(previousEvent.stateVersion)) {
+          pendingHitEventsRef.current.set(hitKey, event);
+        }
+        const serverHitAt = Number(event.hitAt);
+        const isDue = !Number.isFinite(serverHitAt) || serverNow >= serverHitAt;
+        if (visualizedHitKeysRef.current.has(hitKey)) {
+          applyConfirmedHit(event);
+        } else if (isDue && animationActionsRef.current.has(actionId)) {
+          renderScheduledHit(actionId, hitIndex);
+        } else if (isDue && !animationActionsRef.current.has(actionId)) {
+          // A reconnect can deliver a late confirmation after the visual
+          // action was intentionally not replayed. Keep the authority correct
+          // without inventing an old animation.
+          applyConfirmedHit(event);
+        }
         realtimeDebug("hit:realtime-delivered", {
-          actionId: event.actionId,
-          hitIndex: event.hitIndex,
+          actionId,
+          hitIndex,
           value: event.value,
           stateVersion: event.stateVersion,
+          heldForTimeline: !isDue,
         });
       }
 
@@ -2684,15 +2744,7 @@ export default function PopPersonCanvas() {
           && serverNow >= getEmitterHitAtServer(emitter, emitter.nextImpactIndex + 1)
         ) {
           const hitIndex = emitter.nextImpactIndex + 1;
-          const hitKey = `${emitter.id}:${hitIndex}`;
-          const confirmation = pendingHitEventsRef.current.get(hitKey);
-          commitVisualHit(confirmation ?? {
-            actionId: emitter.id,
-            hitIndex,
-            targetName: emitter.targetName,
-            direction: emitter.direction > 0 ? "defender" : "atacar",
-            hitAt: getEmitterHitAtServer(emitter, hitIndex),
-          });
+          renderScheduledHit(emitter.id, hitIndex);
           emitter.nextImpactIndex += 1;
         }
         return emitter.nextIndex < emitter.count || emitter.nextImpactIndex < emitter.count;
@@ -2704,7 +2756,7 @@ export default function PopPersonCanvas() {
         );
         const hasImpact = impactsRef.current.some((impact) => impact.actionId === actionId);
         if (!hasProjectile && !hasImpact) {
-          removeRealtimeAction(actionId);
+          removeRealtimeAction(actionId, { finalizeValue: true });
         }
       });
       // The local projectile animation is only visual feedback. Keep each
@@ -2733,71 +2785,6 @@ export default function PopPersonCanvas() {
         }
       });
 
-      // A resolved action owns one continuous radius progression. The impact
-      // counter remains discrete for the HUD/effects, while the cell size
-      // follows the complete value range between the first and last impact.
-      const continuousRadiusActions = new Map();
-      animationActionsRef.current.forEach((action) => {
-        const targetName = action?.targetName;
-        const previousValue = Number(action?.resolvedPreviousValue);
-        const finalValue = Number(action?.resolvedFinalValue);
-        const delta = Number(action?.resolvedDelta);
-        const firstImpactAtServer = Number(action?.resolvedFirstImpactAtServer);
-        const intervalMs = Math.max(0, Number(action?.resolvedIntervalMs) || 0);
-        const count = Math.max(1, Number(action?.count) || 1);
-        const target = targetName
-          ? animatedCirclesRef.current.get(targetName)
-          : null;
-        if (
-          !target
-          || !Number.isFinite(previousValue)
-          || !Number.isFinite(firstImpactAtServer)
-          || (!Number.isFinite(finalValue) && !Number.isFinite(delta))
-        ) {
-          return;
-        }
-
-        const resolvedTargetValue = Number.isFinite(finalValue)
-          ? finalValue
-          : previousValue + delta;
-        const totalProgressDuration = intervalMs * count;
-        const progress = totalProgressDuration > 0
-          ? Math.min(
-              1,
-              Math.max(
-                0,
-                (serverNow - firstImpactAtServer + intervalMs) / totalProgressDuration,
-              ),
-            )
-          : serverNow >= firstImpactAtServer ? 1 : 0;
-        const visualValue = previousValue
-          + (resolvedTargetValue - previousValue) * progress;
-        const actions = continuousRadiusActions.get(targetName) ?? [];
-        actions.push({
-          previousValue,
-          visualValue,
-          order: Number.isFinite(Number(action?.resolvedAt))
-            ? Number(action.resolvedAt)
-            : firstImpactAtServer,
-        });
-        continuousRadiusActions.set(targetName, actions);
-      });
-      continuousRadiusActions.forEach((actions, targetName) => {
-        const circle = animatedCirclesRef.current.get(targetName);
-        if (!circle) return;
-        actions.sort((a, b) => a.order - b.order);
-        const baseValue = actions[0]?.previousValue ?? 0;
-        const visualValue = baseValue + actions.reduce(
-          (total, action) => total + (action.visualValue - action.previousValue),
-          0,
-        );
-        const radius = Math.sqrt(Math.max(0, visualValue)) * 3.2;
-        circle.r = radius;
-        circle.radiusFrom = radius;
-        circle.radiusTarget = radius;
-        circle.radiusStartedAt = null;
-      });
-
       const lerpFactor = 1 - Math.pow(0.001, dt / 1000);
       leavesRef.current.forEach((target) => {
         const a = animatedCirclesRef.current.get(target.name);
@@ -2816,7 +2803,14 @@ export default function PopPersonCanvas() {
     }
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [commitVisualHit, draw, removeRealtimeAction, seedMissingRects]);
+  }, [
+    applyConfirmedHit,
+    draw,
+    finishActionFromServer,
+    removeRealtimeAction,
+    renderScheduledHit,
+    seedMissingRects,
+  ]);
 
   useEffect(() => {
     function resize() {
