@@ -14,3 +14,4 @@
 - [Origem visual da ação](action-source-cell.md) — ações autenticadas usam a célula do participante como origem persistida do projétil.
 - [Runtime do worker dedicado](high-load-worker-runtime.md) — o workflow do worker deve executar o bundle compilado; `tsx` não está disponível no pacote da API.
 - [Replay após retenção do outbox](outbox-gap-replay.md) — conexões vivas também precisam detectar gaps entre o cursor e o primeiro evento retornado, não só no replay inicial.
+- [Fila de execução versus renderização](action-execution-vs-render-queue.md) — servidor inicia e confirma ações; cliente apenas renderiza, usando GPU/batching para volume sem descartar eventos.
