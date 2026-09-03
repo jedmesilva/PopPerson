@@ -599,14 +599,6 @@ export async function getPopPersonRealtimeOutboxSince(
   gap: boolean;
 }> {
   const roomId = await getRoomId();
-  const [oldest] = options.detectGap
-    ? await db
-        .select({
-          sequence: sql<number>`MIN(${realtimeOutboxTable.sequence})`,
-        })
-        .from(realtimeOutboxTable)
-        .where(eq(realtimeOutboxTable.roomId, roomId))
-    : [];
   const rows = await db
     .select({
       id: realtimeOutboxTable.id,
@@ -633,9 +625,8 @@ export async function getPopPersonRealtimeOutboxSince(
     hasMore: rows.length === limit,
     gap: Boolean(
       options.detectGap
-      && oldest?.sequence !== null
-      && oldest?.sequence !== undefined
-      && toNumber(oldest.sequence) > sequence + 1,
+      && rows[0]
+      && toNumber(rows[0].sequence) > sequence + 1,
     ),
   };
 }

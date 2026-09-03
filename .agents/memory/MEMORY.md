@@ -13,3 +13,4 @@
 - [Entrada durante OAuth](unified-player-oauth-flow.md) — aceite inicia uma intenção temporária; o callback conclui a entrada ou pede só os dados ausentes.
 - [Origem visual da ação](action-source-cell.md) — ações autenticadas usam a célula do participante como origem persistida do projétil.
 - [Runtime do worker dedicado](high-load-worker-runtime.md) — o workflow do worker deve executar o bundle compilado; `tsx` não está disponível no pacote da API.
+- [Replay após retenção do outbox](outbox-gap-replay.md) — conexões vivas também precisam detectar gaps entre o cursor e o primeiro evento retornado, não só no replay inicial.

@@ -253,8 +253,27 @@ export async function registerPopPersonRealtime(
 
   const drainOutbox = async (): Promise<void> => {
     const startedAt = Date.now();
-    const result = await getPopPersonRealtimeOutboxSince(lastOutboxSequence, 250);
+    const result = await getPopPersonRealtimeOutboxSince(
+      lastOutboxSequence,
+      250,
+      { detectGap: true },
+    );
     if (result.events.length === 0) return;
+    if (result.gap) {
+      incrementMetric("realtime.gateway_snapshots");
+      const snapshotSequence = await getPopPersonRealtimeSequence();
+      const snapshotState = await getPopPersonState();
+      broadcast(webSocketServer, {
+        type: "snapshot",
+        state: snapshotState,
+        sequence: snapshotSequence,
+        serverTime: Date.now(),
+      });
+      lastOutboxSequence = snapshotSequence;
+      setMetric("realtime.outbox_cursor", lastOutboxSequence);
+      observeMetric("realtime.outbox_to_gateway_ms", Date.now() - startedAt);
+      return;
+    }
     await deliverOutboxRows(webSocketServer, result.events);
     await markPopPersonRealtimeOutboxPublished(result.events.map((event) => event.id));
     lastOutboxSequence = result.events[result.events.length - 1].sequence;

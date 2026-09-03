@@ -32,7 +32,7 @@ export function observeMetric(name: string, value: number): void {
   if (current.samples.length < MAX_TIMING_SAMPLES) {
     current.samples.push(value);
   } else {
-    current.samples[current.count % MAX_TIMING_SAMPLES] = value;
+    current.samples[(current.count - 1) % MAX_TIMING_SAMPLES] = value;
   }
   timings.set(name, current);
 }
