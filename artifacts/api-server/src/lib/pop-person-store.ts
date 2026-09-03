@@ -57,7 +57,7 @@ const PROCESS_INTERVAL_MS = 500;
 // Keep each worker transaction short. A single action can contain thousands of
 // projectiles, and processing all due hits at once holds cell/room locks long
 // enough to block new action requests and other worker instances.
-const MAX_HITS_PER_TRANSACTION = 50;
+const MAX_HITS_PER_TRANSACTION = 20;
 // Multiple API processes may be connected to the same database. Serialize the
 // action worker at the database level so two workers cannot lock the same
 // action/cell/room rows in different orders and deadlock each other.
