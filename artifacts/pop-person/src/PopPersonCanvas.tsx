@@ -954,6 +954,7 @@ export default function PopPersonCanvas() {
   const animatedCirclesRef = useRef(new Map());
   const serverDatasetRef = useRef([]);
   const emittersRef = useRef([]);
+  const emitterCursorRef = useRef(0);
   const projectilesRef = useRef([]);
   const pendingHitEventsRef = useRef(new Map());
   const queuedHitKeysRef = useRef(new Set());
@@ -1133,6 +1134,7 @@ export default function PopPersonCanvas() {
           resolvedFinalValue: Number.isFinite(finalValue) ? finalValue : null,
           resolvedDelta: Number.isFinite(eventDelta) ? eventDelta : null,
           resolvedStateVersion: Number(resolvedEvent?.stateVersion),
+           resolvedAt: Number(resolvedEvent?.resolvedAt),
         });
       }
       if (targetName && Number.isFinite(finalValue)) {
@@ -1177,6 +1179,7 @@ export default function PopPersonCanvas() {
       resolvedFinalValue: Number.isFinite(finalValue) ? finalValue : null,
       resolvedDelta: Number.isFinite(eventDelta) ? eventDelta : null,
       resolvedStateVersion: Number(resolvedEvent?.stateVersion),
+       resolvedAt: Number(resolvedEvent?.resolvedAt),
       resolvedFirstImpactAtServer: serverNow + duration,
       resolvedIntervalMs: staggerMs,
     };
@@ -2388,29 +2391,47 @@ export default function PopPersonCanvas() {
         lastRealtimeMetricsAtRef.current = now;
       }
 
-      emittersRef.current = emittersRef.current.filter((emitter) => {
+      // Allocate the decorative projectile budget fairly between actions.
+      // Previously the first emitter consumed all 24 slots (and advanced its
+      // schedule even when the cap was full), so later actions could finish
+      // without ever drawing a projectile.
+      const emitters = emittersRef.current;
+      const emitterCount = emitters.length;
+      if (emitterCount > 0) {
+        let cursor = emitterCursorRef.current % emitterCount;
         while (
-          emitter.nextIndex < emitter.count
-          && serverNow >= getEmitterHitAtServer(emitter, emitter.nextIndex + 1) - emitter.duration
-          && spawnedThisFrame < 4
+          spawnedThisFrame < 4
+          && projectilesRef.current.length < MAX_CONCURRENT_PROJECTILES
         ) {
-          const currentLeaves = leavesRef.current;
-          const target = currentLeaves.find((l) => l.name === emitter.targetName);
-          const hitIndex = emitter.nextIndex;
-          // A filtered-out target must never be replaced by another visible
-          // cell. Consume the scheduled visual slot without drawing it.
-          if (!target) {
-            emitter.nextIndex += 1;
-            emitter.remaining = emitter.count - emitter.nextIndex;
-            continue;
-          }
-          const plannedStartServer = getEmitterHitAtServer(emitter, hitIndex + 1)
-            - emitter.duration;
-          const ageMs = Math.max(0, serverNow - plannedStartServer);
-          // A dense action is still allowed to advance its schedule when the
-          // visual cap is full. Skipping a single decorative projectile is
-          // preferable to pausing the entire action until a network hit lands.
-          if (projectilesRef.current.length < MAX_CONCURRENT_PROJECTILES) {
+          let progressedInRound = false;
+          for (
+            let offset = 0;
+            offset < emitterCount && spawnedThisFrame < 4;
+            offset += 1
+          ) {
+            const emitter = emitters[(cursor + offset) % emitterCount];
+            if (
+              emitter.nextIndex >= emitter.count
+              || serverNow < getEmitterHitAtServer(emitter, emitter.nextIndex + 1) - emitter.duration
+            ) {
+              continue;
+            }
+
+            const currentLeaves = leavesRef.current;
+            const target = currentLeaves.find((l) => l.name === emitter.targetName);
+            const hitIndex = emitter.nextIndex;
+            // A filtered-out target must never be replaced by another visible
+            // cell. Consume its scheduled visual slot without drawing it.
+            if (!target) {
+              emitter.nextIndex += 1;
+              emitter.remaining = emitter.count - emitter.nextIndex;
+              progressedInRound = true;
+              continue;
+            }
+
+            const plannedStartServer = getEmitterHitAtServer(emitter, hitIndex + 1)
+              - emitter.duration;
+            const ageMs = Math.max(0, serverNow - plannedStartServer);
             const arcUnit = deterministicUnit(`${emitter.id}:${hitIndex}:arc`);
             const sideUnit = deterministicUnit(`${emitter.id}:${hitIndex}:side`);
             const sourceCircle = emitter.sourceName
@@ -2446,11 +2467,18 @@ export default function PopPersonCanvas() {
               emoji: emitter.emoji,
               level: emitter.level,
             });
+            emitter.nextIndex += 1;
+            emitter.remaining = emitter.count - emitter.nextIndex;
+            spawnedThisFrame += 1;
+            progressedInRound = true;
           }
-          emitter.nextIndex += 1;
-          emitter.remaining = emitter.count - emitter.nextIndex;
-          spawnedThisFrame += 1;
+          if (!progressedInRound) break;
+          cursor = (cursor + 1) % emitterCount;
         }
+        emitterCursorRef.current = cursor;
+      }
+
+      emittersRef.current = emitters.filter((emitter) => {
         while (
           emitter.nextImpactIndex < emitter.count
           && serverNow >= getEmitterHitAtServer(emitter, emitter.nextImpactIndex + 1)
@@ -2508,7 +2536,7 @@ export default function PopPersonCanvas() {
       // A resolved action owns one continuous radius progression. The impact
       // counter remains discrete for the HUD/effects, while the cell size
       // follows the complete value range between the first and last impact.
-      const continuousRadiusTargets = new Map();
+      const continuousRadiusActions = new Map();
       animationActionsRef.current.forEach((action) => {
         const targetName = action?.targetName;
         const previousValue = Number(action?.resolvedPreviousValue);
@@ -2544,12 +2572,26 @@ export default function PopPersonCanvas() {
           : serverNow >= firstImpactAtServer ? 1 : 0;
         const visualValue = previousValue
           + (resolvedTargetValue - previousValue) * progress;
-        const visualRadius = Math.sqrt(Math.max(0, visualValue)) * 3.2;
-        continuousRadiusTargets.set(targetName, visualRadius);
+        const actions = continuousRadiusActions.get(targetName) ?? [];
+        actions.push({
+          previousValue,
+          visualValue,
+          order: Number.isFinite(Number(action?.resolvedAt))
+            ? Number(action.resolvedAt)
+            : firstImpactAtServer,
+        });
+        continuousRadiusActions.set(targetName, actions);
       });
-      continuousRadiusTargets.forEach((radius, targetName) => {
+      continuousRadiusActions.forEach((actions, targetName) => {
         const circle = animatedCirclesRef.current.get(targetName);
         if (!circle) return;
+        actions.sort((a, b) => a.order - b.order);
+        const baseValue = actions[0]?.previousValue ?? 0;
+        const visualValue = baseValue + actions.reduce(
+          (total, action) => total + (action.visualValue - action.previousValue),
+          0,
+        );
+        const radius = Math.sqrt(Math.max(0, visualValue)) * 3.2;
         circle.r = radius;
         circle.radiusFrom = radius;
         circle.radiusTarget = radius;
@@ -2769,19 +2811,28 @@ export default function PopPersonCanvas() {
         )}
         <div className="action-pill-container" style={{ flex: "1 1 auto", minWidth: 0, display: "flex", justifyContent: "center", containerType: "inline-size" }}>
           {(queue.length > 0 || activeActions.length > 0) && (() => {
-            const now = performance.now();
-            const entry = activeActions.length > 0
-              ? { kind: "firing", ...[...activeActions].sort((a, b) => getRemainingUnits(a) - getRemainingUnits(b))[0] }
-            : { kind: "queued", ...[...queue].sort((a, b) => a.localExecuteAt - b.localExecuteAt)[0] };
-            const actionColor = entry.mode === "defender" ? "#22c55e" : "#ef4444";
-            const { timeLabel, progress } = getActionTiming(entry, now);
+            const entries = [
+              ...[...activeActions]
+                .sort((a, b) => getRemainingUnits(a) - getRemainingUnits(b))
+                .map((action) => ({ kind: "firing", ...action })),
+              ...[...queue]
+                .sort((a, b) => a.localExecuteAt - b.localExecuteAt)
+                .map((action) => ({ kind: "queued", ...action })),
+            ];
             return (
-              <button data-testid="button-open-queue" onClick={() => setShowQueueModal(true)} style={{ position: "relative", overflow: "hidden", display: "flex", alignItems: "center", gap: "7px", padding: "7px 14px", borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.55)", backdropFilter: "blur(6px)", border: `1px solid ${actionColor}55`, cursor: "pointer", maxWidth: "100%", minWidth: 0 }}>
-                {entry.kind === "firing" && <div style={{ position: "absolute", inset: 0, width: `${progress * 100}%`, backgroundColor: `${actionColor}33` }} />}
-                <span className="action-pill-target" style={{ position: "relative", color: "#f5f5f5", fontSize: "12px", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, flex: "1 1 auto", textAlign: "left" }}>{MODE_LABEL[entry.mode]} a {entry.targetName}</span>
-                <span style={{ position: "relative", color: actionColor, fontFamily: "monospace", fontSize: "12px", fontWeight: 700, flexShrink: 0 }}>{timeLabel}</span>
-                {(queue.length + activeActions.length - 1) > 0 && <span className="action-pill-count" style={{ position: "relative", color: "#a3a3a3", fontSize: "11px", fontFamily: "monospace", flexShrink: 0 }}>+{queue.length + activeActions.length - 1}</span>}
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", maxWidth: "100%", overflowX: "auto", padding: "2px 0", scrollbarWidth: "none" }}>
+                {entries.map((entry) => {
+                  const actionColor = entry.mode === "defender" ? "#22c55e" : "#ef4444";
+                  const { timeLabel, progress } = getActionTiming(entry, performance.now());
+                  return (
+                    <button key={entry.id} data-testid={`button-open-queue-${entry.id}`} onClick={() => setShowQueueModal(true)} style={{ position: "relative", overflow: "hidden", display: "flex", alignItems: "center", gap: "7px", flex: "0 1 auto", minWidth: 0, maxWidth: "min(240px, 42vw)", padding: "7px 12px", borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.55)", backdropFilter: "blur(6px)", border: `1px solid ${actionColor}55`, cursor: "pointer" }}>
+                      {entry.kind === "firing" && <div style={{ position: "absolute", inset: 0, width: `${progress * 100}%`, backgroundColor: `${actionColor}33` }} />}
+                      <span className="action-pill-target" style={{ position: "relative", color: "#f5f5f5", fontSize: "12px", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, flex: "1 1 auto", textAlign: "left" }}>{MODE_LABEL[entry.mode]} a {entry.targetName}</span>
+                      <span style={{ position: "relative", color: actionColor, fontFamily: "monospace", fontSize: "12px", fontWeight: 700, flexShrink: 0 }}>{timeLabel}</span>
+                    </button>
+                  );
+                })}
+              </div>
             );
           })()}
         </div>
