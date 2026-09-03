@@ -17,6 +17,8 @@ export interface PopPersonAction {
   /** @minimum 0 */
   startDelayMs: number;
   targetName: string;
+  /** @nullable */
+  sourceName: string | null;
   status: PopPersonActionStatus;
   /** @minimum 0 */
   executeAt: number;

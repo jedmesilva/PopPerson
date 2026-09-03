@@ -347,6 +347,7 @@ async function getActions(
   const rows = await db
     .select({
       id: actionsTable.id,
+      sourceCellId: actionsTable.sourceCellId,
       mode: actionsTable.mode,
       elementId: itemsTable.code,
       elementName: itemsTable.name,
@@ -387,6 +388,23 @@ async function getActions(
           ),
     )
     .orderBy(asc(actionsTable.scheduledFor));
+
+  const sourceCellIds = rows
+    .map((action) => action.sourceCellId)
+    .filter((cellId): cellId is string => Boolean(cellId));
+  const sourceRows = sourceCellIds.length > 0
+    ? await db
+        .select({
+          cellId: cellsTable.id,
+          name: peopleTable.name,
+        })
+        .from(cellsTable)
+        .innerJoin(peopleTable, eq(cellsTable.personId, peopleTable.id))
+        .where(inArray(cellsTable.id, sourceCellIds))
+    : [];
+  const sourceNameByCellId = new Map(
+    sourceRows.map((source) => [source.cellId, source.name]),
+  );
 
   const hitProgressByActionId = new Map<
     string,
@@ -470,6 +488,7 @@ async function getActions(
       elementId: action.elementId,
       level: action.level,
       targetName: action.targetName,
+      sourceName: sourceNameByCellId.get(action.sourceCellId ?? "") ?? null,
       status: toActionStatus(action.status),
       startDelayMs,
       executeAt: action.executeAt.getTime(),
@@ -929,6 +948,7 @@ function calculateActionValues(
 export async function createPopPersonAction(
   input: PopPersonActionInput,
   sessionId?: string,
+  userId?: string,
 ): Promise<PopPersonAction> {
   const roomId = await getRoomId();
   const idempotencyKey = input.idempotencyKey ?? randomUUID();
@@ -990,6 +1010,21 @@ export async function createPopPersonAction(
       throw new Error("Ação inválida: elemento, intensidade ou alvo não encontrado.");
     }
 
+    const [source] = userId
+      ? await tx
+          .select({ cellId: cellsTable.id })
+          .from(cellsTable)
+          .innerJoin(peopleTable, eq(cellsTable.personId, peopleTable.id))
+          .where(
+            and(
+              eq(cellsTable.roomId, roomId),
+              eq(cellsTable.active, true),
+              eq(peopleTable.playerUserId, userId),
+              eq(peopleTable.active, true),
+            ),
+          )
+          .limit(1)
+      : [];
     const [rule] = await tx
       .select()
       .from(itemActionRulesTable)
@@ -1026,6 +1061,7 @@ export async function createPopPersonAction(
       .values({
         roomId,
         cellId: target.cellId,
+        sourceCellId: source?.cellId ?? null,
         sessionId: sessionId ?? null,
         itemId: item.id,
         actionLevelId: level.id,

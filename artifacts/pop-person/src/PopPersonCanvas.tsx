@@ -1055,6 +1055,7 @@ export default function PopPersonCanvas() {
     }
     emittersRef.current.push({
       id: actionId,
+      sourceName: serverAction.sourceName,
       targetName: serverAction.targetName,
       nextIndex,
       nextImpactIndex,
@@ -2410,14 +2411,18 @@ export default function PopPersonCanvas() {
           // visual cap is full. Skipping a single decorative projectile is
           // preferable to pausing the entire action until a network hit lands.
           if (projectilesRef.current.length < MAX_CONCURRENT_PROJECTILES) {
-            const spreadUnit = deterministicUnit(`${emitter.id}:${hitIndex}:spread`);
-            const heightUnit = deterministicUnit(`${emitter.id}:${hitIndex}:height`);
             const arcUnit = deterministicUnit(`${emitter.id}:${hitIndex}:arc`);
             const sideUnit = deterministicUnit(`${emitter.id}:${hitIndex}:side`);
-            const spreadX = Math.min(96, Math.max(4, target.x + (spreadUnit - 0.5) * 46));
-            const spreadY = -4 - heightUnit * 10;
-            const dx = target.x - spreadX;
-            const dy = target.y - spreadY;
+            const sourceCircle = emitter.sourceName
+              ? animatedCirclesRef.current.get(emitter.sourceName)
+              : null;
+            const sourceLeaf = emitter.sourceName
+              ? currentLeaves.find((leaf) => leaf.name === emitter.sourceName)
+              : null;
+            const startX = sourceCircle?.x ?? sourceLeaf?.x ?? target.x;
+            const startY = sourceCircle?.y ?? sourceLeaf?.y ?? target.y;
+            const dx = target.x - startX;
+            const dy = target.y - startY;
             const dist = Math.hypot(dx, dy) || 1;
             const perpX = -dy / dist;
             const perpY = dx / dist;
@@ -2427,12 +2432,13 @@ export default function PopPersonCanvas() {
               firingId: emitter.id,
               hitIndex: hitIndex + 1,
               targetName: target.name,
-              startX: spreadX,
-              startY: spreadY,
+              sourceName: emitter.sourceName,
+              startX,
+              startY,
               endX: target.x,
               endY: target.y,
-              controlX: (spreadX + target.x) / 2 + perpX * arcMag,
-              controlY: (spreadY + target.y) / 2 + perpY * arcMag,
+              controlX: (startX + target.x) / 2 + perpX * arcMag,
+              controlY: (startY + target.y) / 2 + perpY * arcMag,
               startTime: now - ageMs,
               duration: emitter.duration,
               growthPerHit: emitter.growthPerHit,

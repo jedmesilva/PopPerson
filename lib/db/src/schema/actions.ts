@@ -41,6 +41,10 @@ export const actionsTable = pgTable(
     cellId: uuid("cell_id")
       .notNull()
       .references(() => cellsTable.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    sourceCellId: uuid("source_cell_id").references(() => cellsTable.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
     sessionId: uuid("session_id").references(() => anonymousSessionsTable.id, {
       onDelete: "set null",
       onUpdate: "cascade",
@@ -78,6 +82,7 @@ export const actionsTable = pgTable(
     uniqueIndex("actions_session_idempotency_idx").on(table.sessionId, table.idempotencyKey),
     index("actions_room_status_idx").on(table.roomId, table.status),
     index("actions_cell_requested_at_idx").on(table.cellId, table.requestedAt),
+    index("actions_source_cell_idx").on(table.sourceCellId),
     index("actions_scheduled_for_idx").on(table.status, table.scheduledFor),
   ],
 );

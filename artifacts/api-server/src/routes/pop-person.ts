@@ -93,6 +93,7 @@ router.post("/pop-person/actions", actionRateLimit, async (req, res): Promise<vo
     const action = await createPopPersonAction(
       parsed.data,
       res.locals.anonymousSessionId,
+      res.locals.authenticatedUser?.id,
     );
     res.status(201).json(CreatePopPersonActionResponse.parse(action));
   } catch (error) {
