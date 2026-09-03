@@ -11,6 +11,7 @@ import {
   searchCountries,
   searchCities,
 } from "@workspace/api-client-react";
+import { createWebGLActionLayer } from "./webgl-action-layer";
 
 function easeOutQuad(t) {
   return 1 - (1 - t) * (1 - t);
@@ -36,8 +37,6 @@ function deterministicUnit(seed) {
 
 const MODE_LABEL = { atacar: "Ataque", defender: "Defesa" };
 const DEFAULT_VISUAL_BUDGET = {
-  maxProjectiles: 24,
-  maxImpacts: 96,
   hudEntries: 6,
 };
 const IMPACT_DURATION_MS = 350;
@@ -64,7 +63,7 @@ function getVisualBudget() {
   const cpuCount = navigator.hardwareConcurrency || 8;
   const constrained = mobile || dpr >= 2.5 || cpuCount <= 4;
   return constrained
-    ? { maxProjectiles: 12, maxImpacts: 36, hudEntries: 3 }
+    ? { hudEntries: 3 }
     : DEFAULT_VISUAL_BUDGET;
 }
 
@@ -649,6 +648,8 @@ export default function PopPersonCanvas() {
   });
   const createActionMutation = useCreatePopPersonAction();
   const canvasRef = useRef(null);
+  const webglCanvasRef = useRef(null);
+  const webglActionLayerRef = useRef(null);
   const boardWrapRef = useRef(null);
   const [dataset, setDataset] = useState([]);
   const [filters, setFilters] = useState({ pais: "Todos", estado: "Todos", cidade: "Todos", categoria: "Todos" });
@@ -1385,7 +1386,7 @@ export default function PopPersonCanvas() {
     const animatedTarget = targetName
       ? animatedCirclesRef.current.get(targetName)
       : null;
-    if (target && impactsRef.current.length < visualBudgetRef.current.maxImpacts) {
+    if (target) {
       impactsRef.current.push({
         actionId,
         targetName,
@@ -1397,25 +1398,6 @@ export default function PopPersonCanvas() {
           : "239, 68, 68",
         startTime: performance.now(),
         duration: IMPACT_DURATION_MS,
-      });
-    } else if (target) {
-      // Impact rings are cosmetic. Preserve the authoritative hit count and
-      // radius progression while folding excess rings into an explicit
-      // per-action counter instead of allowing a burst to grow an unbounded
-      // render list.
-      visualEffectStatsRef.current.droppedImpacts += 1;
-      visualEffectStatsRef.current.aggregatedHits += 1;
-      const aggregateKey = `${actionId}:${targetName}`;
-      const aggregate = aggregatedImpactsRef.current.get(aggregateKey);
-      aggregatedImpactsRef.current.set(aggregateKey, {
-        actionId,
-        targetName,
-        color: (event?.direction || action?.mode) === "defender"
-          ? "34, 197, 94"
-          : "239, 68, 68",
-        count: (aggregate?.count || 0) + 1,
-        startedAt: aggregate?.startedAt ?? performance.now(),
-        lastHitAt: performance.now(),
       });
     }
     projectilesRef.current = projectilesRef.current.filter((projectile) => (
@@ -2334,6 +2316,7 @@ export default function PopPersonCanvas() {
     const canvas = canvasRef.current;
     if (!canvas || !boardWrapRef.current) return;
     const ctx = canvas.getContext("2d");
+    const webglActionLayer = webglActionLayerRef.current;
     const dpr = Math.max(window.devicePixelRatio || 1, 1);
     const { w: cw, h: ch } = cssSize();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -2415,7 +2398,8 @@ export default function PopPersonCanvas() {
       }
     });
     const now = performance.now();
-    impactsRef.current.forEach((imp) => {
+    if (!webglActionLayer) {
+      impactsRef.current.forEach((imp) => {
       const p = Math.min(1, (now - imp.startTime) / imp.duration);
       const impactTarget = animatedCirclesRef.current.get(imp.targetName)
         ?? leavesRef.current.find((leaf) => leaf.name === imp.targetName);
@@ -2448,8 +2432,8 @@ export default function PopPersonCanvas() {
       ctx.strokeStyle = `rgba(${imp.color}, 0.82)`;
       ctx.stroke();
       ctx.restore();
-    });
-    aggregatedImpactsRef.current.forEach((aggregate) => {
+      });
+      aggregatedImpactsRef.current.forEach((aggregate) => {
       const impactTarget = animatedCirclesRef.current.get(aggregate.targetName)
         ?? leavesRef.current.find((leaf) => leaf.name === aggregate.targetName);
       if (!impactTarget) return;
@@ -2468,8 +2452,8 @@ export default function PopPersonCanvas() {
       ctx.fillStyle = `rgba(${aggregate.color}, 0.98)`;
       ctx.fillText(`+${aggregate.count}`, impactTarget.x, impactTarget.y - radius - 5 / t.scale);
       ctx.restore();
-    });
-    projectilesRef.current.forEach((p) => {
+      });
+      projectilesRef.current.forEach((p) => {
       const progress = Math.min(Math.max((now - p.startTime) / p.duration, 0), 1);
       const eased = easeOutQuad(progress);
       const targetCircle = animatedCirclesRef.current.get(p.targetName);
@@ -2507,8 +2491,33 @@ export default function PopPersonCanvas() {
       ctx.textBaseline = "middle";
       ctx.fillText(p.emoji, 0, 0);
       ctx.restore();
-    });
+      });
+    }
     ctx.restore();
+
+    webglActionLayer?.render({
+      now,
+      width: cw,
+      height: ch,
+      pixelRatio: dpr,
+      scale: t.scale,
+      projectiles: projectilesRef.current,
+      impacts: impactsRef.current,
+      resolveCell: (name) => animatedCirclesRef.current.get(name)
+        ?? leavesRef.current.find((leaf) => leaf.name === name)
+        ?? null,
+    });
+  }, []);
+
+  useEffect(() => {
+    const canvas = webglCanvasRef.current;
+    if (!canvas) return undefined;
+    const layer = createWebGLActionLayer(canvas);
+    webglActionLayerRef.current = layer;
+    return () => {
+      layer?.destroy();
+      if (webglActionLayerRef.current === layer) webglActionLayerRef.current = null;
+    };
   }, []);
 
   useEffect(() => {
@@ -2562,22 +2571,22 @@ export default function PopPersonCanvas() {
         lastRealtimeMetricsAtRef.current = now;
       }
 
-      // Allocate the decorative projectile budget fairly between actions.
-      // Previously the first emitter consumed all 24 slots (and advanced its
-      // schedule even when the cap was full), so later actions could finish
-      // without ever drawing a projectile.
+      // Allocate scheduled projectiles fairly between actions. WebGL removes
+      // the old global projectile cap; this per-frame budget only prevents one
+      // unusually large backlog from blocking the animation loop. Nothing is
+      // discarded: an emitter keeps its nextIndex until its projectile spawns.
       const emitters = emittersRef.current;
       const emitterCount = emitters.length;
       if (emitterCount > 0) {
         let cursor = emitterCursorRef.current % emitterCount;
+        const spawnBudget = Math.max(512, emitterCount * 4);
         while (
-          spawnedThisFrame < 4
-          && projectilesRef.current.length < visualBudgetRef.current.maxProjectiles
+          spawnedThisFrame < spawnBudget
         ) {
           let progressedInRound = false;
           for (
             let offset = 0;
-            offset < emitterCount && spawnedThisFrame < 4;
+            offset < emitterCount && spawnedThisFrame < spawnBudget;
             offset += 1
           ) {
             const emitter = emitters[(cursor + offset) % emitterCount];
@@ -2792,6 +2801,7 @@ export default function PopPersonCanvas() {
   useEffect(() => {
     function resize() {
       const canvas = canvasRef.current;
+      const webglCanvas = webglCanvasRef.current;
       if (!canvas || !boardWrapRef.current) return;
       const dpr = Math.max(window.devicePixelRatio || 1, 1);
       const { w, h } = cssSize();
@@ -2799,6 +2809,9 @@ export default function PopPersonCanvas() {
       canvas.height = h * dpr;
       canvas.style.width = `${w}px`;
       canvas.style.height = `${h}px`;
+      if (webglCanvas) {
+        webglActionLayerRef.current?.resize(w, h, dpr);
+      }
       fitToView();
     }
     resize();
@@ -3026,6 +3039,19 @@ export default function PopPersonCanvas() {
 
       <div ref={boardWrapRef} style={{ position: "fixed", top: 0, bottom: 0, left: 0, right: 0, zIndex: 1, overflow: "hidden" }}>
         <canvas data-testid="canvas-people" ref={canvasRef} style={{ display: "block", width: "100%", height: "100%", touchAction: "none", cursor: "grab" }} />
+        <canvas
+          ref={webglCanvasRef}
+          aria-hidden="true"
+          data-testid="canvas-action-effects"
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "block",
+            width: "100%",
+            height: "100%",
+            pointerEvents: "none",
+          }}
+        />
         {joinPlayerError && (
           <div role="alert" style={{ position: "absolute", left: "50%", bottom: "24px", transform: "translateX(-50%)", zIndex: 5, display: "flex", alignItems: "center", gap: "10px", maxWidth: "calc(100% - 32px)", padding: "10px 12px", borderRadius: "12px", backgroundColor: "rgba(69, 10, 10, 0.94)", border: "1px solid rgba(248, 113, 113, 0.45)", color: "#fecaca", fontSize: "12px", fontWeight: 600, boxShadow: "0 8px 24px rgba(0,0,0,0.35)" }}>
             <span>{joinPlayerError}</span>
