@@ -3003,31 +3003,26 @@ export default function PopPersonCanvas() {
                 .sort((a, b) => a.localExecuteAt - b.localExecuteAt)
                 .map((action) => ({ kind: "queued", ...action })),
             ];
-            const visibleEntries = entries.slice(0, visualBudgetRef.current.hudEntries);
-            const hiddenEntryCount = Math.max(0, entries.length - visibleEntries.length);
+          const primaryEntry = entries[0];
+          const additionalEntryCount = Math.max(0, entries.length - 1);
+          const actionColor = primaryEntry.mode === "defender" ? "#22c55e" : "#ef4444";
+          const { timeLabel, progress } = getActionTiming(primaryEntry, performance.now());
             return (
-              <div style={{ display: "flex", alignItems: "center", gap: "6px", maxWidth: "100%", overflowX: "auto", padding: "2px 0", scrollbarWidth: "none" }}>
-                {visibleEntries.map((entry) => {
-                  const actionColor = entry.mode === "defender" ? "#22c55e" : "#ef4444";
-                  const { timeLabel, progress } = getActionTiming(entry, performance.now());
-                  return (
-                    <button key={entry.id} data-testid={`button-open-queue-${entry.id}`} onClick={() => setShowQueueModal(true)} style={{ position: "relative", overflow: "hidden", display: "flex", alignItems: "center", gap: "7px", flex: "0 1 auto", minWidth: 0, maxWidth: "min(240px, 42vw)", padding: "7px 12px", borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.55)", backdropFilter: "blur(6px)", border: `1px solid ${actionColor}55`, cursor: "pointer" }}>
-                      {entry.kind === "firing" && <div style={{ position: "absolute", inset: 0, width: `${progress * 100}%`, backgroundColor: `${actionColor}33` }} />}
-                      <span className="action-pill-target" style={{ position: "relative", color: "#f5f5f5", fontSize: "12px", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, flex: "1 1 auto", textAlign: "left" }}>{MODE_LABEL[entry.mode]} a {entry.targetName}</span>
-                      <span style={{ position: "relative", color: actionColor, fontFamily: "monospace", fontSize: "12px", fontWeight: 700, flexShrink: 0 }}>{timeLabel}</span>
-                    </button>
-                  );
-                })}
-                {hiddenEntryCount > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setShowQueueModal(true)}
-                    style={{ flexShrink: 0, padding: "8px 12px", borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.72)", border: "1px solid rgba(255, 255, 255, 0.12)", color: "#d4d4d4", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}
-                  >
-                    +{hiddenEntryCount} ações
-                  </button>
-                )}
-              </div>
+            <button
+              type="button"
+              data-testid={`button-open-queue-${primaryEntry.id}`}
+              onClick={() => setShowQueueModal(true)}
+              style={{ position: "relative", overflow: "hidden", display: "flex", alignItems: "center", gap: "7px", flex: "0 1 auto", minWidth: 0, maxWidth: "min(280px, 58vw)", padding: "7px 12px", borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.55)", backdropFilter: "blur(6px)", border: `1px solid ${actionColor}55`, cursor: "pointer" }}
+            >
+              {primaryEntry.kind === "firing" && <div style={{ position: "absolute", inset: 0, width: `${progress * 100}%`, backgroundColor: `${actionColor}33` }} />}
+              <span className="action-pill-target" style={{ position: "relative", color: "#f5f5f5", fontSize: "12px", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, flex: "1 1 auto", textAlign: "left" }}>{MODE_LABEL[primaryEntry.mode]} a {primaryEntry.targetName}</span>
+              <span style={{ position: "relative", color: actionColor, fontFamily: "monospace", fontSize: "12px", fontWeight: 700, flexShrink: 0 }}>{timeLabel}</span>
+              {additionalEntryCount > 0 && (
+                <span style={{ position: "relative", flexShrink: 0, color: "#d4d4d4", fontSize: "11px", fontWeight: 800 }}>
+                  +{additionalEntryCount}
+                </span>
+              )}
+            </button>
             );
           })()}
         </div>
