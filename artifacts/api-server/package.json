@@ -5,9 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "export NODE_ENV=development && pnpm run build && pnpm run start",
-    "worker:dev": "export NODE_ENV=development && pnpm run build && pnpm run worker",
     "build": "node ./build.mjs",
-    "worker": "node --enable-source-maps ./dist/worker.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

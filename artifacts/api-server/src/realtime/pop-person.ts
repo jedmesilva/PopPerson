@@ -2,117 +2,41 @@ import type { WebSocketServer, WebSocket } from "ws";
 import type { PopPersonState } from "@workspace/api-zod";
 import { pool } from "@workspace/db";
 import type {
-  PopPersonHitEvent,
   PopPersonResolvedEvent,
   PopPersonRealtimeNotification,
-  PopPersonRealtimeOutboxEvent,
 } from "../lib/pop-person-store";
 import {
   getPopPersonAction,
-  getPopPersonRealtimeSnapshot,
-  getPopPersonRealtimeOutboxSince,
-  getPopPersonRealtimeSequence,
-  markPopPersonRealtimeOutboxFailed,
-  markPopPersonRealtimeOutboxPublished,
-  cleanupPopPersonRealtimeOutbox,
+  getPopPersonState,
   POP_PERSON_REALTIME_CHANNEL,
 } from "../lib/pop-person";
 import { logger } from "../lib/logger";
-import {
-  incrementMetric,
-  observeMetric,
-  setMetric,
-} from "../lib/runtime-metrics";
 
 type PopPersonRealtimeMessage = {
   type:
     | "snapshot"
-    | "effects:batch"
-    | "action:queued"
-    | "action:started"
-    | "action:hit"
     | "action:resolved"
-    | "action:completed"
     | "action:cancelled"
-    | "resync.required"
     | "clock:pong";
-  sequence?: number;
-  sequenceStart?: number;
   state?: PopPersonState;
   action?: Awaited<ReturnType<typeof getPopPersonAction>>;
   actionId?: string;
-  event?: PopPersonHitEvent | PopPersonResolvedEvent;
-  reason?: "outbox_gap" | "replay_too_large";
-  actions?: Array<{
-    action: Awaited<ReturnType<typeof getPopPersonAction>>;
-    event: PopPersonResolvedEvent;
-    sequence: number;
-  }>;
+  event?: PopPersonResolvedEvent;
   serverTime?: number;
   clientTime?: number;
   stateVersion?: number;
 };
 
-type ResolvedDelivery = {
-  sequence: number;
-  action: NonNullable<Awaited<ReturnType<typeof getPopPersonAction>>>;
-  event: PopPersonResolvedEvent;
-};
-
-const MAX_SOCKET_QUEUE_BYTES = 1_000_000;
-const REALTIME_BATCH_LIMIT = Math.max(
-  1,
-  Number.parseInt(process.env.REALTIME_BATCH_LIMIT ?? "100", 10) || 100,
-);
-const REALTIME_BATCH_WINDOW_MS = Math.max(
-  0,
-  Number.parseInt(process.env.REALTIME_BATCH_WINDOW_MS ?? "25", 10) || 0,
-);
-
-type SocketQueue = {
-  messages: string[];
-  bytes: number;
-  flushing: boolean;
-};
-
-const socketQueues = new WeakMap<WebSocket, SocketQueue>();
-
-function flushSocketQueue(socket: WebSocket, queue: SocketQueue): void {
-  if (queue.flushing || socket.readyState !== socket.OPEN) return;
-  const serialized = queue.messages.shift();
-  if (!serialized) return;
-  queue.bytes -= Buffer.byteLength(serialized);
-  queue.flushing = true;
-  socket.send(serialized, (error) => {
-    queue.flushing = false;
-    if (error) {
-      incrementMetric("realtime.delivery_errors");
-      return;
-    }
-    incrementMetric("realtime.messages_sent");
-    incrementMetric("realtime.bytes_sent", Buffer.byteLength(serialized));
-    flushSocketQueue(socket, queue);
-  });
-}
-
 function sendMessage(socket: WebSocket, message: PopPersonRealtimeMessage): void {
   if (socket.readyState !== socket.OPEN) return;
-  const serialized = JSON.stringify(message);
-  const queue = socketQueues.get(socket) ?? {
-    messages: [],
-    bytes: 0,
-    flushing: false,
-  };
-  const messageBytes = Buffer.byteLength(serialized);
-  if (socket.bufferedAmount + queue.bytes + messageBytes > MAX_SOCKET_QUEUE_BYTES) {
-    incrementMetric("realtime.slow_connections");
+  // A slow browser must not retain an unbounded queue of visual effects.
+  // It will receive a fresh snapshot after reconnecting instead of replaying
+  // delayed impacts.
+  if (socket.bufferedAmount > 1_000_000) {
     socket.close(1013, "Realtime client is too slow");
     return;
   }
-  queue.messages.push(serialized);
-  queue.bytes += messageBytes;
-  socketQueues.set(socket, queue);
-  flushSocketQueue(socket, queue);
+  socket.send(JSON.stringify(message));
 }
 
 function broadcast(
@@ -122,347 +46,108 @@ function broadcast(
   webSocketServer.clients.forEach((socket) => sendMessage(socket, message));
 }
 
-async function hydrateResolved(
-  row: PopPersonRealtimeOutboxEvent,
-): Promise<ResolvedDelivery | null> {
-  const notification = row.payload as unknown as Extract<
-    PopPersonRealtimeNotification,
-    { type: "action:resolved" }
-  >;
-  const action = await getPopPersonAction(notification.roomId, notification.actionId);
-  if (!action) return null;
-  return { sequence: row.sequence, action, event: notification.event };
-}
-
-async function deliverOutboxRows(
+async function handleNotification(
   webSocketServer: WebSocketServer,
-  rows: PopPersonRealtimeOutboxEvent[],
+  notification: PopPersonRealtimeNotification,
 ): Promise<void> {
-  let resolved: ResolvedDelivery[] = [];
-  const flushResolved = (): void => {
-    if (resolved.length === 0) return;
-    const actions = resolved;
-    resolved = [];
-    const stateVersion = Math.max(
-      ...actions.map(({ event }) => Number(event.stateVersion) || 0),
+  const serverTime = Date.now();
+  if (notification.type === "action:resolved") {
+    const action = await getPopPersonAction(
+      notification.roomId,
+      notification.actionId,
     );
+    if (!action) return;
     broadcast(webSocketServer, {
-      type: "effects:batch",
-      actions: actions.map(({ action, event, sequence }) => ({ action, event, sequence })),
-      serverTime: Date.now(),
-      sequence: actions[actions.length - 1].sequence,
-      sequenceStart: actions[0].sequence,
-      stateVersion,
+      type: "action:resolved",
+      action,
+      event: notification.event,
+      serverTime,
+      stateVersion: notification.event.stateVersion,
     });
-    incrementMetric("realtime.effect_batches");
-    incrementMetric("realtime.effects_delivered", actions.length);
-  };
-
-  for (const row of rows) {
-    if (row.topic === "action:resolved") {
-      const delivery = await hydrateResolved(row);
-      if (delivery) resolved.push(delivery);
-      continue;
-    }
-
-    flushResolved();
-    const payload = row.payload as unknown as PopPersonRealtimeNotification;
-    if (payload.type === "action:queued") {
-      const action = await getPopPersonAction(payload.roomId, payload.actionId);
-      if (action) {
-        broadcast(webSocketServer, {
-          type: "action:queued",
-          action,
-          actionId: payload.actionId,
-          stateVersion: payload.stateVersion,
-          sequence: row.sequence,
-          serverTime: Date.now(),
-        });
-      }
-      continue;
-    }
-    if (payload.type === "action:started") {
-      const action = await getPopPersonAction(payload.roomId, payload.actionId);
-      if (action) {
-        broadcast(webSocketServer, {
-          type: "action:started",
-          action,
-          actionId: payload.actionId,
-          stateVersion: payload.stateVersion,
-          sequence: row.sequence,
-          serverTime: Date.now(),
-        });
-      }
-      continue;
-    }
-    if (payload.type === "action:hit") {
-      broadcast(webSocketServer, {
-        type: "action:hit",
-        actionId: payload.actionId,
-        event: payload.event,
-        stateVersion: payload.event.stateVersion,
-        sequence: row.sequence,
-        serverTime: Date.now(),
-      });
-      continue;
-    }
-    if (payload.type === "action:completed") {
-      broadcast(webSocketServer, {
-        type: "action:completed",
-        actionId: payload.actionId,
-        stateVersion: payload.stateVersion,
-        sequence: row.sequence,
-        serverTime: Date.now(),
-      });
-      continue;
-    }
-    if (payload.type === "action:cancelled") {
-      broadcast(webSocketServer, {
-        type: "action:cancelled",
-        actionId: payload.actionId,
-        stateVersion: payload.stateVersion,
-        sequence: row.sequence,
-        serverTime: Date.now(),
-      });
-      continue;
-    }
-    if (payload.type === "state:changed") {
-      const snapshot = await getPopPersonRealtimeSnapshot();
-      broadcast(webSocketServer, {
-        type: "snapshot",
-        state: snapshot.state,
-        sequence: snapshot.sequence,
-        stateVersion: payload.stateVersion,
-        serverTime: Date.now(),
-      });
-    }
+    logger.info(
+      {
+        actionId: action.id,
+        state: action.status,
+        hitCount: notification.event.hitCount,
+        serverTime,
+        executeAt: action.executeAt,
+        completesAt: action.completesAt,
+        stateVersion: notification.event.stateVersion,
+      },
+      `PopPerson ${notification.type} published`,
+    );
+    return;
   }
-  flushResolved();
-}
 
-async function deliverOutboxRowsToSocket(
-  socket: WebSocket,
-  rows: PopPersonRealtimeOutboxEvent[],
-): Promise<void> {
-  let resolved: ResolvedDelivery[] = [];
-  const flushResolved = (): void => {
-    if (resolved.length === 0) return;
-    const actions = resolved;
-    resolved = [];
-    sendMessage(socket, {
-      type: "effects:batch",
-      actions: actions.map(({ action, event, sequence }) => ({ action, event, sequence })),
-      sequence: actions[actions.length - 1].sequence,
-      sequenceStart: actions[0].sequence,
-      stateVersion: Math.max(
-        ...actions.map(({ event }) => Number(event.stateVersion) || 0),
-      ),
-      serverTime: Date.now(),
+  if (notification.type === "state:changed") {
+    broadcast(webSocketServer, {
+      type: "snapshot",
+      state: await getPopPersonState(),
+      serverTime,
+      stateVersion: notification.stateVersion,
     });
-  };
-
-  for (const row of rows) {
-    if (row.topic === "action:resolved") {
-      const delivery = await hydrateResolved(row);
-      if (delivery) resolved.push(delivery);
-      continue;
-    }
-    flushResolved();
-    const payload = row.payload as unknown as PopPersonRealtimeNotification;
-    if (payload.type === "action:queued") {
-      const action = await getPopPersonAction(payload.roomId, payload.actionId);
-      if (action) {
-        sendMessage(socket, {
-          type: "action:queued",
-          action,
-          actionId: payload.actionId,
-          sequence: row.sequence,
-          stateVersion: payload.stateVersion,
-          serverTime: Date.now(),
-        });
-      }
-    } else if (payload.type === "action:started") {
-      const action = await getPopPersonAction(payload.roomId, payload.actionId);
-      if (action) {
-        sendMessage(socket, {
-          type: "action:started",
-          action,
-          actionId: payload.actionId,
-          sequence: row.sequence,
-          stateVersion: payload.stateVersion,
-          serverTime: Date.now(),
-        });
-      }
-    } else if (payload.type === "action:hit") {
-      sendMessage(socket, {
-        type: "action:hit",
-        actionId: payload.actionId,
-        event: payload.event,
-        stateVersion: payload.event.stateVersion,
-        sequence: row.sequence,
-        serverTime: Date.now(),
-      });
-    } else if (payload.type === "action:completed") {
-      sendMessage(socket, {
-        type: "action:completed",
-        actionId: payload.actionId,
-        stateVersion: payload.stateVersion,
-        sequence: row.sequence,
-        serverTime: Date.now(),
-      });
-    } else if (payload.type === "state:changed") {
-      const snapshot = await getPopPersonRealtimeSnapshot();
-      sendMessage(socket, {
-        type: "snapshot",
-        state: snapshot.state,
-        sequence: snapshot.sequence,
-        stateVersion: payload.stateVersion,
-        serverTime: Date.now(),
-      });
-    } else if (payload.type === "action:cancelled") {
-      sendMessage(socket, {
-        type: "action:cancelled",
-        actionId: payload.actionId,
-        sequence: row.sequence,
-        stateVersion: payload.stateVersion,
-        serverTime: Date.now(),
-      });
-    }
+    logger.info(
+      { roomId: notification.roomId, stateVersion: notification.stateVersion, serverTime },
+      "PopPerson player state published",
+    );
+    return;
   }
-  flushResolved();
+
+  if (notification.type !== "action:cancelled") {
+    logger.warn(
+      { notificationType: notification.type },
+      "Ignoring deprecated PopPerson realtime notification",
+    );
+    return;
+  }
+  broadcast(webSocketServer, {
+    type: "action:cancelled",
+    actionId: notification.actionId,
+    serverTime,
+    stateVersion: notification.stateVersion,
+  });
+  logger.info(
+    {
+      actionId: notification.actionId,
+      type: notification.type,
+      serverTime,
+      stateVersion: notification.stateVersion,
+    },
+    `PopPerson ${notification.type} published`,
+  );
 }
 
 export async function registerPopPersonRealtime(
   webSocketServer: WebSocketServer,
 ): Promise<void> {
   const listener = await pool.connect();
-  await listener.query(`LISTEN ${POP_PERSON_REALTIME_CHANNEL}`);
-  let lastOutboxSequence = await getPopPersonRealtimeSequence();
-  let deliveryChain = Promise.resolve();
-  let drainAgain = false;
-
-  const drainOutbox = async (): Promise<void> => {
-    const startedAt = Date.now();
-    let result = await getPopPersonRealtimeOutboxSince(
-      lastOutboxSequence,
-      REALTIME_BATCH_LIMIT,
-      { detectGap: true },
-    );
-    if (result.events.length === 0) return;
-    if (result.gap) {
-      incrementMetric("realtime.gateway_snapshots");
-      const snapshot = await getPopPersonRealtimeSnapshot();
-      broadcast(webSocketServer, {
-        type: "resync.required",
-        reason: "outbox_gap",
-        sequence: snapshot.sequence,
-        serverTime: Date.now(),
-      });
-      broadcast(webSocketServer, {
-        type: "snapshot",
-        state: snapshot.state,
-        sequence: snapshot.sequence,
-        serverTime: Date.now(),
-      });
-      lastOutboxSequence = snapshot.sequence;
-      setMetric("realtime.outbox_cursor", lastOutboxSequence);
-      observeMetric("realtime.outbox_to_gateway_ms", Date.now() - startedAt);
-      return;
-    }
-
-    if (REALTIME_BATCH_WINDOW_MS > 0) {
-      await new Promise((resolve) => setTimeout(resolve, REALTIME_BATCH_WINDOW_MS));
-      result = await getPopPersonRealtimeOutboxSince(
-        lastOutboxSequence,
-        REALTIME_BATCH_LIMIT,
-        { detectGap: true },
-      );
-      if (result.gap) {
-        incrementMetric("realtime.gateway_snapshots");
-        const snapshot = await getPopPersonRealtimeSnapshot();
-        broadcast(webSocketServer, {
-          type: "resync.required",
-          reason: "outbox_gap",
-          sequence: snapshot.sequence,
-          serverTime: Date.now(),
-        });
-        broadcast(webSocketServer, {
-          type: "snapshot",
-          state: snapshot.state,
-          sequence: snapshot.sequence,
-          serverTime: Date.now(),
-        });
-        lastOutboxSequence = snapshot.sequence;
-        setMetric("realtime.outbox_cursor", lastOutboxSequence);
-        observeMetric("realtime.outbox_to_gateway_ms", Date.now() - startedAt);
-        return;
-      }
-      if (result.events.length === 0) return;
-    }
-
-    try {
-      await deliverOutboxRows(webSocketServer, result.events);
-      await markPopPersonRealtimeOutboxPublished(result.events.map((event) => event.id));
-    } catch (error) {
-      await markPopPersonRealtimeOutboxFailed(
-        result.events.map((event) => event.id),
-        error,
-      );
-      throw error;
-    }
-    lastOutboxSequence = result.events[result.events.length - 1].sequence;
-    observeMetric("realtime.outbox_to_gateway_ms", Date.now() - startedAt);
-    setMetric("realtime.outbox_cursor", lastOutboxSequence);
-    if (result.hasMore) drainAgain = true;
-  };
-
-  const scheduleDrain = (): void => {
-    deliveryChain = deliveryChain
-      .then(async () => {
-        do {
-          drainAgain = false;
-          await drainOutbox();
-        } while (drainAgain);
-      })
-      .catch((error) => {
-        incrementMetric("realtime.delivery_errors");
-        logger.error({ err: error }, "Failed to drain realtime outbox");
-      });
-  };
-
-  const pollTimer = setInterval(scheduleDrain, 250);
-  pollTimer.unref();
-  const retentionTimer = setInterval(() => {
-    void cleanupPopPersonRealtimeOutbox()
-      .then((deleted) => {
-        if (deleted > 0) logger.info({ deleted }, "Cleaned realtime outbox events");
-      })
-      .catch((error) => logger.warn({ err: error }, "Failed to clean realtime outbox"));
-  }, 15 * 60 * 1000);
-  retentionTimer.unref();
+  // PostgreSQL delivers notifications in commit order, but handling every
+  // notification in a detached promise can reorder messages at the browser.
+  // Keep one delivery chain so each resolved action is broadcast as one
+  // complete visual event.
+  let notificationChain = Promise.resolve();
   listener.on("notification", (message) => {
-    if (message.channel === POP_PERSON_REALTIME_CHANNEL) scheduleDrain();
+    if (message.channel !== POP_PERSON_REALTIME_CHANNEL || !message.payload) return;
+    try {
+      const notification = JSON.parse(
+        message.payload,
+      ) as PopPersonRealtimeNotification;
+      notificationChain = notificationChain
+        .then(() => handleNotification(webSocketServer, notification))
+        .catch((error) => {
+          logger.error({ err: error }, "Failed to deliver PopPerson realtime event");
+        });
+    } catch (error) {
+      logger.warn({ err: error }, "Ignoring malformed PopPerson realtime event");
+    }
   });
-  scheduleDrain();
+  await listener.query(`LISTEN ${POP_PERSON_REALTIME_CHANNEL}`);
 
   webSocketServer.on("connection", async (socket) => {
-    incrementMetric("realtime.connections_opened");
-    setMetric("realtime.connections_active", webSocketServer.clients.size);
-    const connectedAt = Date.now();
-    let replayChain = Promise.resolve();
-    socket.once("close", () => {
-      socketQueues.delete(socket);
-      incrementMetric("realtime.connections_closed");
-      observeMetric("realtime.connection_ms", Date.now() - connectedAt);
-      setMetric("realtime.connections_active", webSocketServer.clients.size);
-    });
-
     try {
-      const snapshot = await getPopPersonRealtimeSnapshot();
       sendMessage(socket, {
         type: "snapshot",
-        state: snapshot.state,
-        sequence: snapshot.sequence,
+        state: await getPopPersonState(),
         serverTime: Date.now(),
       });
     } catch (error) {
@@ -470,62 +155,17 @@ export async function registerPopPersonRealtime(
       socket.close(1011, "Realtime snapshot unavailable");
       return;
     }
-
     socket.on("message", (rawMessage) => {
       try {
-        const message = JSON.parse(rawMessage.toString()) as {
-          type?: string;
-          sequence?: number;
-          stateVersion?: number;
-          clientTime?: number;
-        };
-        if (message.type === "resume") {
-          const requestedSequence = Number(message.sequence ?? message.stateVersion);
-          if (!Number.isFinite(requestedSequence) || requestedSequence < 0) return;
-          incrementMetric("realtime.replay_requests");
-          replayChain = replayChain
-            .then(() => getPopPersonRealtimeOutboxSince(
-              requestedSequence,
-              500,
-              { detectGap: true },
-            ))
-            .then(async (replay) => {
-              if (replay.gap || replay.hasMore) {
-                incrementMetric("realtime.replay_snapshots");
-                const snapshot = await getPopPersonRealtimeSnapshot();
-                sendMessage(socket, {
-                  type: "resync.required",
-                  reason: replay.gap ? "outbox_gap" : "replay_too_large",
-                  sequence: snapshot.sequence,
-                  serverTime: Date.now(),
-                });
-                sendMessage(socket, {
-                  type: "snapshot",
-                  state: snapshot.state,
-                  sequence: snapshot.sequence,
-                  serverTime: Date.now(),
-                });
-                return;
-              }
-              if (replay.events.length > 0) {
-                incrementMetric("realtime.replay_events", replay.events.length);
-                await deliverOutboxRowsToSocket(socket, replay.events);
-              }
-            })
-            .catch((error) => {
-              incrementMetric("realtime.replay_errors");
-              logger.warn({ err: error }, "Failed to replay PopPerson realtime events");
-            });
-          return;
-        }
-        if (message.type !== "clock:ping") return;
+        const message = JSON.parse(rawMessage.toString());
+        if (message?.type !== "clock:ping") return;
         sendMessage(socket, {
           type: "clock:pong",
           serverTime: Date.now(),
           clientTime: Number(message.clientTime) || undefined,
         });
       } catch {
-        incrementMetric("realtime.malformed_client_messages");
+        // Ignore malformed client messages. State delivery is unaffected.
       }
     });
   });

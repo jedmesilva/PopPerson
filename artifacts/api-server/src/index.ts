@@ -48,9 +48,7 @@ server.on("error", (err) => {
   }
 });
 
-// The API owns HTTP/WebSocket delivery only. Action resolution runs in the
-// dedicated worker process so API restarts do not compete with the queue.
-await initializePopPersonStore({ startWorker: false });
+await initializePopPersonStore();
 await initializeCountryCatalog();
 await registerPopPersonRealtime(webSocketServer);
 server.listen(port, () => {

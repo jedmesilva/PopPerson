@@ -40,7 +40,6 @@ export const actionEventsTable = pgTable(
       .notNull()
       .references(() => cellsTable.id, { onDelete: "restrict", onUpdate: "cascade" }),
     sequence: numeric("sequence", { precision: 20, scale: 0 }).notNull(),
-    stateVersion: numeric("state_version", { precision: 20, scale: 0 }),
     eventType: actionEventTypeEnum("event_type").notNull(),
     status: actionStatusEnum("status"),
     deltaValue: numeric("delta_value", { precision: 14, scale: 6 }),
@@ -55,7 +54,6 @@ export const actionEventsTable = pgTable(
       withCheck: sql`false`,
     }),
     uniqueIndex("action_events_action_sequence_idx").on(table.actionId, table.sequence),
-    index("action_events_room_state_version_idx").on(table.roomId, table.stateVersion),
     index("action_events_room_occurred_at_idx").on(table.roomId, table.occurredAt),
     index("action_events_cell_occurred_at_idx").on(table.cellId, table.occurredAt),
   ],

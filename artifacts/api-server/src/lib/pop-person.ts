@@ -3,18 +3,9 @@ export {
   getPopPersonAction,
   getPopPersonBootstrap,
   getPopPersonState,
-  getPopPersonRealtimeOutboxSince,
-  getPopPersonRealtimeSnapshot,
-  getPopPersonRealtimeSequence,
-  markPopPersonRealtimeOutboxFailed,
-  markPopPersonRealtimeOutboxPublished,
-  cleanupPopPersonRealtimeOutbox,
   getPlayerRegistration,
   initializePopPersonStore,
-  startPopPersonWorker,
-  stopPopPersonWorker,
   joinPopPersonAsPlayer,
-  PopPersonOverloadError,
 } from "./pop-person-store";
 export {
   POP_PERSON_REALTIME_CHANNEL,
@@ -22,5 +13,4 @@ export {
 export type {
   PopPersonResolvedEvent,
   PopPersonRealtimeNotification,
-  PopPersonRealtimeOutboxEvent,
 } from "./pop-person-store";

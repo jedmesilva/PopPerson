@@ -12,8 +12,3 @@
 - [Compatibilidade OpenAPI/Zod](openapi-zod-codegen-compatibility.md) — `format: uri` pode gerar `zod.url()` incompatível com a versão de Zod resolvida no workspace.
 - [Entrada durante OAuth](unified-player-oauth-flow.md) — aceite inicia uma intenção temporária; o callback conclui a entrada ou pede só os dados ausentes.
 - [Origem visual da ação](action-source-cell.md) — ações autenticadas usam a célula do participante como origem persistida do projétil.
-- [Runtime do worker dedicado](high-load-worker-runtime.md) — o workflow do worker deve executar o bundle compilado; `tsx` não está disponível no pacote da API.
-- [Replay após retenção do outbox](outbox-gap-replay.md) — conexões vivas também precisam detectar gaps entre o cursor e o primeiro evento retornado, não só no replay inicial.
-- [Fila de execução versus renderização](action-execution-vs-render-queue.md) — servidor inicia e confirma ações; cliente apenas renderiza, usando GPU/batching para volume sem descartar eventos.
-- [Worker de timeline de ações](action-worker-timeline.md) — ações running devem emitir hits conforme o timeline; completesAt só autoriza a conclusão.
-- [Locks de ações no Supabase](supabase-action-locks.md) — transações órfãs podem reter locks por célula; mantenha transações curtas e evite NOTIFY por hit.

@@ -192,7 +192,6 @@ export const PopPersonActionStatus = {
   queued: 'queued',
   running: 'running',
   completed: 'completed',
-  failed: 'failed',
 } as const;
 
 export interface PopPersonAction {
