@@ -952,6 +952,7 @@ export default function PopPersonCanvas() {
 
   const leavesRef = useRef([]);
   const selectedCellRef = useRef(null);
+  const cellSelectionTimerRef = useRef(null);
   const animatedCirclesRef = useRef(new Map());
   const visualValuesRef = useRef(new Map());
   const serverDatasetRef = useRef([]);
@@ -988,6 +989,11 @@ export default function PopPersonCanvas() {
   const recenterAnimRef = useRef(null);
   const showRecenterRef = useRef(false);
   useEffect(() => { leavesRef.current = leaves; }, [leaves]);
+  useEffect(() => () => {
+    if (cellSelectionTimerRef.current !== null) {
+      window.clearTimeout(cellSelectionTimerRef.current);
+    }
+  }, []);
   useEffect(() => {
     dataset.forEach((person) => {
       if (Number.isFinite(Number(person.value))) {
@@ -1983,11 +1989,20 @@ export default function PopPersonCanvas() {
     showPlayerSignup,
   ]);
   const selectCell = useCallback((name) => {
-    if (name === ADD_PLAYER_CELL_NAME) {
-      void openPlayerSignup();
-      return;
+    if (cellSelectionTimerRef.current !== null) {
+      window.clearTimeout(cellSelectionTimerRef.current);
     }
-    setSelectedCell((prev) => prev === name ? null : name);
+    // Wait until the browser finishes the originating pointer sequence
+    // before mounting the modal. Otherwise its newly rendered buttons can
+    // receive that same click.
+    cellSelectionTimerRef.current = window.setTimeout(() => {
+      cellSelectionTimerRef.current = null;
+      if (name === ADD_PLAYER_CELL_NAME) {
+        void openPlayerSignup();
+        return;
+      }
+      setSelectedCell((prev) => prev === name ? null : name);
+    }, 60);
   }, [openPlayerSignup]);
   const openModal = useCallback((mode) => {
     setPendingMode(mode);
