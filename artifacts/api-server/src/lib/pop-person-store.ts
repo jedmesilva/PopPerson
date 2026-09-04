@@ -58,9 +58,6 @@ const POPULARITY_PRICE_MINIMUM = 0.1;
 const POPULARITY_PRICE_SCALE = 100;
 const POPULARITY_PRICE_EXPONENT = 2;
 const CONFIRMED_ACTION_STATUSES = ["queued", "running", "completed"] as const;
-const LEGACY_ACTION_LEVEL_CODE_ALIASES: Record<string, string> = {
-  fan_dedicado: "fan_apaixonado",
-};
 export type PopPersonResolvedEvent = {
   eventId: string;
   actionId: string;
@@ -1024,13 +1021,12 @@ export async function createPopPersonAction(
         ),
       )
       .limit(1);
-    const requestedLevelCode = LEGACY_ACTION_LEVEL_CODE_ALIASES[input.level] ?? input.level;
     const [level] = await tx
       .select()
       .from(actionLevelsTable)
       .where(
         and(
-          eq(actionLevelsTable.code, requestedLevelCode),
+          eq(actionLevelsTable.code, input.level),
           eq(actionLevelsTable.actionTypeId, actionType?.id ?? ""),
           eq(actionLevelsTable.active, true),
         ),
