@@ -1986,15 +1986,10 @@ export default function PopPersonCanvas() {
     showPlayerSignup,
   ]);
   const openModal = useCallback((mode) => {
-    if (!authenticatedUser) {
-      setConnectPurpose("action");
-      setShowConnectModal(true);
-      return;
-    }
     const actionType = actionTypeByMode[mode];
     setPendingMode(mode);
     setModalLevel(levelsByActionType[actionType]?.[0]?.key ?? "");
-  }, [actionTypeByMode, authenticatedUser, levelsByActionType]);
+  }, [actionTypeByMode, levelsByActionType]);
   const selectCell = useCallback((name) => {
     if (cellSelectionTimerRef.current !== null) {
       window.clearTimeout(cellSelectionTimerRef.current);
@@ -3588,25 +3583,49 @@ export default function PopPersonCanvas() {
                   <button type="button" data-testid="button-switch-fan" onClick={() => openModal("defender")} style={{ minWidth: "82px", padding: "9px 14px", border: "none", borderRadius: "9999px", backgroundColor: pendingMode === "defender" ? "#df5184" : "transparent", color: pendingMode === "defender" ? "#fff" : "rgba(255,255,255,0.62)", fontSize: "14px", fontWeight: 800, cursor: "pointer", boxShadow: pendingMode === "defender" ? "0 2px 5px rgba(0,0,0,0.16)" : "none" }}>❤️ Fã</button>
                 </div>
               </div>
-              <FanHaterLevelPicker
-                mode={pendingMode}
-                levels={levelsByActionType[actionTypeByMode[pendingMode]] ?? []}
-                value={modalLevel}
-                onChange={setModalLevel}
-                basePrice={selectedActionType?.basePriceCurrent}
-              />
-              <div style={{ height: "1px", margin: "14px 0 14px", backgroundColor: "#303238" }} />
-              <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "14px" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px", minWidth: 0 }}>
-                  <span style={{ color: "#8c8f96", fontSize: "10px", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase" }}>CUSTO TOTAL</span>
-                  <span data-testid="text-action-total-price" style={{ color: "#f4f4f5", fontSize: "22px", lineHeight: 1, fontWeight: 650, letterSpacing: "0.03em", whiteSpace: "nowrap" }}>{selectedActionPrice === null ? "—" : formatBRL(selectedActionPrice)}</span>
+              {authenticatedUser ? (
+                <>
+                  <FanHaterLevelPicker
+                    mode={pendingMode}
+                    levels={levelsByActionType[actionTypeByMode[pendingMode]] ?? []}
+                    value={modalLevel}
+                    onChange={setModalLevel}
+                    basePrice={selectedActionType?.basePriceCurrent}
+                  />
+                  <div style={{ height: "1px", margin: "14px 0 14px", backgroundColor: "#303238" }} />
+                  <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "14px" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px", minWidth: 0 }}>
+                      <span style={{ color: "#8c8f96", fontSize: "10px", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase" }}>CUSTO TOTAL</span>
+                      <span data-testid="text-action-total-price" style={{ color: "#f4f4f5", fontSize: "22px", lineHeight: 1, fontWeight: 650, letterSpacing: "0.03em", whiteSpace: "nowrap" }}>{selectedActionPrice === null ? "—" : formatBRL(selectedActionPrice)}</span>
+                    </div>
+                    <button data-testid="button-send-action" onClick={confirmAction} disabled={createActionMutation.isPending || !selectedActionType || !selectedLevel} style={{ minWidth: "158px", padding: "13px 18px", borderRadius: "9999px", backgroundColor: pendingMode === "defender" ? "#df5184" : "#ff625f", color: "#fff", fontSize: "15px", fontWeight: 800, border: "none", cursor: createActionMutation.isPending ? "wait" : "pointer", opacity: createActionMutation.isPending || !selectedActionType || !selectedLevel ? 0.55 : 1, boxShadow: "0 5px 16px rgba(255,98,95,0.2)", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
+                      {createActionMutation.isPending ? "Enviando…" : <><span>{pendingMode === "defender" ? "Enviar apoio" : "Enviar hate"}</span><ArrowRight size={18} strokeWidth={2.8} aria-hidden="true" /></>}
+                    </button>
+                  </div>
+                  {selectedLevel?.startDelayMs > 0 && !createActionMutation.isPending && <span style={{ display: "block", marginTop: "10px", color: "#8c8f96", fontSize: "11px" }}>A ação inicia em {Math.ceil(selectedLevel.startDelayMs / 1000)}s.</span>}
+                  {createActionMutation.error && <span style={{ display: "block", marginTop: "10px", color: "#fca5a5", fontSize: "11px" }}>{actionWasRateLimited ? "Muitas ações em pouco tempo. Aguarde um instante e tente novamente." : "Não foi possível enviar esta ação. Tente novamente."}</span>}
+                </>
+              ) : (
+                <div data-testid="action-auth-prompt" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px", padding: "16px 8px 4px", textAlign: "center" }}>
+                  <div style={{ display: "grid", placeItems: "center", width: "38px", height: "38px", borderRadius: "9999px", backgroundColor: "#292b31", color: "#c7d2fe", fontSize: "18px" }}>X</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                    <strong style={{ color: "#f4f4f5", fontSize: "14px" }}>Conecte-se para escolher o nível</strong>
+                    <span style={{ color: "#92959d", fontSize: "11px", lineHeight: 1.45 }}>Ações de fã/apoio e hate só podem ser enviadas por contas conectadas ao X.</span>
+                  </div>
+                  <button
+                    data-testid="button-connect-for-action"
+                    type="button"
+                    onClick={() => {
+                      closeModal();
+                      setConnectPurpose("action");
+                      setShowConnectModal(true);
+                    }}
+                    style={{ minHeight: "40px", padding: "10px 18px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", border: "none", fontSize: "12px", fontWeight: 800, cursor: "pointer" }}
+                  >
+                    Conectar com X
+                  </button>
                 </div>
-                <button data-testid="button-send-action" onClick={confirmAction} disabled={createActionMutation.isPending || !selectedActionType || !selectedLevel} style={{ minWidth: "158px", padding: "13px 18px", borderRadius: "9999px", backgroundColor: pendingMode === "defender" ? "#df5184" : "#ff625f", color: "#fff", fontSize: "15px", fontWeight: 800, border: "none", cursor: createActionMutation.isPending ? "wait" : "pointer", opacity: createActionMutation.isPending || !selectedActionType || !selectedLevel ? 0.55 : 1, boxShadow: "0 5px 16px rgba(255,98,95,0.2)", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
-                  {createActionMutation.isPending ? "Enviando…" : <><span>{pendingMode === "defender" ? "Enviar apoio" : "Enviar hate"}</span><ArrowRight size={18} strokeWidth={2.8} aria-hidden="true" /></>}
-                </button>
-              </div>
-              {selectedLevel?.startDelayMs > 0 && !createActionMutation.isPending && <span style={{ display: "block", marginTop: "10px", color: "#8c8f96", fontSize: "11px" }}>A ação inicia em {Math.ceil(selectedLevel.startDelayMs / 1000)}s.</span>}
-              {createActionMutation.error && <span style={{ display: "block", marginTop: "10px", color: "#fca5a5", fontSize: "11px" }}>{actionWasRateLimited ? "Muitas ações em pouco tempo. Aguarde um instante e tente novamente." : "Não foi possível enviar esta ação. Tente novamente."}</span>}
+              )}
             </div>
           </div>
         </div>
