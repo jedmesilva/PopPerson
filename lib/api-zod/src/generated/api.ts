@@ -100,6 +100,8 @@ export const getPopPersonResponseConfigLevelsItemDurationMin = 0;
 
 export const getPopPersonResponseStateStateVersionMin = 0;
 
+export const getPopPersonResponseStateDatasetItemBasePriceMin = 0;
+
 export const getPopPersonResponseStateDatasetItemTotalFansMin = 0;
 
 export const getPopPersonResponseStateDatasetItemTotalHatersMin = 0;
@@ -186,6 +188,7 @@ export const GetPopPersonResponse = zod.object({
   "status": zod.enum(['titular', 'candidato']),
   "value": zod.number(),
   "color": zod.string(),
+  "basePrice": zod.number().min(getPopPersonResponseStateDatasetItemBasePriceMin).describe('Current target-specific base price calculated from net popularity.'),
   "totalFans": zod.number().min(getPopPersonResponseStateDatasetItemTotalFansMin).describe('Number of completed fan actions for this person.'),
   "totalHaters": zod.number().min(getPopPersonResponseStateDatasetItemTotalHatersMin).describe('Number of completed hater actions for this person.'),
   "polarization": zod.number().min(getPopPersonResponseStateDatasetItemPolarizationMin).max(getPopPersonResponseStateDatasetItemPolarizationMax).nullable().describe('Polarization from 0 to 1, or null when there are no completed actions.'),
@@ -255,6 +258,8 @@ export const JoinPopPersonAsPlayerBody = zod.object({
   "termsAccepted": zod.boolean().describe('Whether the user accepted the InstaPop Terms and Conditions.')
 })
 
+export const joinPopPersonAsPlayerResponsePlayerBasePriceMin = 0;
+
 export const joinPopPersonAsPlayerResponsePlayerTotalFansMin = 0;
 
 export const joinPopPersonAsPlayerResponsePlayerTotalHatersMin = 0;
@@ -288,6 +293,7 @@ export const JoinPopPersonAsPlayerResponse = zod.object({
   "status": zod.enum(['titular', 'candidato']),
   "value": zod.number(),
   "color": zod.string(),
+  "basePrice": zod.number().min(joinPopPersonAsPlayerResponsePlayerBasePriceMin).describe('Current target-specific base price calculated from net popularity.'),
   "totalFans": zod.number().min(joinPopPersonAsPlayerResponsePlayerTotalFansMin).describe('Number of completed fan actions for this person.'),
   "totalHaters": zod.number().min(joinPopPersonAsPlayerResponsePlayerTotalHatersMin).describe('Number of completed hater actions for this person.'),
   "polarization": zod.number().min(joinPopPersonAsPlayerResponsePlayerPolarizationMin).max(joinPopPersonAsPlayerResponsePlayerPolarizationMax).nullable().describe('Polarization from 0 to 1, or null when there are no completed actions.'),
@@ -362,6 +368,8 @@ export const LogoutAuthenticatedUserResponse = zod.void()
  */
 export const getPopPersonStateResponseStateVersionMin = 0;
 
+export const getPopPersonStateResponseDatasetItemBasePriceMin = 0;
+
 export const getPopPersonStateResponseDatasetItemTotalFansMin = 0;
 
 export const getPopPersonStateResponseDatasetItemTotalHatersMin = 0;
@@ -418,6 +426,7 @@ export const GetPopPersonStateResponse = zod.object({
   "status": zod.enum(['titular', 'candidato']),
   "value": zod.number(),
   "color": zod.string(),
+  "basePrice": zod.number().min(getPopPersonStateResponseDatasetItemBasePriceMin).describe('Current target-specific base price calculated from net popularity.'),
   "totalFans": zod.number().min(getPopPersonStateResponseDatasetItemTotalFansMin).describe('Number of completed fan actions for this person.'),
   "totalHaters": zod.number().min(getPopPersonStateResponseDatasetItemTotalHatersMin).describe('Number of completed hater actions for this person.'),
   "polarization": zod.number().min(getPopPersonStateResponseDatasetItemPolarizationMin).max(getPopPersonStateResponseDatasetItemPolarizationMax).nullable().describe('Polarization from 0 to 1, or null when there are no completed actions.'),

@@ -53,6 +53,11 @@ const MAX_HITS_PER_TRANSACTION = 50;
 // action worker at the database level so two workers cannot lock the same
 // action/cell/room rows in different orders and deadlock each other.
 const POP_PERSON_WORKER_LOCK_KEY = 29184731;
+// Dynamic pricing knobs from the product pricing specification.
+const POPULARITY_PRICE_MINIMUM = 0.1;
+const POPULARITY_PRICE_SCALE = 100;
+const POPULARITY_PRICE_EXPONENT = 2;
+const CONFIRMED_ACTION_STATUSES = ["queued", "running", "completed"] as const;
 export type PopPersonResolvedEvent = {
   eventId: string;
   actionId: string;
@@ -163,6 +168,18 @@ async function enqueueRealtimeNotificationBatch(
 function toNumber(value: unknown, fallback = 0): number {
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function roundCurrency(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function calculatePopularityBasePrice(totalFans: number, totalHaters: number): number {
+  const popularity = Math.max(0, totalFans - totalHaters);
+  const price = POPULARITY_PRICE_MINIMUM * (
+    1 + (popularity / POPULARITY_PRICE_SCALE) ** POPULARITY_PRICE_EXPONENT
+  );
+  return roundCurrency(price);
 }
 
 function toTimestampMs(value: unknown): number | null {
@@ -300,7 +317,7 @@ async function getDataset(roomId: string): Promise<PopPerson[]> {
       .where(
         and(
           eq(actionsTable.roomId, roomId),
-          eq(actionsTable.status, "completed"),
+          inArray(actionsTable.status, CONFIRMED_ACTION_STATUSES),
         ),
       )
       .groupBy(cellsTable.personId, actionsTable.mode),
@@ -360,6 +377,7 @@ async function getDataset(roomId: string): Promise<PopPerson[]> {
     const polarization = totalInteractions > 0
       ? 1 - ((totalFans - totalHaters) / totalInteractions) ** 2
       : null;
+    const basePrice = calculatePopularityBasePrice(totalFans, totalHaters);
 
     return {
       name: person.name,
@@ -379,6 +397,7 @@ async function getDataset(roomId: string): Promise<PopPerson[]> {
       status: person.status,
       value: toNumber(person.value),
       color: person.color,
+      basePrice,
       totalFans,
       totalHaters,
       polarization,
@@ -909,10 +928,7 @@ export async function joinPopPersonAsPlayer(
 }
 
 function calculateActionValues(
-  actionType: {
-    basePriceCurrent: string;
-    basePriceMinimum: string;
-  },
+  basePrice: number,
   level: {
     startDelayMs: number;
     multiplier: string;
@@ -930,11 +946,7 @@ function calculateActionValues(
   const durationMs = level.durationMs;
   const impactMultiplier = toNumber(level.impactMultiplier, 1);
   const growthPerHit = toNumber(level.growthPerHit) * impactMultiplier;
-  const basePrice = Math.max(
-    toNumber(actionType.basePriceCurrent),
-    toNumber(actionType.basePriceMinimum),
-  );
-  const price = basePrice * multiplier;
+  const price = roundCurrency(basePrice * multiplier);
   return {
     startDelayMs,
     count,
@@ -1025,6 +1037,22 @@ export async function createPopPersonAction(
       throw new Error("Ação inválida: tipo, nível ou alvo não encontrado.");
     }
 
+    const [targetActionCounts] = await tx
+      .select({
+        totalFans: sql<number>`count(*) filter (where ${actionsTable.mode} = 'defender')::int`,
+        totalHaters: sql<number>`count(*) filter (where ${actionsTable.mode} = 'atacar')::int`,
+      })
+      .from(actionsTable)
+      .where(
+        and(
+          eq(actionsTable.cellId, target.cellId),
+          inArray(actionsTable.status, CONFIRMED_ACTION_STATUSES),
+        ),
+      );
+    const totalFans = toNumber(targetActionCounts?.totalFans);
+    const totalHaters = toNumber(targetActionCounts?.totalHaters);
+    const basePrice = calculatePopularityBasePrice(totalFans, totalHaters);
+
     const [source] = userId
       ? await tx
           .select({ cellId: cellsTable.id })
@@ -1040,7 +1068,7 @@ export async function createPopPersonAction(
           )
           .limit(1)
       : [];
-    const values = calculateActionValues(actionType, level);
+    const values = calculateActionValues(basePrice, level);
     const scheduledFor = new Date(now.getTime() + values.startDelayMs);
     const completesAt = new Date(
       scheduledFor.getTime() +
@@ -1056,6 +1084,7 @@ export async function createPopPersonAction(
       impactMultiplier: values.impactMultiplier,
       shake: values.shake,
       totalImpact: values.totalImpact,
+      basePrice,
       price: values.price,
       actionTypeCode: actionType.code,
       levelCode: level.code,

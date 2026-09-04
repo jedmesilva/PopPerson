@@ -87,6 +87,11 @@ export interface PopPerson {
   value: number;
   color: string;
   /**
+     * Current target-specific base price calculated from net popularity.
+     * @minimum 0
+     */
+  basePrice: number;
+  /**
      * Number of completed fan actions for this person.
      * @minimum 0
      */

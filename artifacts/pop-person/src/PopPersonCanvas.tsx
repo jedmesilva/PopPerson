@@ -129,15 +129,14 @@ function getStableCellTextSize(screenRadius) {
   );
 }
 
-function getActionTotalPrice(actionType, level) {
-  if (!actionType || !level) return null;
-  const currentPrice = Number(actionType.basePriceCurrent);
-  const minimumPrice = Number(actionType.basePriceMinimum);
+function getActionTotalPrice(basePrice, level) {
+  if (!level) return null;
+  const currentPrice = Number(basePrice);
   const multiplier = Number(level.multiplier);
-  if (!Number.isFinite(currentPrice) || !Number.isFinite(minimumPrice) || !Number.isFinite(multiplier)) {
+  if (!Number.isFinite(currentPrice) || !Number.isFinite(multiplier)) {
     return null;
   }
-  return Math.max(currentPrice, minimumPrice) * multiplier;
+  return currentPrice * multiplier;
 }
 
 function tryPackCircles(ordered, baseRadii, scale) {
@@ -750,10 +749,6 @@ export default function PopPersonCanvas() {
   );
   const selectedActionType = pendingMode ? actionTypes[actionTypeByMode[pendingMode]] : null;
   const selectedLevel = levelByKey[modalLevel] ?? null;
-  const selectedActionPrice = useMemo(
-    () => getActionTotalPrice(selectedActionType, selectedLevel),
-    [selectedActionType, selectedLevel],
-  );
   const activeFilterLocationSearch = useMemo(() => {
     if (isFilterCountryPickerOpen) return { level: "pais", query: filterCountrySearch };
     if (isFilterStatePickerOpen) return { level: "estado", query: filterStateSearch };
@@ -1805,6 +1800,10 @@ export default function PopPersonCanvas() {
     );
   }, [authenticatedUser, pendingMode, selectedActionType, selectedLevel, modalLevel, selectedCell, closeModal, createActionMutation, queueAction]);
   const selectedCellData = useMemo(() => leaves.find((l) => l.name === selectedCell) || null, [leaves, selectedCell]);
+  const selectedActionPrice = useMemo(
+    () => getActionTotalPrice(selectedCellData?.basePrice, selectedLevel),
+    [selectedCellData?.basePrice, selectedLevel],
+  );
   const selectedPopularityRank = useMemo(() => {
     if (!selectedCellData) return null;
     const ranked = [...leaves].sort((a, b) => Number(b.value) - Number(a.value));
@@ -2980,12 +2979,15 @@ export default function PopPersonCanvas() {
                     levels={levelsByActionType[actionTypeByMode[pendingMode]] ?? []}
                     value={modalLevel}
                     onChange={setModalLevel}
-                    basePrice={selectedActionType?.basePriceCurrent}
+                    basePrice={selectedCellData?.basePrice}
                   />
                   <div style={{ height: "1px", margin: "14px 0 14px", backgroundColor: "#303238" }} />
                   <div className="action-modal-primary-row" style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "14px" }}>
                     <div className="action-modal-total" style={{ display: "flex", flexDirection: "column", gap: "6px", minWidth: 0 }}>
                       <span style={{ color: "#8c8f96", fontSize: "10px", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase" }}>CUSTO TOTAL</span>
+                      <span data-testid="text-action-base-price" style={{ color: "#8c8f96", fontSize: "11px", lineHeight: 1, whiteSpace: "nowrap" }}>
+                        Preço-base {selectedCellData?.basePrice == null ? "—" : formatBRL(selectedCellData.basePrice)}
+                      </span>
                       <span data-testid="text-action-total-price" style={{ color: "#f4f4f5", fontSize: "22px", lineHeight: 1, fontWeight: 650, letterSpacing: "0.03em", whiteSpace: "nowrap" }}>{selectedActionPrice === null ? "—" : formatBRL(selectedActionPrice)}</span>
                     </div>
                      <button className="action-modal-send" data-testid="button-send-action" onClick={confirmAction} disabled={createActionMutation.isPending || !selectedActionType || !selectedLevel} style={{ minWidth: "158px", padding: "13px 18px", borderRadius: "9999px", backgroundColor: ACTION_MODE_COLORS[pendingMode], color: "#fff", fontSize: "15px", fontWeight: 800, border: "none", cursor: createActionMutation.isPending ? "wait" : "pointer", opacity: createActionMutation.isPending || !selectedActionType || !selectedLevel ? 0.55 : 1, boxShadow: `0 5px 16px ${ACTION_MODE_COLORS[pendingMode]}33`, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>

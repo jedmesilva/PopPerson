@@ -329,7 +329,7 @@ components:
           type: number
     PopPerson:
       type: object
-      required: [name, category, categoryPath, gender, cidade, estado, estadoCodigo, pais, paisCodigo, status, value, color, totalFans, totalHaters, polarization, imageUrl, xUsername, xProfileUrl]
+      required: [name, category, categoryPath, gender, cidade, estado, estadoCodigo, pais, paisCodigo, status, value, color, basePrice, totalFans, totalHaters, polarization, imageUrl, xUsername, xProfileUrl]
       properties:
         name:
           type: string
@@ -359,6 +359,10 @@ components:
           type: number
         color:
           type: string
+        basePrice:
+          type: number
+          minimum: 0
+          description: Current target-specific base price calculated from net popularity.
         totalFans:
           type: number
           minimum: 0
