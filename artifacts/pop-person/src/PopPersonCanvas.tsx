@@ -1354,13 +1354,13 @@ export default function PopPersonCanvas() {
         eventVersion,
       );
     }
-    // Resolved actions drive the radius continuously from the Canvas loop.
-    // Only commit the final value to React so intermediate hits do not cause
-    // the radius tween to chase a new layout target on every impact.
+    // The layout is derived from the React dataset. Commit every impact while
+    // the action is running so the target cell can grow frame by frame instead
+    // of receiving the complete value only when the action resolves.
     const shouldCommitDataset = !hasContinuousResolution || hitIndex >= totalCount;
     if (targetName && Number.isFinite(value)) {
       visualValuesRef.current.set(targetName, value);
-      if (shouldCommitDataset && hitIndex >= totalCount) {
+      if (shouldCommitDataset) {
         setDataset((prev) => prev.map((person) => (
           person.name === targetName ? { ...person, value } : person
         )));
