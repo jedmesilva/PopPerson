@@ -3514,39 +3514,63 @@ export default function PopPersonCanvas() {
       )}
 
       {pendingMode && (
-        <div onClick={closeModal} style={{ position: "fixed", inset: 0, zIndex: 100, backgroundColor: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: "380px", maxHeight: "85vh", backgroundColor: "#171717", border: "1px solid #333", borderRadius: "16px", padding: "20px", display: "flex", flexDirection: "column", gap: "16px", overflowY: "auto" }}>
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "8px" }}>
-              <span style={{ color: "#fff", fontWeight: 800, fontSize: "18px", letterSpacing: "-0.01em", lineHeight: 1.25 }}>
-                {pendingMode === "defender" ? `Qual é o seu nível de fã de ${selectedCell}?` : `Qual é o seu nível de hate de ${selectedCell}?`}
-              </span>
-              <button data-testid="button-close-action" onClick={closeModal} style={{ ...closeButtonStyle, flexShrink: 0 }}><X size={13} /></button>
-            </div>
+        <div onClick={closeModal} style={{ position: "fixed", inset: 0, zIndex: 120, backgroundColor: "rgba(0,0,0,0.78)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "14px" }}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="action-modal-title"
+            onClick={(e) => e.stopPropagation()}
+            style={{ position: "relative", width: "min(94vw, 520px)", height: "min(90vh, 760px)", minHeight: "560px", overflow: "hidden", borderRadius: "30px", backgroundColor: "#c9c9cd", boxShadow: "0 18px 64px rgba(0,0,0,0.58)" }}
+          >
             {selectedCellData && (
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px 10px", borderRadius: "10px", backgroundColor: "#262626", border: "1px solid #333" }}>
-                <PersonVisual person={selectedCellData} alt={`Imagem de ${selectedCellData.name}`} style={{ width: "46px", height: "46px", borderRadius: "8px", flexShrink: 0 }} />
-                <div style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 }}>
-                  <span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Pessoa selecionada</span>
-                  <span style={{ color: "#fff", fontSize: "14px", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedCellData.name}</span>
-                </div>
-              </div>
+              <PersonVisual
+                person={selectedCellData}
+                alt={`Imagem de ${selectedCellData.name}`}
+                style={{ position: "absolute", inset: 0, width: "100%", height: "100%", borderRadius: 0, backgroundColor: "#c9c9cd" }}
+              />
             )}
-            <FanHaterLevelPicker
-              mode={pendingMode}
-              levels={levelsByActionType[actionTypeByMode[pendingMode]] ?? []}
-              value={modalLevel}
-              onChange={setModalLevel}
-              basePrice={selectedActionType?.basePriceCurrent}
-            />
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderRadius: "10px", backgroundColor: "#262626", border: "1px solid #333" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: "3px", minWidth: 0 }}>
-                <span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Custo total da ação</span>
-                <span style={{ color: "#f5f5f5", fontSize: "13px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedLevel?.name ?? modalLevel}</span>
+            <div style={{ position: "absolute", inset: 0, pointerEvents: "none", background: "linear-gradient(to bottom, rgba(205,205,210,0.98) 0%, rgba(205,205,210,0.84) 20%, rgba(205,205,210,0.12) 45%, rgba(15,16,18,0.1) 62%, rgba(15,16,18,0.92) 78%, #111214 100%)" }} />
+
+            <div style={{ position: "relative", zIndex: 1, height: "100%", padding: "34px 28px 18px", boxSizing: "border-box" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "16px" }}>
+                <div style={{ minWidth: 0 }}>
+                  <span style={{ display: "block", color: "rgba(255,255,255,0.74)", fontSize: "12px", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase" }}>
+                    {pendingMode === "defender" ? "VOCÊ É FÃ DE" : "VOCÊ É HATER DE"}
+                  </span>
+                  <span id="action-modal-title" style={{ display: "block", marginTop: "4px", color: "#fff", fontSize: "34px", lineHeight: 1.05, fontWeight: 400, letterSpacing: "-0.04em", textShadow: "0 1px 12px rgba(0,0,0,0.18)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {selectedCell}
+                  </span>
+                </div>
+                <button data-testid="button-close-action" onClick={closeModal} aria-label="Fechar seleção de nível" style={{ width: "38px", height: "38px", flexShrink: 0, borderRadius: "50%", backgroundColor: "rgba(52,53,56,0.72)", color: "#f5f5f5", border: "none", cursor: "pointer", display: "grid", placeItems: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.14)" }}><X size={21} strokeWidth={2.3} /></button>
               </div>
-              <span data-testid="text-action-total-price" style={{ color: "#4ade80", fontSize: "17px", fontWeight: 700, fontFamily: "monospace", flexShrink: 0 }}>{selectedActionPrice === null ? "—" : formatBRL(selectedActionPrice)}</span>
+
+              <div style={{ display: "inline-flex", alignItems: "center", gap: "3px", marginTop: "28px", padding: "4px", borderRadius: "9999px", backgroundColor: "rgba(60,61,65,0.78)", boxShadow: "0 3px 10px rgba(0,0,0,0.12)" }}>
+                <button type="button" data-testid="button-switch-hater" onClick={() => openModal("atacar")} style={{ minWidth: "96px", padding: "10px 14px", border: "none", borderRadius: "9999px", backgroundColor: pendingMode === "atacar" ? "#d52f2f" : "transparent", color: pendingMode === "atacar" ? "#fff" : "rgba(255,255,255,0.62)", fontSize: "15px", fontWeight: 800, cursor: "pointer", boxShadow: pendingMode === "atacar" ? "0 2px 5px rgba(0,0,0,0.16)" : "none" }}>👎 Hater</button>
+                <button type="button" data-testid="button-switch-fan" onClick={() => openModal("defender")} style={{ minWidth: "82px", padding: "10px 14px", border: "none", borderRadius: "9999px", backgroundColor: pendingMode === "defender" ? "#df5184" : "transparent", color: pendingMode === "defender" ? "#fff" : "rgba(255,255,255,0.62)", fontSize: "15px", fontWeight: 800, cursor: "pointer", boxShadow: pendingMode === "defender" ? "0 2px 5px rgba(0,0,0,0.16)" : "none" }}>❤️ Fã</button>
+              </div>
+
+              <div style={{ position: "absolute", left: "16px", right: "16px", bottom: "16px", zIndex: 2, padding: "24px 22px 20px", borderRadius: "26px", backgroundColor: "rgba(20,21,23,0.97)", boxShadow: "0 -8px 26px rgba(0,0,0,0.22)", boxSizing: "border-box" }}>
+                <FanHaterLevelPicker
+                  mode={pendingMode}
+                  levels={levelsByActionType[actionTypeByMode[pendingMode]] ?? []}
+                  value={modalLevel}
+                  onChange={setModalLevel}
+                  basePrice={selectedActionType?.basePriceCurrent}
+                />
+                <div style={{ height: "1px", margin: "18px 0 16px", backgroundColor: "#303238" }} />
+                <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "14px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px", minWidth: 0 }}>
+                    <span style={{ color: "#8c8f96", fontSize: "11px", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase" }}>CUSTO TOTAL</span>
+                    <span data-testid="text-action-total-price" style={{ color: "#f4f4f5", fontSize: "24px", lineHeight: 1, fontWeight: 600, letterSpacing: "0.03em", whiteSpace: "nowrap" }}>{selectedActionPrice === null ? "—" : formatBRL(selectedActionPrice)}</span>
+                  </div>
+                  <button data-testid="button-send-action" onClick={confirmAction} disabled={createActionMutation.isPending || !selectedActionType || !selectedLevel} style={{ minWidth: "158px", padding: "14px 18px", borderRadius: "9999px", backgroundColor: pendingMode === "defender" ? "#df5184" : "#ff625f", color: "#fff", fontSize: "16px", fontWeight: 800, border: "none", cursor: createActionMutation.isPending ? "wait" : "pointer", opacity: createActionMutation.isPending || !selectedActionType || !selectedLevel ? 0.55 : 1, boxShadow: "0 5px 16px rgba(255,98,95,0.2)" }}>
+                    {createActionMutation.isPending ? "Enviando…" : `${pendingMode === "defender" ? "Enviar fã" : "Enviar hate"} →`}
+                  </button>
+                </div>
+                {selectedLevel?.startDelayMs > 0 && !createActionMutation.isPending && <span style={{ display: "block", marginTop: "10px", color: "#8c8f96", fontSize: "11px" }}>A ação inicia em {Math.ceil(selectedLevel.startDelayMs / 1000)}s.</span>}
+                {createActionMutation.error && <span style={{ display: "block", marginTop: "10px", color: "#fca5a5", fontSize: "11px" }}>{actionWasRateLimited ? "Muitas ações em pouco tempo. Aguarde um instante e tente novamente." : "Não foi possível enviar esta ação. Tente novamente."}</span>}
+              </div>
             </div>
-            {createActionMutation.error && <span style={{ color: "#fca5a5", fontSize: "11px" }}>{actionWasRateLimited ? "Muitas ações em pouco tempo. Aguarde um instante e tente novamente." : "Não foi possível enviar esta ação. Tente novamente."}</span>}
-            <button data-testid="button-send-action" onClick={confirmAction} disabled={createActionMutation.isPending || !selectedActionType || !selectedLevel} style={{ padding: "10px", borderRadius: "9999px", backgroundColor: createActionMutation.isPending || !selectedActionType || !selectedLevel ? "#525252" : "#f5f5f5", color: "#0a0a0a", fontWeight: 700, border: "none", cursor: createActionMutation.isPending ? "wait" : "pointer" }}>{createActionMutation.isPending ? "Enviando…" : selectedLevel?.startDelayMs > 0 ? `Enviar (inicia em ${Math.ceil(selectedLevel.startDelayMs / 1000)}s)` : "Enviar agora"}</button>
           </div>
         </div>
       )}
