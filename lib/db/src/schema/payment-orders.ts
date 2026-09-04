@@ -47,7 +47,7 @@ export const paymentOrdersTable = pgTable(
     actionType: varchar("action_type", { length: 16 }).notNull(),
     actionLevel: varchar("action_level", { length: 80 }).notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
-    currency: varchar("currency", { length: 3 }).notNull().default("usd"),
+    currency: varchar("currency", { length: 3 }).notNull().default("brl"),
     basePriceMinor: integer("base_price_minor").notNull(),
     amountMinor: integer("amount_minor").notNull(),
     stripeProductId: text("stripe_product_id"),

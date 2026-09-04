@@ -4,7 +4,9 @@ import {
   asc,
   desc,
   eq,
+  gt,
   inArray,
+  isNull,
   lte,
   sql,
   type SQL,
@@ -18,11 +20,13 @@ import {
   cellsTable,
   categoriesTable,
   locationsTable,
+  paymentOrdersTable,
   peopleTable,
   roomMembersTable,
   roomsTable,
   usersTable,
 } from "@workspace/db";
+import type Stripe from "stripe";
 import type {
   JoinPopPersonBody,
   PopPerson,
@@ -965,10 +969,222 @@ function modeForActionType(actionType: "hate" | "fan"): "atacar" | "defender" {
   return actionType === "fan" ? "defender" : "atacar";
 }
 
+type StripeCheckoutUser = {
+  id: string;
+  email?: string | null;
+};
+
+export type PopPersonCheckout = {
+  paymentOrderId: string;
+  checkoutSessionId: string;
+  checkoutUrl: string;
+  amount: number;
+  currency: string;
+};
+
+async function getStripeActionProduct() {
+  const { getUncachableStripeClient } = await import("./stripe-client");
+  const stripe = await getUncachableStripeClient();
+  const configuredProductId = process.env.STRIPE_POPPERSON_PRODUCT_ID?.trim();
+  if (configuredProductId) {
+    return { stripe, product: await stripe.products.retrieve(configuredProductId) };
+  }
+  const products = await stripe.products.list({ active: true, limit: 100 });
+  const existing = products.data.find(
+    (product) => product.metadata?.instapop_kind === "action",
+  );
+  if (existing) return { stripe, product: existing };
+  return {
+    stripe,
+    product: await stripe.products.create({
+      name: "InstaPop — ação de popularidade",
+      description: "Ação individual de hate ou apoio no jogo global InstaPop.",
+      metadata: { instapop_kind: "action" },
+    }),
+  };
+}
+
+export async function createPopPersonCheckout(
+  input: PopPersonActionInput,
+  sessionId: string | undefined,
+  user: StripeCheckoutUser,
+  returnOrigin: string,
+): Promise<PopPersonCheckout> {
+  const roomId = await getRoomId();
+  await ensureRoomMembership(roomId, sessionId);
+  const idempotencyKey = input.idempotencyKey ?? randomUUID();
+
+  const order = await db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select()
+      .from(paymentOrdersTable)
+      .where(
+        and(
+          eq(paymentOrdersTable.userId, user.id),
+          eq(paymentOrdersTable.idempotencyKey, idempotencyKey),
+        ),
+      )
+      .limit(1);
+    if (existing) return existing;
+
+    const [target] = await tx
+      .select({
+        cellId: cellsTable.id,
+        targetName: peopleTable.name,
+      })
+      .from(cellsTable)
+      .innerJoin(peopleTable, eq(cellsTable.personId, peopleTable.id))
+      .where(
+        and(
+          eq(cellsTable.roomId, roomId),
+          eq(cellsTable.active, true),
+          eq(peopleTable.active, true),
+          eq(peopleTable.name, input.targetName),
+        ),
+      )
+      .limit(1);
+    const [actionType] = await tx
+      .select()
+      .from(actionTypesTable)
+      .where(
+        and(
+          eq(actionTypesTable.code, input.actionType),
+          eq(actionTypesTable.active, true),
+        ),
+      )
+      .limit(1);
+    const [level] = await tx
+      .select()
+      .from(actionLevelsTable)
+      .where(
+        and(
+          eq(actionLevelsTable.code, input.level),
+          eq(actionLevelsTable.actionTypeId, actionType?.id ?? ""),
+          eq(actionLevelsTable.active, true),
+        ),
+      )
+      .limit(1);
+    if (!target || !actionType || !level) {
+      throw new Error("Ação inválida: tipo, nível ou alvo não encontrado.");
+    }
+
+    const [targetActionCounts] = await tx
+      .select({
+        totalFans: sql<number>`count(*) filter (where ${actionsTable.mode} = 'defender')::int`,
+        totalHaters: sql<number>`count(*) filter (where ${actionsTable.mode} = 'atacar')::int`,
+      })
+      .from(actionsTable)
+      .where(
+        and(
+          eq(actionsTable.cellId, target.cellId),
+          inArray(actionsTable.status, CONFIRMED_ACTION_STATUSES),
+        ),
+      );
+    const basePrice = calculatePopularityBasePrice(
+      toNumber(targetActionCounts?.totalFans),
+      toNumber(targetActionCounts?.totalHaters),
+    );
+    const values = calculateActionValues(basePrice, level);
+    const amountMinor = Math.max(1, Math.round(values.price * 100));
+    const [created] = await tx
+      .insert(paymentOrdersTable)
+      .values({
+        roomId,
+        userId: user.id,
+        sessionId: sessionId ?? null,
+        provider: "stripe",
+        status: "pending",
+        targetName: target.targetName,
+        actionType: input.actionType,
+        actionLevel: input.level,
+        idempotencyKey,
+        currency: "brl",
+        basePriceMinor: Math.max(1, Math.round(basePrice * 100)),
+        amountMinor,
+        metadata: {
+          count: values.count,
+          startDelayMs: values.startDelayMs,
+          staggerMs: values.staggerMs,
+          durationMs: values.durationMs,
+          targetName: target.targetName,
+        },
+      })
+      .returning();
+    if (!created) throw new Error("Não foi possível criar o pedido de pagamento.");
+    return created;
+  });
+
+  if (order.stripeCheckoutSessionId && order.status === "pending") {
+    const { stripe } = await getStripeActionProduct();
+    const existingSession = await stripe.checkout.sessions.retrieve(
+      order.stripeCheckoutSessionId,
+    );
+    if (!existingSession.url) throw new Error("O checkout existente não possui URL.");
+    return {
+      paymentOrderId: order.id,
+      checkoutSessionId: existingSession.id,
+      checkoutUrl: existingSession.url,
+      amount: order.amountMinor / 100,
+      currency: order.currency,
+    };
+  }
+  if (order.status === "paid" && order.actionId) {
+    throw new Error("Esta ação já foi paga e enviada.");
+  }
+
+  const { stripe, product } = await getStripeActionProduct();
+  const price = await stripe.prices.create({
+    product: product.id,
+    currency: order.currency,
+    unit_amount: order.amountMinor,
+    metadata: {
+      payment_order_id: order.id,
+      instapop_kind: "action",
+    },
+  });
+  const safeOrigin = /^https?:\/\//i.test(returnOrigin)
+    ? returnOrigin.replace(/\/+$/, "")
+    : `https://${process.env.REPLIT_DOMAINS?.split(",")[0]}`;
+  const checkoutSession = await stripe.checkout.sessions.create({
+    mode: "payment",
+    line_items: [{ price: price.id, quantity: 1 }],
+    customer_email: user.email?.trim() || undefined,
+    client_reference_id: order.id,
+    metadata: {
+      payment_order_id: order.id,
+      user_id: user.id,
+      target_name: order.targetName,
+    },
+    success_url: `${safeOrigin}/?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${safeOrigin}/?payment=cancelled`,
+    expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
+  });
+  if (!checkoutSession.url) throw new Error("O Stripe não retornou a URL de checkout.");
+
+  await db
+    .update(paymentOrdersTable)
+    .set({
+      stripeProductId: product.id,
+      stripePriceId: price.id,
+      stripeCheckoutSessionId: checkoutSession.id,
+      updatedAt: new Date(),
+    })
+    .where(eq(paymentOrdersTable.id, order.id));
+
+  return {
+    paymentOrderId: order.id,
+    checkoutSessionId: checkoutSession.id,
+    checkoutUrl: checkoutSession.url,
+    amount: order.amountMinor / 100,
+    currency: order.currency,
+  };
+}
+
 export async function createPopPersonAction(
   input: PopPersonActionInput,
   sessionId: string | undefined,
   userId: string,
+  options: { priceOverride?: number } = {},
 ): Promise<PopPersonAction> {
   if (!userId.trim()) {
     throw new Error("Conecte sua conta do X para enviar ações.");
@@ -1075,6 +1291,7 @@ export async function createPopPersonAction(
         (values.count - 1) * values.staggerMs +
         values.durationMs,
     );
+    const chargedPrice = options.priceOverride ?? values.price;
     const ruleSnapshot = {
       startDelayMs: values.startDelayMs,
       count: values.count,
@@ -1085,7 +1302,7 @@ export async function createPopPersonAction(
       shake: values.shake,
       totalImpact: values.totalImpact,
       basePrice,
-      price: values.price,
+      price: chargedPrice,
       actionTypeCode: actionType.code,
       levelCode: level.code,
       levelName: level.label,
@@ -1107,7 +1324,7 @@ export async function createPopPersonAction(
         scheduledFor,
         completesAt,
         effectiveImpact: String(values.totalImpact),
-        priceCharged: String(values.price),
+        priceCharged: String(chargedPrice),
         ruleSnapshot,
         idempotencyKey,
       })
@@ -1168,6 +1385,55 @@ export async function createPopPersonAction(
   const [response] = await getActions(roomId, result.action.id);
   if (!response) throw new Error("Ação criada, mas não pôde ser carregada.");
   return response;
+}
+
+export async function fulfillStripeCheckout(
+  checkoutSession: Stripe.Checkout.Session,
+): Promise<void> {
+  const paymentOrderId =
+    checkoutSession.metadata?.payment_order_id ?? checkoutSession.client_reference_id;
+  if (!paymentOrderId) {
+    throw new Error("Stripe Checkout session is missing payment_order_id.");
+  }
+
+  const [order] = await db
+    .select()
+    .from(paymentOrdersTable)
+    .where(eq(paymentOrdersTable.id, paymentOrderId))
+    .limit(1);
+  if (!order) throw new Error(`Payment order "${paymentOrderId}" was not found.`);
+  if (order.actionId) return;
+
+  const action = await createPopPersonAction(
+    {
+      actionType: order.actionType as PopPersonActionInput["actionType"],
+      level: order.actionLevel,
+      targetName: order.targetName,
+      idempotencyKey: `stripe:${order.id}`,
+    },
+    order.sessionId ?? undefined,
+    order.userId,
+    { priceOverride: order.amountMinor / 100 },
+  );
+
+  await db
+    .update(paymentOrdersTable)
+    .set({
+      status: "paid",
+      actionId: action.id,
+      stripePaymentIntentId:
+        typeof checkoutSession.payment_intent === "string"
+          ? checkoutSession.payment_intent
+          : checkoutSession.payment_intent?.id ?? null,
+      paidAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(paymentOrdersTable.id, order.id),
+        isNull(paymentOrdersTable.actionId),
+      ),
+    );
 }
 
 async function nextActionEventSequence(

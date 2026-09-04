@@ -1,7 +1,6 @@
 import { Router, type IRouter } from "express";
 import {
   CreatePopPersonActionBody,
-  CreatePopPersonActionResponse,
   GetPlayerRegistrationResponse,
   GetPopPersonResponse,
   GetPopPersonStateResponse,
@@ -9,7 +8,7 @@ import {
   JoinPopPersonAsPlayerResponse,
 } from "@workspace/api-zod";
 import {
-  createPopPersonAction,
+  createPopPersonCheckout,
   getPlayerRegistration,
   getPopPersonBootstrap,
   getPopPersonState,
@@ -96,12 +95,13 @@ router.post("/pop-person/actions", actionRateLimit, async (req, res): Promise<vo
   }
 
   try {
-    const action = await createPopPersonAction(
+    const checkout = await createPopPersonCheckout(
       parsed.data,
       res.locals.anonymousSessionId,
-      user.id,
+      { id: user.id, email: user.email },
+      req.get("origin") ?? `${req.protocol}://${req.get("host")}`,
     );
-    res.status(201).json(CreatePopPersonActionResponse.parse(action));
+    res.status(201).json(checkout);
   } catch (error) {
     res.status(400).json({
       error: error instanceof Error ? error.message : "Ação inválida.",

@@ -464,7 +464,7 @@ export const GetPopPersonStateResponse = zod.object({
 
 
 /**
- * @summary Queue an attack or defense action
+ * @summary Create a Stripe Checkout for an attack or defense action
  */
 
 export const createPopPersonActionBodyIdempotencyKeyMax = 160;
@@ -478,55 +478,19 @@ export const CreatePopPersonActionBody = zod.object({
   "idempotencyKey": zod.string().min(1).max(createPopPersonActionBodyIdempotencyKeyMax).optional()
 })
 
+export const createPopPersonActionResponseAmountMin = 0;
 
-export const createPopPersonActionResponseStartDelayMsMin = 0;
-
-export const createPopPersonActionResponseExecuteAtMin = 0;
-
-export const createPopPersonActionResponseCompletesAtMin = 0;
-
-export const createPopPersonActionResponseStartedAtMin = 0;
-
-export const createPopPersonActionResponseCompletedAtMin = 0;
-
-export const createPopPersonActionResponseHitCountMin = 0;
-
-export const createPopPersonActionResponseLastHitAtMin = 0;
-
-
-export const createPopPersonActionResponseStaggerMsMin = 0;
-
-export const createPopPersonActionResponseDurationMin = 0;
-
-export const createPopPersonActionResponsePriceMin = 0;
+export const createPopPersonActionResponseCurrencyMin = 3;
+export const createPopPersonActionResponseCurrencyMax = 3;
 
 
 
 export const CreatePopPersonActionResponse = zod.object({
-  "id": zod.string(),
-  "mode": zod.enum(['atacar', 'defender']),
-  "actionType": zod.enum(['hate', 'fan']),
-  "level": zod.string(),
-  "levelName": zod.string(),
-  "levelEmoji": zod.string(),
-  "multiplier": zod.number().min(1),
-  "startDelayMs": zod.number().min(createPopPersonActionResponseStartDelayMsMin),
-  "targetName": zod.string(),
-  "sourceName": zod.string().nullable(),
-  "status": zod.enum(['queued', 'running', 'completed']),
-  "executeAt": zod.number().min(createPopPersonActionResponseExecuteAtMin),
-  "completesAt": zod.number().min(createPopPersonActionResponseCompletesAtMin),
-  "startedAt": zod.number().min(createPopPersonActionResponseStartedAtMin).nullable(),
-  "completedAt": zod.number().min(createPopPersonActionResponseCompletedAtMin).nullable(),
-  "hitCount": zod.number().min(createPopPersonActionResponseHitCountMin),
-  "lastHitAt": zod.number().min(createPopPersonActionResponseLastHitAtMin).nullable(),
-  "count": zod.number().min(1),
-  "growthPerHit": zod.number(),
-  "impactMultiplier": zod.number(),
-  "staggerMs": zod.number().min(createPopPersonActionResponseStaggerMsMin),
-  "duration": zod.number().min(createPopPersonActionResponseDurationMin),
-  "price": zod.number().min(createPopPersonActionResponsePriceMin),
-  "shake": zod.boolean()
+  "paymentOrderId": zod.string(),
+  "checkoutSessionId": zod.string(),
+  "checkoutUrl": zod.string(),
+  "amount": zod.number().min(createPopPersonActionResponseAmountMin),
+  "currency": zod.string().min(createPopPersonActionResponseCurrencyMin).max(createPopPersonActionResponseCurrencyMax)
 })
 
 

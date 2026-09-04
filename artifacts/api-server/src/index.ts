@@ -5,6 +5,7 @@ import { WebSocketServer } from "ws";
 import { registerPopPersonRealtime } from "./realtime/pop-person";
 import { initializePopPersonStore } from "./lib/pop-person";
 import { initializeCountryCatalog } from "./lib/country-catalog";
+import { initializeStripe } from "./lib/stripe-client";
 
 const rawPort = process.env["PORT"];
 
@@ -50,6 +51,7 @@ server.on("error", (err) => {
 
 await initializePopPersonStore();
 await initializeCountryCatalog();
+await initializeStripe();
 await registerPopPersonRealtime(webSocketServer);
 server.listen(port, () => {
   logger.info({ port }, "Server listening");

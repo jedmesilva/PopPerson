@@ -1,5 +1,7 @@
 export {
   createPopPersonAction,
+  createPopPersonCheckout,
+  fulfillStripeCheckout,
   getPopPersonAction,
   getPopPersonBootstrap,
   getPopPersonState,

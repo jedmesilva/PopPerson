@@ -1776,15 +1776,14 @@ export default function PopPersonCanvas() {
         },
       },
       {
-        onSuccess: (action) => {
+        onSuccess: (checkout) => {
           submittingActionRef.current = false;
           idempotencyKeyRef.current = null;
           idempotencyPayloadRef.current = "";
-           // The POST only confirms that the action was queued. Animation may
-           // start only after the server publishes action:started.
-           queueAction(action);
-          closeModal();
-          setSelectedCell(null);
+            if (!checkout?.checkoutUrl) {
+              return;
+            }
+            window.location.assign(checkout.checkoutUrl);
         },
         onError: (error) => {
           // Keep the same key for a retry of the same request. This protects

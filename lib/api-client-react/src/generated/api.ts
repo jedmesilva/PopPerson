@@ -29,9 +29,9 @@ import type {
   JoinPopPersonBody,
   JoinPopPersonResponse,
   PlayerRegistration,
-  PopPersonAction,
   PopPersonActionInput,
   PopPersonBootstrap,
+  PopPersonCheckout,
   PopPersonState,
   SearchCitiesParams,
   SearchCountriesParams,
@@ -1011,11 +1011,11 @@ export const getCreatePopPersonActionUrl = () => {
 }
 
 /**
- * @summary Queue an attack or defense action
+ * @summary Create a Stripe Checkout for an attack or defense action
  */
-export const createPopPersonAction = async (popPersonActionInput: PopPersonActionInput, options?: Parameters<typeof customFetch>[1]): Promise<PopPersonAction> => {
+export const createPopPersonAction = async (popPersonActionInput: PopPersonActionInput, options?: Parameters<typeof customFetch>[1]): Promise<PopPersonCheckout> => {
 
-  return customFetch<PopPersonAction>(getCreatePopPersonActionUrl(),
+  return customFetch<PopPersonCheckout>(getCreatePopPersonActionUrl(),
   {
     ...options,
     method: 'POST',
@@ -1060,7 +1060,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type CreatePopPersonActionMutationError = ErrorType<ErrorResponse>
 
     /**
- * @summary Queue an attack or defense action
+ * @summary Create a Stripe Checkout for an attack or defense action
  */
 export const useCreatePopPersonAction = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPopPersonAction>>, TError,{data: BodyType<PopPersonActionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}

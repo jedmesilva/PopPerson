@@ -1,5 +1,6 @@
 import Stripe from "stripe";
-import { StripeSync } from "stripe-replit-sync";
+import { StripeSync, runMigrations } from "stripe-replit-sync";
+import { ReplitConnectors } from "@replit/connectors-sdk";
 
 type StripeCredentials = {
   secretKey: string;
@@ -7,27 +8,15 @@ type StripeCredentials = {
 };
 
 async function getStripeCredentials(): Promise<StripeCredentials> {
-  const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
-  const replitToken = process.env.REPLIT_IDENTITY
-    ? `repl ${process.env.REPLIT_IDENTITY}`
-    : process.env.WEB_REPL_RENEWAL
-      ? `depl ${process.env.WEB_REPL_RENEWAL}`
-      : null;
-
-  if (!hostname || !replitToken) {
-    throw new Error("Stripe integration environment is unavailable.");
-  }
-
-  const response = await fetch(
-    `https://${hostname}/api/v2/connection?include_secrets=true&connector_names=stripe`,
-    {
-      headers: {
-        Accept: "application/json",
-        X_REPLIT_TOKEN: replitToken,
-      },
-      signal: AbortSignal.timeout(10_000),
-    },
-  );
+  const connectors = new ReplitConnectors();
+  const proxyUrl = connectors.getProxyUrl();
+  const connectionApiUrl = new URL("/api/v2/connection", proxyUrl);
+  connectionApiUrl.searchParams.set("include_secrets", "true");
+  connectionApiUrl.searchParams.set("connector_names", "stripe");
+  const response = await fetch(connectionApiUrl, {
+    headers: await connectors.getProxyHeaders("stripe"),
+    signal: AbortSignal.timeout(10_000),
+  });
 
   if (!response.ok) {
     throw new Error(`Could not load Stripe credentials: ${response.status}.`);
@@ -70,4 +59,24 @@ export async function getStripeSync(): Promise<StripeSync> {
     stripeSecretKey: secretKey,
     stripeWebhookSecret: webhookSecret ?? "",
   });
+}
+
+export async function initializeStripe(): Promise<void> {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) throw new Error("DATABASE_URL is required for Stripe.");
+
+  await runMigrations({ databaseUrl });
+  const stripeSync = await getStripeSync();
+  const configuredDomain = process.env.REPLIT_DOMAINS?.split(",")[0]?.trim();
+  if (!configuredDomain) {
+    throw new Error("REPLIT_DOMAINS is required to configure the Stripe webhook.");
+  }
+
+  const webhookBaseUrl = configuredDomain.startsWith("http")
+    ? configuredDomain
+    : `https://${configuredDomain}`;
+  await stripeSync.findOrCreateManagedWebhook(
+    `${webhookBaseUrl}/api/stripe/webhook`,
+  );
+  await stripeSync.syncBackfill();
 }

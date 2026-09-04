@@ -33,6 +33,7 @@ export * from './popPersonActionType';
 export * from './popPersonActionTypeKey';
 export * from './popPersonBootstrap';
 export * from './popPersonCategory';
+export * from './popPersonCheckout';
 export * from './popPersonConfig';
 export * from './popPersonConfigActionTypes';
 export * from './popPersonElement';

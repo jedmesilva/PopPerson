@@ -18,8 +18,10 @@ export async function processStripeWebhook(payload: Buffer, signature: string): 
 
   if (
     event.type === "checkout.session.completed"
-    || event.type === "checkout.session.async_payment_succeeded"
+    && (event.data.object as Stripe.Checkout.Session).payment_status === "paid"
   ) {
+    await fulfillStripeCheckout(event.data.object as Stripe.Checkout.Session);
+  } else if (event.type === "checkout.session.async_payment_succeeded") {
     await fulfillStripeCheckout(event.data.object as Stripe.Checkout.Session);
   }
 }

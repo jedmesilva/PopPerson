@@ -289,6 +289,19 @@ export interface PopPersonState {
   actions: PopPersonAction[];
 }
 
+export interface PopPersonCheckout {
+  paymentOrderId: string;
+  checkoutSessionId: string;
+  checkoutUrl: string;
+  /** @minimum 0 */
+  amount: number;
+  /**
+     * @minLength 3
+     * @maxLength 3
+     */
+  currency: string;
+}
+
 export interface AuthenticatedUser {
   xUserId: string;
   username: string;

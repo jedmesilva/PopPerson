@@ -227,7 +227,7 @@ paths:
     post:
       operationId: createPopPersonAction
       tags: [pop-person]
-      summary: Queue an attack or defense action
+      summary: Create a Stripe Checkout for an attack or defense action
       requestBody:
         required: true
         content:
@@ -240,7 +240,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PopPersonAction"
+                 $ref: "#/components/schemas/PopPersonCheckout"
         "400":
           description: Invalid action
           content:
@@ -565,6 +565,23 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PopPersonAction"
+    PopPersonCheckout:
+      type: object
+      required: [paymentOrderId, checkoutSessionId, checkoutUrl, amount, currency]
+      properties:
+        paymentOrderId:
+          type: string
+        checkoutSessionId:
+          type: string
+        checkoutUrl:
+          type: string
+        amount:
+          type: number
+          minimum: 0
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
     PopPersonBootstrap:
       type: object
       required: [config, state, user, player]
