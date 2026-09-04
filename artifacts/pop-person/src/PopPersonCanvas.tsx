@@ -590,6 +590,7 @@ function ConnectXModal({ onClose, onConnect, closeButtonRef, purpose = "player" 
             disabled={!hasAcceptedTerms}
             style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", minHeight: "42px", padding: "10px 14px", borderRadius: "9999px", backgroundColor: hasAcceptedTerms ? "#f5f5f5" : "#383838", color: hasAcceptedTerms ? "#0a0a0a" : "#8a8a8a", border: "none", fontSize: "12px", fontWeight: 800, cursor: hasAcceptedTerms ? "pointer" : "default", opacity: hasAcceptedTerms ? 1 : 0.72 }}
           >
+            <FaXTwitter size={15} aria-hidden="true" />
             {isActionPurpose ? "Conectar com X para continuar" : "Conectar com X e entrar na disputa"}
           </button>
           <button
