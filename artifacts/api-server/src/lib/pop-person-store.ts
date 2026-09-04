@@ -67,6 +67,12 @@ export type PopPersonResolvedEvent = {
 };
 export type PopPersonRealtimeNotification =
   | {
+      type: "action:started";
+      roomId: string;
+      actionId: string;
+      stateVersion: number;
+    }
+  | {
       type: "action:resolved";
       roomId: string;
       actionId: string;
@@ -1094,10 +1100,24 @@ export async function createPopPersonAction(
     }
     if (!action) throw new Error("Não foi possível criar a ação.");
 
+    const [queuedRoom] = await tx
+      .update(roomsTable)
+      .set({
+        stateVersion: sql`${roomsTable.stateVersion} + 1`,
+        updatedAt: now,
+      })
+      .where(eq(roomsTable.id, roomId))
+      .returning({ stateVersion: roomsTable.stateVersion });
+    await enqueueRealtimeNotification(tx, {
+      type: "state:changed",
+      roomId,
+      stateVersion: toNumber(queuedRoom?.stateVersion),
+    });
+
     return {
       action,
       created: true,
-      stateVersion: null,
+      stateVersion: toNumber(queuedRoom?.stateVersion),
     };
   });
 
@@ -1157,6 +1177,7 @@ async function processDueActions(): Promise<void> {
           mode: actionsTable.mode,
           status: actionsTable.status,
           scheduledFor: actionsTable.scheduledFor,
+          completesAt: actionsTable.completesAt,
           effectiveImpact: actionsTable.effectiveImpact,
           ruleSnapshot: actionsTable.ruleSnapshot,
           targetName: peopleTable.name,
@@ -1174,6 +1195,66 @@ async function processDueActions(): Promise<void> {
         .limit(100);
 
       for (const action of dueActions) {
+        if (action.status !== "queued") continue;
+        const [activated] = await tx
+          .update(actionsTable)
+          .set({
+            status: "running",
+            activatedAt: now,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(actionsTable.id, action.id),
+              eq(actionsTable.status, "queued"),
+              lte(actionsTable.scheduledFor, now),
+            ),
+          )
+          .returning({ id: actionsTable.id });
+        if (!activated) continue;
+
+        const [startedRoom] = await tx
+          .update(roomsTable)
+          .set({
+            stateVersion: sql`${roomsTable.stateVersion} + 1`,
+            updatedAt: now,
+          })
+          .where(eq(roomsTable.id, action.roomId))
+          .returning({ stateVersion: roomsTable.stateVersion });
+        await enqueueRealtimeNotification(tx, {
+          type: "action:started",
+          roomId: action.roomId,
+          actionId: action.id,
+          stateVersion: toNumber(startedRoom?.stateVersion),
+        });
+      }
+
+      const runningActions = await tx
+        .select({
+          id: actionsTable.id,
+          roomId: actionsTable.roomId,
+          cellId: actionsTable.cellId,
+          mode: actionsTable.mode,
+          status: actionsTable.status,
+          scheduledFor: actionsTable.scheduledFor,
+          completesAt: actionsTable.completesAt,
+          effectiveImpact: actionsTable.effectiveImpact,
+          ruleSnapshot: actionsTable.ruleSnapshot,
+          targetName: peopleTable.name,
+        })
+        .from(actionsTable)
+        .innerJoin(cellsTable, eq(actionsTable.cellId, cellsTable.id))
+        .innerJoin(peopleTable, eq(cellsTable.personId, peopleTable.id))
+        .where(
+          and(
+            eq(actionsTable.status, "running"),
+            lte(actionsTable.completesAt, now),
+          ),
+        )
+        .orderBy(asc(actionsTable.completesAt))
+        .limit(100);
+
+      for (const action of runningActions) {
         const previousEvents = await tx
           .select({ eventType: actionEventsTable.eventType })
           .from(actionEventsTable)
@@ -1306,6 +1387,11 @@ async function processDueActions(): Promise<void> {
           roomId: claimed.roomId,
           actionId: claimed.id,
           event: resolvedEvent,
+        });
+        await enqueueRealtimeNotification(tx, {
+          type: "state:changed",
+          roomId: claimed.roomId,
+          stateVersion,
         });
         logger.info(
           {

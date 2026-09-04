@@ -15,6 +15,7 @@ import { logger } from "../lib/logger";
 type PopPersonRealtimeMessage = {
   type:
     | "snapshot"
+    | "action:started"
     | "action:resolved"
     | "action:cancelled"
     | "clock:pong";
@@ -51,6 +52,32 @@ async function handleNotification(
   notification: PopPersonRealtimeNotification,
 ): Promise<void> {
   const serverTime = Date.now();
+  if (notification.type === "action:started") {
+    const action = await getPopPersonAction(
+      notification.roomId,
+      notification.actionId,
+    );
+    if (!action || action.status !== "running") return;
+    broadcast(webSocketServer, {
+      type: "action:started",
+      action,
+      serverTime,
+      stateVersion: notification.stateVersion,
+    });
+    logger.info(
+      {
+        actionId: action.id,
+        state: action.status,
+        serverTime,
+        executeAt: action.executeAt,
+        completesAt: action.completesAt,
+        stateVersion: notification.stateVersion,
+      },
+      `PopPerson ${notification.type} published`,
+    );
+    return;
+  }
+
   if (notification.type === "action:resolved") {
     const action = await getPopPersonAction(
       notification.roomId,

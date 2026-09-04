@@ -1159,41 +1159,20 @@ export default function PopPersonCanvas() {
       ));
     }
 
-    const count = Math.max(1, Number(resolvedEvent?.hitCount) || Number(serverAction.count) || 1);
-    const staggerMs = Math.max(
-      0,
-      Number(resolvedEvent?.intervalMs) || Number(serverAction.staggerMs) || 0,
-    );
-    const duration = Math.max(
-      0,
-      Number(resolvedEvent?.durationMs) || Number(serverAction.duration) || 0,
-    );
-    const animationAction = {
-      ...serverAction,
-      status: "running",
-      executeAt: serverNow,
-      completesAt: serverNow + duration + Math.max(0, count - 1) * staggerMs,
-      count,
-      hitCount: 0,
-      resolvedPreviousValue: Number.isFinite(previousValue) ? previousValue : null,
-      resolvedFinalValue: Number.isFinite(finalValue) ? finalValue : null,
-      resolvedDelta: Number.isFinite(eventDelta) ? eventDelta : null,
-      resolvedStateVersion: Number(resolvedEvent?.stateVersion),
-       resolvedAt: Number(resolvedEvent?.resolvedAt),
-      resolvedFirstImpactAtServer: serverNow + duration,
-      resolvedIntervalMs: staggerMs,
-    };
-    animationActionsRef.current.set(actionId, animationAction);
-    deferredCompletedActionIdsRef.current.add(actionId);
-    realtimeDebug("action:resolved", {
+    // A resolved event is only an authoritative correction. It must never
+    // start a late animation for an action this client did not receive.
+    setDataset((prev) => prev.map((person) => (
+      person.name === targetName && Number.isFinite(finalValue)
+        ? { ...person, value: finalValue }
+        : person
+    )));
+    realtimeDebug("action:resolved-without-animation", {
       eventId,
       actionId,
       targetName,
-      hitCount: count,
       finalValue: Number.isFinite(finalValue) ? finalValue : null,
       previousValue: Number.isFinite(previousValue) ? previousValue : null,
     });
-    executeActionRef.current(animationAction);
   }, []);
   const startResolvedActionRef = useRef(startResolvedAction);
   useEffect(() => { startResolvedActionRef.current = startResolvedAction; }, [startResolvedAction]);
@@ -1643,6 +1622,18 @@ export default function PopPersonCanvas() {
             syncServerClock(message.serverTime);
           }
           if (
+            message?.type === "action:started"
+            && message.action
+          ) {
+            queueAction(message.action);
+            realtimeDebug("action:server-authorized", {
+              actionId: message.action.id,
+              executeAt: message.action.executeAt,
+              completesAt: message.action.completesAt,
+            });
+            return;
+          }
+          if (
             message?.type === "action:resolved"
             && message.action
             && message.event
@@ -1657,7 +1648,9 @@ export default function PopPersonCanvas() {
           }
           if (message?.type === "snapshot") {
             if (!message?.state?.dataset || !Array.isArray(message.state.actions)) return;
-            reconcileServerState(message.state, { resetVisuals: true });
+            reconcileServerState(message.state, {
+              resetVisuals: !serverStateHydratedRef.current,
+            });
             return;
           }
           if (!message?.state?.dataset || !Array.isArray(message.state.actions)) return;
@@ -1988,34 +1981,9 @@ export default function PopPersonCanvas() {
           submittingActionRef.current = false;
           idempotencyKeyRef.current = null;
           idempotencyPayloadRef.current = "";
-           // A successful POST is already a durable action. Start the visual
-           // fallback immediately so a lost/reconnecting WebSocket cannot make
-           // the action appear to vanish. A later resolved event reconciles the
-           // predicted final value with the server's authoritative value.
-           const previousValue = Number(
-             leavesRef.current.find((person) => person.name === action.targetName)?.value,
-           );
-           const direction = action.mode === "defender" ? 1 : -1;
-           const count = Math.max(1, Number(action.count) || 1);
-           const growthPerHit = Number(action.growthPerHit) || 0;
-           if (!activeActionIdsRef.current.includes(action.id)) {
-             startResolvedActionRef.current(action, {
-               eventId: `local:${action.id}`,
-               actionId: action.id,
-               hitCount: count,
-               direction: action.mode,
-               delta: growthPerHit * direction * count,
-               targetName: action.targetName,
-               previousValue: Number.isFinite(previousValue) ? previousValue : 0,
-               finalValue: Number.isFinite(previousValue)
-                 ? previousValue + growthPerHit * direction * count
-                 : Number.NaN,
-               durationMs: Number(action.duration) || 0,
-               intervalMs: Number(action.staggerMs) || 0,
-               stateVersion: latestServerStateVersionRef.current,
-               resolvedAt: Date.now(),
-             });
-           }
+           // The POST only confirms that the action was queued. Animation may
+           // start only after the server publishes action:started.
+           queueAction(action);
           closeModal();
           setSelectedCell(null);
         },
@@ -2026,7 +1994,7 @@ export default function PopPersonCanvas() {
         },
       },
     );
-  }, [pendingMode, modalElement, modalLevel, selectedCell, closeModal, createActionMutation]);
+  }, [pendingMode, modalElement, modalLevel, selectedCell, closeModal, createActionMutation, queueAction]);
   const selectedCellData = useMemo(() => leaves.find((l) => l.name === selectedCell) || null, [leaves, selectedCell]);
 
   function cssSize() {
