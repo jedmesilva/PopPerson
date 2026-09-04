@@ -2832,16 +2832,16 @@ export default function PopPersonCanvas() {
       )}
 
       {pendingMode && selectedCell && (
-        <div onClick={closeModal} style={{ position: "fixed", inset: 0, zIndex: 120, backgroundColor: "rgba(0,0,0,0.82)", backdropFilter: "blur(5px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "14px" }}>
+        <div className="action-modal-backdrop" onClick={closeModal} style={{ position: "fixed", inset: 0, zIndex: 120, backgroundColor: "rgba(0,0,0,0.82)", backdropFilter: "blur(5px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left))", boxSizing: "border-box", overflow: "hidden" }}>
           <div
+            className="action-modal-shell"
             role="dialog"
             aria-modal="true"
             aria-labelledby="action-modal-title"
             onClick={(e) => e.stopPropagation()}
-            style={{ width: "min(94vw, 520px)", height: "min(92vh, 760px)", maxHeight: "calc(100vh - 28px)", minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", borderRadius: "30px", backgroundColor: "#111214", boxShadow: "0 18px 64px rgba(0,0,0,0.58)" }}
+            style={{ width: "min(94vw, 520px)", maxWidth: "100%", height: "auto", maxHeight: "calc(100dvh - 24px)", minHeight: 0, display: "flex", flexDirection: "column", overflowY: "auto", overscrollBehavior: "contain", WebkitOverflowScrolling: "touch", borderRadius: "clamp(18px, 5vw, 30px)", backgroundColor: "#111214", boxSizing: "border-box", boxShadow: "0 18px 64px rgba(0,0,0,0.58)" }}
           >
-            <div style={{ minHeight: 0, flex: 1, overflowY: "auto", overscrollBehavior: "contain", scrollbarWidth: "thin" }}>
-              <div style={{ position: "relative", width: "100%", aspectRatio: "1 / 1", flexShrink: 0, overflow: "hidden", backgroundColor: selectedCellData?.color ?? "#25262b" }}>
+              <div className="action-modal-hero" style={{ position: "relative", width: "100%", aspectRatio: "1 / 1", flexShrink: 0, overflow: "hidden", backgroundColor: selectedCellData?.color ?? "#25262b" }}>
                 {selectedCellData && (
                   <PersonVisual
                     person={selectedCellData}
@@ -2850,7 +2850,7 @@ export default function PopPersonCanvas() {
                   />
                 )}
                 <div style={{ position: "absolute", inset: 0, pointerEvents: "none", background: "linear-gradient(to bottom, rgba(10,10,12,0.68) 0%, rgba(10,10,12,0.05) 35%, rgba(17,18,20,0.02) 54%, rgba(17,18,20,0.82) 92%, #111214 100%)" }} />
-                <div style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 1, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "14px", padding: "24px 24px 0", boxSizing: "border-box" }}>
+                <div className="action-modal-header" style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 1, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "14px", padding: "24px 24px 0", boxSizing: "border-box" }}>
                   <h2 id="action-modal-title" style={{ maxWidth: "calc(100% - 52px)", margin: 0, color: "#fff", fontSize: "clamp(24px, 7vw, 34px)", lineHeight: 1.06, fontWeight: 500, letterSpacing: "-0.04em", textShadow: "0 2px 16px rgba(0,0,0,0.36)" }}>
                     Você é fã ou hater de <strong style={{ fontWeight: 850 }}>{selectedCellData?.name ?? selectedCell}</strong>?
                   </h2>
@@ -2859,7 +2859,7 @@ export default function PopPersonCanvas() {
               </div>
 
               {selectedCellData && (
-                <div style={{ padding: "18px 22px 28px", backgroundColor: "#111214", boxSizing: "border-box" }}>
+                <div className="action-modal-profile" style={{ padding: "18px 22px 28px", backgroundColor: "#111214", boxSizing: "border-box" }}>
                   <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "14px", paddingBottom: "17px", borderBottom: "1px solid #2a2c31" }}>
                     <div style={{ minWidth: 0 }}>
                       <span style={{ display: "block", color: "#8c8f96", fontSize: "10px", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase" }}>Perfil</span>
@@ -2880,7 +2880,7 @@ export default function PopPersonCanvas() {
                         <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "11px", fontWeight: 750 }}>@{String(selectedCellData.xUsername).replace(/^@/, "")}</span>
                       </a>
                     ) : (
-                      <span style={{ flexShrink: 0, color: "#6f727a", fontSize: "11px", alignSelf: "center" }}>Perfil no X não informado</span>
+                      <span style={{ minWidth: 0, maxWidth: "46%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "right", color: "#6f727a", fontSize: "11px", alignSelf: "center" }}>Perfil no X não informado</span>
                     )}
                   </div>
 
@@ -2910,11 +2910,10 @@ export default function PopPersonCanvas() {
                   )}
                 </div>
               )}
-            </div>
 
-            <div style={{ flexShrink: 0, maxHeight: "48%", overflowY: "auto", padding: "16px 22px calc(16px + env(safe-area-inset-bottom))", borderTop: "1px solid #2b2d32", backgroundColor: "rgba(20,21,23,0.98)", boxShadow: "0 -12px 28px rgba(0,0,0,0.28)", boxSizing: "border-box" }}>
-              <div style={{ display: "flex", justifyContent: "center", marginBottom: "14px" }}>
-                <div style={{ display: "inline-flex", alignItems: "center", gap: "3px", padding: "4px", borderRadius: "9999px", backgroundColor: "#292b31", boxShadow: "0 3px 10px rgba(0,0,0,0.16)" }}>
+            <div className="action-modal-footer" style={{ padding: "16px 22px calc(16px + env(safe-area-inset-bottom))", borderTop: "1px solid #2b2d32", backgroundColor: "rgba(20,21,23,0.98)", boxShadow: "0 -12px 28px rgba(0,0,0,0.28)", boxSizing: "border-box" }}>
+              <div className="action-modal-toggle-wrap" style={{ display: "flex", justifyContent: "center", marginBottom: "14px" }}>
+                <div className="action-modal-toggle" style={{ display: "inline-flex", alignItems: "center", gap: "3px", padding: "4px", borderRadius: "9999px", backgroundColor: "#292b31", boxShadow: "0 3px 10px rgba(0,0,0,0.16)" }}>
                   <button type="button" data-testid="button-switch-hater" onClick={() => openModal("atacar")} style={{ minWidth: "96px", padding: "9px 14px", border: "none", borderRadius: "9999px", backgroundColor: pendingMode === "atacar" ? "#d52f2f" : "transparent", color: pendingMode === "atacar" ? "#fff" : "rgba(255,255,255,0.62)", fontSize: "14px", fontWeight: 800, cursor: "pointer", boxShadow: pendingMode === "atacar" ? "0 2px 5px rgba(0,0,0,0.16)" : "none" }}>👎 Hater</button>
                   <button type="button" data-testid="button-switch-fan" onClick={() => openModal("defender")} style={{ minWidth: "82px", padding: "9px 14px", border: "none", borderRadius: "9999px", backgroundColor: pendingMode === "defender" ? "#df5184" : "transparent", color: pendingMode === "defender" ? "#fff" : "rgba(255,255,255,0.62)", fontSize: "14px", fontWeight: 800, cursor: "pointer", boxShadow: pendingMode === "defender" ? "0 2px 5px rgba(0,0,0,0.16)" : "none" }}>❤️ Fã</button>
                 </div>
@@ -2929,12 +2928,12 @@ export default function PopPersonCanvas() {
                     basePrice={selectedActionType?.basePriceCurrent}
                   />
                   <div style={{ height: "1px", margin: "14px 0 14px", backgroundColor: "#303238" }} />
-                  <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "14px" }}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "6px", minWidth: 0 }}>
+                  <div className="action-modal-primary-row" style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "14px" }}>
+                    <div className="action-modal-total" style={{ display: "flex", flexDirection: "column", gap: "6px", minWidth: 0 }}>
                       <span style={{ color: "#8c8f96", fontSize: "10px", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase" }}>CUSTO TOTAL</span>
                       <span data-testid="text-action-total-price" style={{ color: "#f4f4f5", fontSize: "22px", lineHeight: 1, fontWeight: 650, letterSpacing: "0.03em", whiteSpace: "nowrap" }}>{selectedActionPrice === null ? "—" : formatBRL(selectedActionPrice)}</span>
                     </div>
-                    <button data-testid="button-send-action" onClick={confirmAction} disabled={createActionMutation.isPending || !selectedActionType || !selectedLevel} style={{ minWidth: "158px", padding: "13px 18px", borderRadius: "9999px", backgroundColor: pendingMode === "defender" ? "#df5184" : "#ff625f", color: "#fff", fontSize: "15px", fontWeight: 800, border: "none", cursor: createActionMutation.isPending ? "wait" : "pointer", opacity: createActionMutation.isPending || !selectedActionType || !selectedLevel ? 0.55 : 1, boxShadow: "0 5px 16px rgba(255,98,95,0.2)", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
+                    <button className="action-modal-send" data-testid="button-send-action" onClick={confirmAction} disabled={createActionMutation.isPending || !selectedActionType || !selectedLevel} style={{ minWidth: "158px", padding: "13px 18px", borderRadius: "9999px", backgroundColor: pendingMode === "defender" ? "#df5184" : "#ff625f", color: "#fff", fontSize: "15px", fontWeight: 800, border: "none", cursor: createActionMutation.isPending ? "wait" : "pointer", opacity: createActionMutation.isPending || !selectedActionType || !selectedLevel ? 0.55 : 1, boxShadow: "0 5px 16px rgba(255,98,95,0.2)", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
                       {createActionMutation.isPending ? "Enviando…" : <><span>{pendingMode === "defender" ? "Enviar apoio" : "Enviar hate"}</span><ArrowRight size={18} strokeWidth={2.8} aria-hidden="true" /></>}
                     </button>
                   </div>
@@ -2966,7 +2965,25 @@ export default function PopPersonCanvas() {
           </div>
         </div>
       )}
-      <style>{`@container (max-width: 130px) { .action-pill-count { display: none; } }`}</style>
+      <style>{`
+        @container (max-width: 130px) { .action-pill-count { display: none; } }
+        .action-modal-shell { scrollbar-width: thin; }
+        @media (max-width: 520px) {
+          .action-modal-shell { width: 100% !important; }
+          .action-modal-header { padding: 18px 18px 0 !important; }
+          .action-modal-profile { padding-left: 16px !important; padding-right: 16px !important; }
+          .action-modal-footer { padding-left: 16px !important; padding-right: 16px !important; }
+          .action-modal-toggle-wrap { width: 100%; }
+          .action-modal-toggle { width: 100%; }
+          .action-modal-toggle > button { flex: 1; min-width: 0 !important; }
+          .action-modal-primary-row { flex-direction: column !important; align-items: stretch !important; gap: 11px !important; }
+          .action-modal-total { align-items: flex-start !important; }
+          .action-modal-send { width: 100%; min-width: 0 !important; }
+        }
+        @media (max-height: 680px) {
+          .action-modal-hero { aspect-ratio: 16 / 10 !important; }
+        }
+      `}</style>
     </div>
   );
 }
