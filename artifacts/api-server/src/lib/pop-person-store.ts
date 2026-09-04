@@ -42,7 +42,10 @@ import {
 } from "@workspace/api-zod";
 import { logger } from "./logger";
 
-const PROCESS_INTERVAL_MS = 500;
+// Publish the running state before the first visual impact whenever possible.
+// A 500ms polling window could authorize short actions after their complete
+// timeline, leaving the client with only the final resolution to display.
+const PROCESS_INTERVAL_MS = 100;
 // Keep each worker transaction short. A single action can contain thousands of
 // projectiles, and processing all due hits at once holds cell/room locks long
 // enough to block new action requests and other worker instances.

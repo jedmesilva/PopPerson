@@ -1036,8 +1036,12 @@ export default function PopPersonCanvas() {
     const serverNow = serverClockRef.current.serverTime
       + (animationStartedAt - serverClockRef.current.clientPerfAt);
     const startAtServer = Number(serverAction.executeAt) || serverNow;
+    // The realtime notification can arrive after the scheduled start because
+    // it crosses the API/database boundary. Never replay all overdue impacts
+    // in one frame: a late visual start gets a fresh local timeline instead.
+    const visualStartAtServer = Math.max(startAtServer, serverNow);
     const staggerMs = Math.max(0, Number(serverAction.staggerMs) || 0);
-    const elapsedMs = Math.max(0, serverNow - startAtServer);
+    const elapsedMs = Math.max(0, serverNow - visualStartAtServer);
     const hitCount = Math.min(totalCount, Math.max(0, Number(serverAction.hitCount) || 0));
     const timelineIndex = elapsedMs <= 0
       ? 0
@@ -1047,7 +1051,7 @@ export default function PopPersonCanvas() {
     // The snapshot's hitCount is authoritative progress, while the timeline
     // prevents a delayed/reconnected browser from replaying old projectiles.
     const nextIndex = Math.max(hitCount, timelineIndex);
-    const firstHitAtServer = startAtServer + Math.max(0, Number(serverAction.duration) || 0);
+    const firstHitAtServer = visualStartAtServer + Math.max(0, Number(serverAction.duration) || 0);
     const elapsedToFirstImpact = Math.max(0, serverNow - firstHitAtServer);
     const impactTimelineIndex = elapsedToFirstImpact <= 0
       ? 0
@@ -1070,7 +1074,7 @@ export default function PopPersonCanvas() {
       nextIndex,
       nextImpactIndex,
       count: totalCount,
-      startAtServer,
+      startAtServer: visualStartAtServer,
       staggerMs,
       duration: Math.max(0, Number(serverAction.duration) || 0),
       hitAtByIndex: new Map(),
@@ -1100,6 +1104,7 @@ export default function PopPersonCanvas() {
       hitCount,
       totalCount,
       executeAt: startAtServer,
+      visualStartAt: visualStartAtServer,
       completesAt: serverAction.completesAt,
     });
   }, []);
@@ -1150,10 +1155,10 @@ export default function PopPersonCanvas() {
         serverDatasetRef.current = serverDatasetRef.current.map((person) => (
           person.name === targetName ? { ...person, value: finalValue } : person
         ));
-        visualValuesRef.current.set(targetName, finalValue);
-        setDataset((prev) => prev.map((person) => (
-          person.name === targetName ? { ...person, value: finalValue } : person
-        )));
+        // If the visual timeline was delayed by realtime delivery, let it
+        // finish its local impacts before applying the authoritative final
+        // value. Otherwise the cell jumps to the final radius at resolution.
+        deferredCompletedActionIdsRef.current.add(actionId);
       }
       realtimeDebug("action:authoritative-update", {
         eventId,
@@ -1547,6 +1552,12 @@ export default function PopPersonCanvas() {
           && (locallyCreatedAction.status === "queued" || locallyCreatedAction.status === "running")
         ) {
           activeTargetNames.add(locallyCreatedAction.targetName);
+        }
+      });
+      deferredCompletedActionIdsRef.current.forEach((actionId) => {
+        const completedAction = animationActionsRef.current.get(actionId);
+        if (completedAction?.targetName) {
+          activeTargetNames.add(completedAction.targetName);
         }
       });
       if (resetVisuals || activeTargetNames.size === 0) {
@@ -2503,6 +2514,15 @@ export default function PopPersonCanvas() {
         );
         const hasImpact = impactsRef.current.some((impact) => impact.actionId === actionId);
         if (!hasProjectile && !hasImpact) {
+          const completedAction = animationActionsRef.current.get(actionId);
+          const targetName = completedAction?.targetName;
+          const finalValue = Number(completedAction?.resolvedFinalValue);
+          if (targetName && Number.isFinite(finalValue)) {
+            visualValuesRef.current.set(targetName, finalValue);
+            setDataset((prev) => prev.map((person) => (
+              person.name === targetName ? { ...person, value: finalValue } : person
+            )));
+          }
           removeRealtimeAction(actionId);
         }
       });
