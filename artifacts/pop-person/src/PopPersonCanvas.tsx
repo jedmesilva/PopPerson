@@ -1028,6 +1028,12 @@ export default function PopPersonCanvas() {
     }
 
     const count = Math.min(50_000, Math.max(1, Math.floor(Number(serverAction.count) || 1)));
+    const serverNow = serverClockRef.current.serverTime
+      + (performance.now() - serverClockRef.current.clientPerfAt);
+    const startedAt = Number(serverAction.startedAt);
+    const startDelayMs = Number.isFinite(startedAt)
+      ? Math.max(0, startedAt - serverNow)
+      : 0;
     emojiEffectsRef.current?.spawn({
       targetName,
       emoji: String(
@@ -1036,12 +1042,17 @@ export default function PopPersonCanvas() {
       ),
       count,
       actionType: String(serverAction.actionType || "hate"),
+      staggerMs: Number(serverAction.staggerMs) || 0,
+      durationMs: Number(serverAction.duration) || 0,
+      startDelayMs,
     });
     realtimeDebug("action:emoji-burst", {
       actionId,
       targetName,
       count,
       actionType: serverAction.actionType,
+      staggerMs: serverAction.staggerMs,
+      durationMs: serverAction.duration,
     });
   }, []);
   const handleActionHit = useCallback((hit) => {

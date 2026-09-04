@@ -23,6 +23,9 @@ export interface EmojiSpawnInput {
   emoji: string;
   count: number;
   actionType: string;
+  staggerMs?: number;
+  durationMs?: number;
+  startDelayMs?: number;
 }
 
 export interface EmojiWorldPosition {
@@ -359,12 +362,23 @@ function enqueueSpawn(
   const profile = getActionProfile(String(input.actionType ?? ""));
   const texIndex = ensureEmojiInAtlas(state, emoji);
   const now = performance.now() / 1000 - state.startTime;
+  const staggerSeconds = Math.min(
+    2,
+    Math.max(0.004, Number(input.staggerMs ?? 0) / 1000),
+  );
+  const startDelaySeconds = Math.min(
+    2,
+    Math.max(0, Number(input.startDelayMs ?? 0) / 1000),
+  );
+  const durationSeconds = Number(input.durationMs);
+  const baseDuration = Number.isFinite(durationSeconds) && durationSeconds > 0
+    ? durationSeconds / 1000
+    : profile.duration;
   const target = targetsRef.current?.get(targetName);
   const targetX = Number(target?.x);
   const targetY = Number(target?.y);
   const fallbackWorldX = Number.isFinite(targetX) ? targetX : 0;
   const fallbackWorldY = Number.isFinite(targetY) ? targetY : 0;
-  const delaySpread = Math.min(0.46, 0.08 + count * 0.006);
 
   for (let index = 0; index < count; index += 1) {
     const slotIndex = state.writeIndex;
@@ -372,8 +386,8 @@ function enqueueSpawn(
       targetName,
       fallbackX: fallbackWorldX,
       fallbackY: fallbackWorldY,
-      spawnTime: now + Math.random() * delaySpread,
-      duration: profile.duration + (Math.random() - 0.5) * 0.16,
+      spawnTime: now + startDelaySeconds + index * staggerSeconds,
+      duration: Math.max(0.24, baseDuration + (Math.random() - 0.5) * 0.16),
       drift: (Math.random() - 0.5) * profile.drift,
       size: profile.sizeMin + Math.random() * (profile.sizeMax - profile.sizeMin),
       rotation: (Math.random() - 0.5) * profile.rotation,
