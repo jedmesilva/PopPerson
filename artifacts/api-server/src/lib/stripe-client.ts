@@ -4,7 +4,6 @@ import { ReplitConnectors } from "@replit/connectors-sdk";
 
 type StripeCredentials = {
   secretKey: string;
-  webhookSecret?: string;
 };
 
 async function getStripeCredentials(): Promise<StripeCredentials> {
@@ -23,17 +22,15 @@ async function getStripeCredentials(): Promise<StripeCredentials> {
   }
 
   const data = await response.json() as {
-    items?: Array<{ settings?: { secret_key?: string; webhook_secret?: string } }>;
+    items?: Array<{ settings?: { secret?: string; secret_key?: string } }>;
   };
   const settings = data.items?.[0]?.settings;
-  if (!settings?.secret_key) {
+  const secretKey = settings?.secret_key ?? settings?.secret;
+  if (!secretKey) {
     throw new Error("Stripe is not connected or has no secret key.");
   }
 
-  return {
-    secretKey: settings.secret_key,
-    webhookSecret: settings.webhook_secret,
-  };
+  return { secretKey };
 }
 
 export async function getUncachableStripeClient(): Promise<Stripe> {
@@ -41,23 +38,14 @@ export async function getUncachableStripeClient(): Promise<Stripe> {
   return new Stripe(secretKey);
 }
 
-export async function getStripeWebhookSecret(): Promise<string> {
-  const { webhookSecret } = await getStripeCredentials();
-  if (!webhookSecret) {
-    throw new Error("Stripe webhook signing secret is unavailable.");
-  }
-  return webhookSecret;
-}
-
 export async function getStripeSync(): Promise<StripeSync> {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) throw new Error("DATABASE_URL is required for Stripe sync.");
 
-  const { secretKey, webhookSecret } = await getStripeCredentials();
+  const { secretKey } = await getStripeCredentials();
   return new StripeSync({
     poolConfig: { connectionString: databaseUrl },
     stripeSecretKey: secretKey,
-    stripeWebhookSecret: webhookSecret ?? "",
   });
 }
 
