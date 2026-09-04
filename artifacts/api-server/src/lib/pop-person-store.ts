@@ -61,6 +61,10 @@ const POP_PERSON_WORKER_LOCK_KEY = 29184731;
 const POPULARITY_PRICE_MINIMUM = 0.1;
 const POPULARITY_PRICE_SCALE = 100;
 const POPULARITY_PRICE_EXPONENT = 2;
+// Stripe rejects very small BRL charges after converting them to its
+// account currency. Keep the technical payment floor in the same server-side
+// price calculation used by both the UI dataset and checkout creation.
+const STRIPE_MINIMUM_ACTION_PRICE = 3;
 const CONFIRMED_ACTION_STATUSES = ["queued", "running", "completed"] as const;
 export type PopPersonResolvedEvent = {
   eventId: string;
@@ -183,7 +187,7 @@ function calculatePopularityBasePrice(totalFans: number, totalHaters: number): n
   const price = POPULARITY_PRICE_MINIMUM * (
     1 + (popularity / POPULARITY_PRICE_SCALE) ** POPULARITY_PRICE_EXPONENT
   );
-  return roundCurrency(price);
+  return Math.max(STRIPE_MINIMUM_ACTION_PRICE, roundCurrency(price));
 }
 
 function toTimestampMs(value: unknown): number | null {

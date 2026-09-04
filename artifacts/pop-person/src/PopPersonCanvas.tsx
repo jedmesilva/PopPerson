@@ -618,6 +618,7 @@ export default function PopPersonCanvas() {
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [showConnectModal, setShowConnectModal] = useState(false);
   const [connectPurpose, setConnectPurpose] = useState("player");
+  const [paymentNotice, setPaymentNotice] = useState(null);
   const [isFilterCountryPickerOpen, setIsFilterCountryPickerOpen] = useState(false);
   const [filterCountrySearch, setFilterCountrySearch] = useState("");
   const [isFilterStatePickerOpen, setIsFilterStatePickerOpen] = useState(false);
@@ -666,6 +667,35 @@ export default function PopPersonCanvas() {
   const playerLocationEditedRef = useRef(false);
   const pendingAutoJoinRef = useRef(false);
   const autoJoinSubmittedRef = useRef(false);
+
+  useEffect(() => {
+    const payment = new URLSearchParams(window.location.search).get("payment");
+    if (payment !== "success" && payment !== "cancelled") return;
+
+    setPaymentNotice(
+      payment === "success"
+        ? {
+            kind: "success",
+            message: "Pagamento confirmado. Sua ação será exibida assim que o webhook concluir a confirmação.",
+          }
+        : {
+            kind: "cancelled",
+            message: "Pagamento cancelado. Nenhuma ação foi enviada.",
+          },
+    );
+
+    const cleanUrl = `${window.location.pathname}${window.location.hash}`;
+    window.history.replaceState({}, document.title, cleanUrl);
+  }, []);
+
+  useEffect(() => {
+    if (paymentNotice?.kind !== "success") return;
+    const refreshTimer = window.setTimeout(() => {
+      void bootstrapQuery.refetch();
+      void stateQuery.refetch();
+    }, 1200);
+    return () => window.clearTimeout(refreshTimer);
+  }, [paymentNotice?.kind, bootstrapQuery.refetch, stateQuery.refetch]);
   const config = bootstrapQuery.data?.config;
   const authenticatedUser = bootstrapQuery.data?.user ?? null;
   const canJoinAsPlayer = Boolean(
@@ -2244,6 +2274,9 @@ export default function PopPersonCanvas() {
   const closeButtonStyle = { width: "26px", height: "26px", borderRadius: "9999px", backgroundColor: "#262626", color: "#a3a3a3", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" };
   const selectedInitials = selectedCellData ? selectedCellData.name.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase() : "";
   const actionWasRateLimited = createActionMutation.error?.status === 429;
+  const actionErrorMessage = createActionMutation.error?.data?.message
+    ?? createActionMutation.error?.message
+    ?? "Não foi possível iniciar o pagamento. Tente novamente.";
 
   return (
     <div style={{ width: "100%", minHeight: "100vh", backgroundColor: "#0a0a0a", position: "relative" }}>
@@ -2316,6 +2349,39 @@ export default function PopPersonCanvas() {
           {activeFilterCount > 0 && <span data-testid="text-filter-count" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "16px", height: "16px", borderRadius: "9999px", backgroundColor: "#6366f1", color: "#fff", fontSize: "10px", fontWeight: 700, padding: "0 4px" }}>{activeFilterCount}</span>}
         </button>
       </div>
+       {paymentNotice && (
+         <div
+           role="status"
+           style={{
+             position: "fixed",
+             top: "84px",
+             left: "50%",
+             zIndex: 70,
+             width: "min(92vw, 520px)",
+             transform: "translateX(-50%)",
+             display: "flex",
+             alignItems: "center",
+             gap: "10px",
+             padding: "12px 14px",
+             borderRadius: "14px",
+             backgroundColor: paymentNotice.kind === "success" ? "rgba(20, 83, 45, 0.96)" : "rgba(69, 26, 26, 0.96)",
+             border: `1px solid ${paymentNotice.kind === "success" ? "#22c55e66" : "#f8717166"}`,
+             color: "#f5f5f5",
+             boxShadow: "0 12px 30px rgba(0,0,0,0.32)",
+             boxSizing: "border-box",
+           }}
+         >
+           <span style={{ flex: 1, fontSize: "12px", lineHeight: 1.4 }}>{paymentNotice.message}</span>
+           <button
+             type="button"
+             aria-label="Fechar aviso de pagamento"
+             onClick={() => setPaymentNotice(null)}
+             style={{ width: "24px", height: "24px", flexShrink: 0, border: 0, borderRadius: "9999px", backgroundColor: "rgba(255,255,255,0.12)", color: "#fff", cursor: "pointer", display: "grid", placeItems: "center" }}
+           >
+             <X size={14} aria-hidden="true" />
+           </button>
+         </div>
+       )}
 
       <div ref={boardWrapRef} style={{ position: "fixed", top: 0, bottom: 0, left: 0, right: 0, zIndex: 1, overflow: "hidden" }}>
         <canvas data-testid="canvas-people" ref={canvasRef} style={{ display: "block", width: "100%", height: "100%", touchAction: "none", cursor: "grab" }} />
@@ -3004,7 +3070,7 @@ export default function PopPersonCanvas() {
                     </button>
                   </div>
                   {selectedLevel?.startDelayMs > 0 && !createActionMutation.isPending && <span style={{ display: "block", marginTop: "10px", color: "#8c8f96", fontSize: "11px" }}>A ação inicia em {Math.ceil(selectedLevel.startDelayMs / 1000)}s.</span>}
-                  {createActionMutation.error && <span style={{ display: "block", marginTop: "10px", color: "#fca5a5", fontSize: "11px" }}>{actionWasRateLimited ? "Muitas ações em pouco tempo. Aguarde um instante e tente novamente." : "Não foi possível enviar esta ação. Tente novamente."}</span>}
+                   {createActionMutation.error && <span style={{ display: "block", marginTop: "10px", color: "#fca5a5", fontSize: "11px" }}>{actionWasRateLimited ? "Muitas ações em pouco tempo. Aguarde um instante e tente novamente." : actionErrorMessage}</span>}
                 </>
               ) : (
                 <div data-testid="action-auth-prompt" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px", padding: "16px 8px 4px", textAlign: "center" }}>
