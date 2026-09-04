@@ -1102,14 +1102,14 @@ export default function PopPersonCanvas() {
     lastHitSequenceByActionRef.current.set(actionId, sequence);
 
     const targetName = String(hit?.targetName ?? "");
-    const finalValue = Number(hit?.finalValue);
-    if (targetName && Number.isFinite(finalValue)) {
+    const hitValue = Number(hit?.finalValue ?? hit?.value);
+    if (targetName && Number.isFinite(hitValue)) {
       serverDatasetRef.current = serverDatasetRef.current.map((person) => (
-        person.name === targetName ? { ...person, value: finalValue } : person
+        person.name === targetName ? { ...person, value: hitValue } : person
       ));
-      visualValuesRef.current.set(targetName, finalValue);
+      visualValuesRef.current.set(targetName, hitValue);
       setDataset((prev) => prev.map((person) => (
-        person.name === targetName ? { ...person, value: finalValue } : person
+        person.name === targetName ? { ...person, value: hitValue } : person
       )));
     }
 
