@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { SlidersHorizontal, ArrowLeftRight, X, ChevronDown, ChevronRight, Locate, Search, ScanFace, Plus, CircleUserRound, Pencil, CalendarDays, LogOut, Mail, MapPin } from "lucide-react";
+import { SlidersHorizontal, ArrowLeftRight, ArrowRight, X, ChevronDown, ChevronRight, Locate, Search, ScanFace, Plus, CircleUserRound, Pencil, CalendarDays, LogOut, Mail, MapPin } from "lucide-react";
 import { FaXTwitter } from "react-icons/fa6";
 import FanHaterLevelPicker from "./components/fan-hater-level-picker";
 import {
@@ -3563,8 +3563,8 @@ export default function PopPersonCanvas() {
                     <span style={{ color: "#8c8f96", fontSize: "11px", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase" }}>CUSTO TOTAL</span>
                     <span data-testid="text-action-total-price" style={{ color: "#f4f4f5", fontSize: "24px", lineHeight: 1, fontWeight: 600, letterSpacing: "0.03em", whiteSpace: "nowrap" }}>{selectedActionPrice === null ? "—" : formatBRL(selectedActionPrice)}</span>
                   </div>
-                  <button data-testid="button-send-action" onClick={confirmAction} disabled={createActionMutation.isPending || !selectedActionType || !selectedLevel} style={{ minWidth: "158px", padding: "14px 18px", borderRadius: "9999px", backgroundColor: pendingMode === "defender" ? "#df5184" : "#ff625f", color: "#fff", fontSize: "16px", fontWeight: 800, border: "none", cursor: createActionMutation.isPending ? "wait" : "pointer", opacity: createActionMutation.isPending || !selectedActionType || !selectedLevel ? 0.55 : 1, boxShadow: "0 5px 16px rgba(255,98,95,0.2)" }}>
-                    {createActionMutation.isPending ? "Enviando…" : `${pendingMode === "defender" ? "Enviar fã" : "Enviar hate"} →`}
+                  <button data-testid="button-send-action" onClick={confirmAction} disabled={createActionMutation.isPending || !selectedActionType || !selectedLevel} style={{ minWidth: "158px", padding: "14px 18px", borderRadius: "9999px", backgroundColor: pendingMode === "defender" ? "#df5184" : "#ff625f", color: "#fff", fontSize: "16px", fontWeight: 800, border: "none", cursor: createActionMutation.isPending ? "wait" : "pointer", opacity: createActionMutation.isPending || !selectedActionType || !selectedLevel ? 0.55 : 1, boxShadow: "0 5px 16px rgba(255,98,95,0.2)", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
+                    {createActionMutation.isPending ? "Enviando…" : <><span>{pendingMode === "defender" ? "Enviar fã" : "Enviar hate"}</span><ArrowRight size={18} strokeWidth={2.8} aria-hidden="true" /></>}
                   </button>
                 </div>
                 {selectedLevel?.startDelayMs > 0 && !createActionMutation.isPending && <span style={{ display: "block", marginTop: "10px", color: "#8c8f96", fontSize: "11px" }}>A ação inicia em {Math.ceil(selectedLevel.startDelayMs / 1000)}s.</span>}
