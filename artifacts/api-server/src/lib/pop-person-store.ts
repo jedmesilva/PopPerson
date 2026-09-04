@@ -245,9 +245,10 @@ async function ensureRoomMembership(roomId: string, sessionId: string | undefine
 }
 
 async function getDataset(roomId: string): Promise<PopPerson[]> {
-  const [rows, categories] = await Promise.all([
+  const [rows, categories, actionCounts] = await Promise.all([
     db
       .select({
+        personId: peopleTable.id,
         name: peopleTable.name,
         categoryId: peopleTable.categoryId,
         categoryName: categoriesTable.name,
@@ -288,9 +289,34 @@ async function getDataset(roomId: string): Promise<PopPerson[]> {
       })
       .from(categoriesTable)
       .where(eq(categoriesTable.active, true)),
+    db
+      .select({
+        personId: cellsTable.personId,
+        mode: actionsTable.mode,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(actionsTable)
+      .innerJoin(cellsTable, eq(actionsTable.cellId, cellsTable.id))
+      .where(
+        and(
+          eq(actionsTable.roomId, roomId),
+          eq(actionsTable.status, "completed"),
+        ),
+      )
+      .groupBy(cellsTable.personId, actionsTable.mode),
   ]);
 
   const categoryById = new Map(categories.map((category) => [category.id, category]));
+  const actionCountsByPersonId = new Map<string, { totalFans: number; totalHaters: number }>();
+  for (const row of actionCounts) {
+    const counts = actionCountsByPersonId.get(row.personId) ?? { totalFans: 0, totalHaters: 0 };
+    if (row.mode === "defender") {
+      counts.totalFans += toNumber(row.count);
+    } else {
+      counts.totalHaters += toNumber(row.count);
+    }
+    actionCountsByPersonId.set(row.personId, counts);
+  }
   const pathCache = new Map<string, PopPersonCategory[]>();
   const getCategoryPath = (
     categoryId: string,
@@ -327,6 +353,14 @@ async function getDataset(roomId: string): Promise<PopPerson[]> {
       throw new Error(`Status inválido para "${person.name}": "${person.status}".`);
     }
 
+    const counts = actionCountsByPersonId.get(person.personId);
+    const totalFans = counts?.totalFans ?? 0;
+    const totalHaters = counts?.totalHaters ?? 0;
+    const totalInteractions = totalFans + totalHaters;
+    const polarization = totalInteractions > 0
+      ? 1 - ((totalFans - totalHaters) / totalInteractions) ** 2
+      : null;
+
     return {
       name: person.name,
       category: {
@@ -345,6 +379,9 @@ async function getDataset(roomId: string): Promise<PopPerson[]> {
       status: person.status,
       value: toNumber(person.value),
       color: person.color,
+      totalFans,
+      totalHaters,
+      polarization,
        imageUrl: person.imageUrl ?? null,
        xUsername: person.xUsername ?? null,
        xProfileUrl: person.xUsername

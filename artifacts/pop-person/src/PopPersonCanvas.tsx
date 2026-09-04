@@ -1811,28 +1811,6 @@ export default function PopPersonCanvas() {
     const index = ranked.findIndex((person) => person.name === selectedCellData.name);
     return index >= 0 ? index + 1 : null;
   }, [leaves, selectedCellData]);
-  const selectedTargetActivity = useMemo(() => {
-    const actionsById = new Map();
-    [...queue, ...activeActions].forEach((action) => {
-      if (action?.targetName === selectedCell && action?.id) actionsById.set(action.id, action);
-    });
-    let hate = 0;
-    let fan = 0;
-    actionsById.forEach((action) => {
-      const weight = Math.max(1, Number(action.count) || 1);
-      if (action.mode === "atacar") hate += weight;
-      if (action.mode === "defender") fan += weight;
-    });
-    const total = hate + fan;
-    return {
-      hate,
-      fan,
-      total,
-      hatePct: total > 0 ? (hate / total) * 100 : 50,
-      fanPct: total > 0 ? (fan / total) * 100 : 50,
-    };
-  }, [activeActions, queue, selectedCell]);
-
   function cssSize() {
     const r = boardWrapRef.current.getBoundingClientRect();
     return { w: r.width, h: r.height };
@@ -2967,14 +2945,16 @@ export default function PopPersonCanvas() {
                     </div>
                     <div style={{ minWidth: 0, padding: "13px 14px", borderRadius: "14px", backgroundColor: "#1a1c21", border: "1px solid #292c32" }}>
                       <span style={{ display: "block", color: "#858991", fontSize: "10px", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>Polarização</span>
-                      <strong style={{ display: "block", marginTop: "7px", color: "#f4f4f5", fontSize: "16px", lineHeight: 1.1, fontWeight: 800 }}>{selectedTargetActivity.total > 0 ? "Em disputa" : "Sem atividade"}</strong>
-                      <div aria-label="Distribuição das ações ativas entre hater e fã" style={{ display: "flex", height: "6px", marginTop: "10px", overflow: "hidden", borderRadius: "999px", backgroundColor: "#30333a" }}>
-                        <span style={{ width: `${selectedTargetActivity.hatePct}%`, backgroundColor: "#ff625f" }} />
-                        <span style={{ width: `${selectedTargetActivity.fanPct}%`, backgroundColor: "#df5184" }} />
+                      <strong style={{ display: "block", marginTop: "7px", color: "#f4f4f5", fontSize: "16px", lineHeight: 1.1, fontWeight: 800 }}>
+                        {selectedCellData.polarization === null ? "Sem dados" : `${Math.round(selectedCellData.polarization * 100)}%`}
+                      </strong>
+                      <div aria-label="Distribuição histórica das ações entre hater e fã" style={{ display: "flex", height: "6px", marginTop: "10px", overflow: "hidden", borderRadius: "999px", backgroundColor: "#30333a" }}>
+                        <span style={{ width: `${selectedCellData.totalHaters + selectedCellData.totalFans > 0 ? (selectedCellData.totalHaters / (selectedCellData.totalHaters + selectedCellData.totalFans)) * 100 : 0}%`, backgroundColor: "#ff625f" }} />
+                        <span style={{ width: `${selectedCellData.totalHaters + selectedCellData.totalFans > 0 ? (selectedCellData.totalFans / (selectedCellData.totalHaters + selectedCellData.totalFans)) * 100 : 0}%`, backgroundColor: "#df5184" }} />
                       </div>
                       <span style={{ display: "flex", justifyContent: "space-between", gap: "8px", marginTop: "6px", color: "#858991", fontSize: "10px" }}>
-                        <span>Hater {Math.round(selectedTargetActivity.hatePct)}%</span>
-                        <span>Fã {Math.round(selectedTargetActivity.fanPct)}%</span>
+                        <span>Hater {selectedCellData.totalHaters.toLocaleString("pt-BR")}</span>
+                        <span>Fã {selectedCellData.totalFans.toLocaleString("pt-BR")}</span>
                       </span>
                     </div>
                   </div>

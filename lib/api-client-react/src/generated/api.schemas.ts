@@ -87,6 +87,23 @@ export interface PopPerson {
   value: number;
   color: string;
   /**
+     * Number of completed fan actions for this person.
+     * @minimum 0
+     */
+  totalFans: number;
+  /**
+     * Number of completed hater actions for this person.
+     * @minimum 0
+     */
+  totalHaters: number;
+  /**
+     * Polarization from 0 to 1, or null when there are no completed actions.
+     * @minimum 0
+     * @maximum 1
+     * @nullable
+     */
+  polarization: number | null;
+  /**
      * Optional person image URL. The client keeps the cell color as the fallback background.
      * @nullable
      */

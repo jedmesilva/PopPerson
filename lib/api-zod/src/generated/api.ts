@@ -100,6 +100,13 @@ export const getPopPersonResponseConfigLevelsItemDurationMin = 0;
 
 export const getPopPersonResponseStateStateVersionMin = 0;
 
+export const getPopPersonResponseStateDatasetItemTotalFansMin = 0;
+
+export const getPopPersonResponseStateDatasetItemTotalHatersMin = 0;
+
+export const getPopPersonResponseStateDatasetItemPolarizationMin = 0;
+export const getPopPersonResponseStateDatasetItemPolarizationMax = 1;
+
 
 export const getPopPersonResponseStateActionsItemStartDelayMsMin = 0;
 
@@ -179,6 +186,9 @@ export const GetPopPersonResponse = zod.object({
   "status": zod.enum(['titular', 'candidato']),
   "value": zod.number(),
   "color": zod.string(),
+  "totalFans": zod.number().min(getPopPersonResponseStateDatasetItemTotalFansMin).describe('Number of completed fan actions for this person.'),
+  "totalHaters": zod.number().min(getPopPersonResponseStateDatasetItemTotalHatersMin).describe('Number of completed hater actions for this person.'),
+  "polarization": zod.number().min(getPopPersonResponseStateDatasetItemPolarizationMin).max(getPopPersonResponseStateDatasetItemPolarizationMax).nullable().describe('Polarization from 0 to 1, or null when there are no completed actions.'),
   "imageUrl": zod.string().nullable().describe('Optional person image URL. The client keeps the cell color as the fallback background.'),
   "xUsername": zod.string().nullable().describe('X username for a player-linked profile, without the @ prefix.'),
   "xProfileUrl": zod.string().nullable().describe('Public X profile URL for a player-linked profile.')
@@ -245,6 +255,15 @@ export const JoinPopPersonAsPlayerBody = zod.object({
   "termsAccepted": zod.boolean().describe('Whether the user accepted the InstaPop Terms and Conditions.')
 })
 
+export const joinPopPersonAsPlayerResponsePlayerTotalFansMin = 0;
+
+export const joinPopPersonAsPlayerResponsePlayerTotalHatersMin = 0;
+
+export const joinPopPersonAsPlayerResponsePlayerPolarizationMin = 0;
+export const joinPopPersonAsPlayerResponsePlayerPolarizationMax = 1;
+
+
+
 export const JoinPopPersonAsPlayerResponse = zod.object({
   "player": zod.object({
   "name": zod.string(),
@@ -269,6 +288,9 @@ export const JoinPopPersonAsPlayerResponse = zod.object({
   "status": zod.enum(['titular', 'candidato']),
   "value": zod.number(),
   "color": zod.string(),
+  "totalFans": zod.number().min(joinPopPersonAsPlayerResponsePlayerTotalFansMin).describe('Number of completed fan actions for this person.'),
+  "totalHaters": zod.number().min(joinPopPersonAsPlayerResponsePlayerTotalHatersMin).describe('Number of completed hater actions for this person.'),
+  "polarization": zod.number().min(joinPopPersonAsPlayerResponsePlayerPolarizationMin).max(joinPopPersonAsPlayerResponsePlayerPolarizationMax).nullable().describe('Polarization from 0 to 1, or null when there are no completed actions.'),
   "imageUrl": zod.string().nullable().describe('Optional person image URL. The client keeps the cell color as the fallback background.'),
   "xUsername": zod.string().nullable().describe('X username for a player-linked profile, without the @ prefix.'),
   "xProfileUrl": zod.string().nullable().describe('Public X profile URL for a player-linked profile.')
@@ -340,6 +362,13 @@ export const LogoutAuthenticatedUserResponse = zod.void()
  */
 export const getPopPersonStateResponseStateVersionMin = 0;
 
+export const getPopPersonStateResponseDatasetItemTotalFansMin = 0;
+
+export const getPopPersonStateResponseDatasetItemTotalHatersMin = 0;
+
+export const getPopPersonStateResponseDatasetItemPolarizationMin = 0;
+export const getPopPersonStateResponseDatasetItemPolarizationMax = 1;
+
 
 export const getPopPersonStateResponseActionsItemStartDelayMsMin = 0;
 
@@ -389,6 +418,9 @@ export const GetPopPersonStateResponse = zod.object({
   "status": zod.enum(['titular', 'candidato']),
   "value": zod.number(),
   "color": zod.string(),
+  "totalFans": zod.number().min(getPopPersonStateResponseDatasetItemTotalFansMin).describe('Number of completed fan actions for this person.'),
+  "totalHaters": zod.number().min(getPopPersonStateResponseDatasetItemTotalHatersMin).describe('Number of completed hater actions for this person.'),
+  "polarization": zod.number().min(getPopPersonStateResponseDatasetItemPolarizationMin).max(getPopPersonStateResponseDatasetItemPolarizationMax).nullable().describe('Polarization from 0 to 1, or null when there are no completed actions.'),
   "imageUrl": zod.string().nullable().describe('Optional person image URL. The client keeps the cell color as the fallback background.'),
   "xUsername": zod.string().nullable().describe('X username for a player-linked profile, without the @ prefix.'),
   "xProfileUrl": zod.string().nullable().describe('Public X profile URL for a player-linked profile.')

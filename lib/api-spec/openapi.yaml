@@ -329,7 +329,7 @@ components:
           type: number
     PopPerson:
       type: object
-      required: [name, category, categoryPath, gender, cidade, estado, estadoCodigo, pais, paisCodigo, status, value, color, imageUrl, xUsername, xProfileUrl]
+      required: [name, category, categoryPath, gender, cidade, estado, estadoCodigo, pais, paisCodigo, status, value, color, totalFans, totalHaters, polarization, imageUrl, xUsername, xProfileUrl]
       properties:
         name:
           type: string
@@ -359,6 +359,19 @@ components:
           type: number
         color:
           type: string
+        totalFans:
+          type: number
+          minimum: 0
+          description: Number of completed fan actions for this person.
+        totalHaters:
+          type: number
+          minimum: 0
+          description: Number of completed hater actions for this person.
+        polarization:
+          type: ["number", "null"]
+          minimum: 0
+          maximum: 1
+          description: Polarization from 0 to 1, or null when there are no completed actions.
         imageUrl:
           type: ["string", "null"]
           description: Optional person image URL. The client keeps the cell color as the fallback background.
