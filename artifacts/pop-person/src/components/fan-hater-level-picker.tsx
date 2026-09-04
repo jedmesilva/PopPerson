@@ -6,11 +6,23 @@ function easedT(index, count) {
   return Math.pow(raw, 1.8);
 }
 
+const LEVEL_COLOR_STOPS = {
+  atacar: {
+    start: { hue: 28, sat: 62, light: 56 },
+    end: { hue: 1, sat: 100, light: 69 },
+  },
+  defender: {
+    start: { hue: 210, sat: 60, light: 60 },
+    end: { hue: 338, sat: 69, light: 60 },
+  },
+};
+
 function levelHsl(index, count, mode) {
   const t = easedT(index, count);
-  const hue = mode === "atacar" ? 28 - t * 28 : 210 + t * 70;
-  const sat = mode === "atacar" ? 62 + t * 30 : 60 + t * 32;
-  const light = mode === "atacar" ? 56 - t * 16 : 60 - t * 12;
+  const stops = LEVEL_COLOR_STOPS[mode] ?? LEVEL_COLOR_STOPS.atacar;
+  const hue = stops.start.hue + (stops.end.hue - stops.start.hue) * t;
+  const sat = stops.start.sat + (stops.end.sat - stops.start.sat) * t;
+  const light = stops.start.light + (stops.end.light - stops.start.light) * t;
   return { hue, sat, light };
 }
 
