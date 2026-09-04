@@ -1983,6 +1983,11 @@ export default function PopPersonCanvas() {
     playerRegistration,
     showPlayerSignup,
   ]);
+  const openModal = useCallback((mode) => {
+    const actionType = actionTypeByMode[mode];
+    setPendingMode(mode);
+    setModalLevel(levelsByActionType[actionType]?.[0]?.key ?? "");
+  }, [actionTypeByMode, levelsByActionType]);
   const selectCell = useCallback((name) => {
     if (cellSelectionTimerRef.current !== null) {
       window.clearTimeout(cellSelectionTimerRef.current);
@@ -1997,14 +2002,13 @@ export default function PopPersonCanvas() {
         return;
       }
       setSelectedCell((prev) => prev === name ? null : name);
+      openModal("atacar");
     }, 60);
-  }, [openPlayerSignup]);
-  const openModal = useCallback((mode) => {
-    const actionType = actionTypeByMode[mode];
-    setPendingMode(mode);
-    setModalLevel(levelsByActionType[actionType]?.[0]?.key ?? "");
-  }, [actionTypeByMode, levelsByActionType]);
-  const closeModal = useCallback(() => setPendingMode(null), []);
+  }, [openModal, openPlayerSignup]);
+  const closeModal = useCallback(() => {
+    setPendingMode(null);
+    setSelectedCell(null);
+  }, []);
   const confirmAction = useCallback(() => {
     if (!pendingMode || !selectedActionType || !selectedLevel || !selectedCell || submittingActionRef.current) return;
     const requestFingerprint = [selectedActionType.key, modalLevel, selectedCell].join("|");
@@ -2042,6 +2046,33 @@ export default function PopPersonCanvas() {
     );
   }, [pendingMode, selectedActionType, selectedLevel, modalLevel, selectedCell, closeModal, createActionMutation, queueAction]);
   const selectedCellData = useMemo(() => leaves.find((l) => l.name === selectedCell) || null, [leaves, selectedCell]);
+  const selectedPopularityRank = useMemo(() => {
+    if (!selectedCellData) return null;
+    const ranked = [...leaves].sort((a, b) => Number(b.value) - Number(a.value));
+    const index = ranked.findIndex((person) => person.name === selectedCellData.name);
+    return index >= 0 ? index + 1 : null;
+  }, [leaves, selectedCellData]);
+  const selectedTargetActivity = useMemo(() => {
+    const actionsById = new Map();
+    [...queue, ...activeActions].forEach((action) => {
+      if (action?.targetName === selectedCell && action?.id) actionsById.set(action.id, action);
+    });
+    let hate = 0;
+    let fan = 0;
+    actionsById.forEach((action) => {
+      const weight = Math.max(1, Number(action.count) || 1);
+      if (action.mode === "atacar") hate += weight;
+      if (action.mode === "defender") fan += weight;
+    });
+    const total = hate + fan;
+    return {
+      hate,
+      fan,
+      total,
+      hatePct: total > 0 ? (hate / total) * 100 : 50,
+      fanPct: total > 0 ? (fan / total) * 100 : 50,
+    };
+  }, [activeActions, queue, selectedCell]);
 
   function cssSize() {
     const r = boardWrapRef.current.getBoundingClientRect();
@@ -3445,131 +3476,113 @@ export default function PopPersonCanvas() {
         </div>
       )}
 
-      {selectedCell && (
-        <div onClick={() => setSelectedCell(null)} style={{ position: "fixed", inset: 0, zIndex: 100, backgroundColor: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
-          <div role="dialog" aria-modal="true" aria-labelledby="selected-cell-title" onClick={(e) => e.stopPropagation()} style={{ width: "min(92vw, 360px)", maxHeight: "85vh", padding: "14px 16px", borderRadius: "16px", backgroundColor: "#171717", border: "1px solid #333", boxShadow: "0 4px 20px rgba(0,0,0,0.4)", display: "flex", flexDirection: "column", gap: "12px", overflowY: "auto" }}>
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "10px" }}>
-              <span id="selected-cell-title" style={{ color: "#fff", fontSize: "18px", fontWeight: 800, lineHeight: 1.25, letterSpacing: "-0.01em" }}>Você é fã ou hater de <strong>{selectedCell}</strong>?</span>
-              <button data-testid="button-close-selection" onClick={() => setSelectedCell(null)} style={{ ...closeButtonStyle, flexShrink: 0 }}><X size={13} /></button>
-            </div>
-            {selectedCellData && (
-                 <div style={{ position: "relative", width: "100%", aspectRatio: "1 / 1", borderRadius: "10px", overflow: "hidden", backgroundColor: selectedCellData.color }}>
-                 <PersonVisual person={selectedCellData} alt={`Imagem de ${selectedCellData.name}`} style={{ position: "absolute", inset: 0 }} />
-                 {selectedCellData.xProfileUrl && selectedCellData.xUsername && (
-                   <a
-                     data-testid="link-selected-cell-x-profile"
-                     href={selectedCellData.xProfileUrl}
-                     target="_blank"
-                     rel="noopener noreferrer"
-                     aria-label={`Abrir perfil de @${String(selectedCellData.xUsername).replace(/^@/, "")} no X`}
-                     onClick={(event) => event.stopPropagation()}
-                     onMouseEnter={(event) => {
-                       event.currentTarget.style.backgroundColor = "rgba(15,15,15,0.94)";
-                       event.currentTarget.style.borderColor = "rgba(255,255,255,0.42)";
-                     }}
-                     onMouseLeave={(event) => {
-                       event.currentTarget.style.backgroundColor = "rgba(15,15,15,0.78)";
-                       event.currentTarget.style.borderColor = "rgba(255,255,255,0.18)";
-                     }}
-                     style={{
-                       position: "absolute",
-                       top: "10px",
-                       right: "10px",
-                       zIndex: 2,
-                       display: "inline-flex",
-                       alignItems: "center",
-                       gap: "6px",
-                       maxWidth: "calc(100% - 20px)",
-                       minHeight: "36px",
-                       padding: "0 11px",
-                       border: "1px solid rgba(255,255,255,0.18)",
-                       borderRadius: "9999px",
-                       backgroundColor: "rgba(15,15,15,0.78)",
-                       boxSizing: "border-box",
-                       color: "#f5f5f5",
-                       textDecoration: "none",
-                       backdropFilter: "blur(8px)",
-                       boxShadow: "0 4px 14px rgba(0,0,0,0.24)",
-                       transition: "background-color 140ms ease, border-color 140ms ease, transform 140ms ease",
-                     }}
-                   >
-                     <FaXTwitter size={13} aria-hidden="true" />
-                     <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#f5f5f5", fontSize: "11px", fontWeight: 700 }}>
-                       @{String(selectedCellData.xUsername).replace(/^@/, "")}
-                     </span>
-                   </a>
-                 )}
-                <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "16px 12px 12px", background: "linear-gradient(to top, rgba(0,0,0,0.88), rgba(0,0,0,0.5) 65%, transparent)", display: "flex", flexDirection: "column", gap: "6px" }}>
-                   <div style={{ display: "flex", flexDirection: "column", gap: "1px", minWidth: 0 }}><span style={{ color: "rgba(255,255,255,0.65)", fontSize: "11px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedCellData.categoryPath.map((category) => category.name).join(" / ")}</span><span style={{ color: "#fff", fontSize: "16px", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedCellData.name}</span></div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 }}><span style={{ color: "rgba(255,255,255,0.55)", fontSize: "9px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Localização</span><span style={{ color: "#fff", fontSize: "12px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedCellData.cidade}, {selectedCellData.estado} - {selectedCellData.pais}</span></div>
-                </div>
-              </div>
-            )}
-            <div style={{ display: "flex", gap: "10px" }}>
-              <button data-testid="button-hater" onClick={() => openModal("atacar")} style={{ flex: 1, padding: "12px", borderRadius: "9999px", backgroundColor: "#450a0a", color: "#fecaca", fontWeight: 700, fontSize: "15px", border: "none", cursor: "pointer" }}>👎 Hater</button>
-              <button data-testid="button-fan" onClick={() => openModal("defender")} style={{ flex: 1, padding: "12px", borderRadius: "9999px", backgroundColor: "#14532d", color: "#bbf7d0", fontWeight: 700, fontSize: "15px", border: "none", cursor: "pointer" }}>❤️ Fã</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {pendingMode && (
-        <div onClick={closeModal} style={{ position: "fixed", inset: 0, zIndex: 120, backgroundColor: "rgba(0,0,0,0.78)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "14px" }}>
+      {pendingMode && selectedCell && (
+        <div onClick={closeModal} style={{ position: "fixed", inset: 0, zIndex: 120, backgroundColor: "rgba(0,0,0,0.82)", backdropFilter: "blur(5px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "14px" }}>
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="action-modal-title"
             onClick={(e) => e.stopPropagation()}
-            style={{ position: "relative", width: "min(94vw, 520px)", height: "min(90vh, 760px)", minHeight: "560px", overflow: "hidden", borderRadius: "30px", backgroundColor: "#c9c9cd", boxShadow: "0 18px 64px rgba(0,0,0,0.58)" }}
+            style={{ width: "min(94vw, 520px)", height: "min(92vh, 760px)", maxHeight: "calc(100vh - 28px)", minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", borderRadius: "30px", backgroundColor: "#111214", boxShadow: "0 18px 64px rgba(0,0,0,0.58)" }}
           >
-            {selectedCellData && (
-              <PersonVisual
-                person={selectedCellData}
-                alt={`Imagem de ${selectedCellData.name}`}
-                style={{ position: "absolute", inset: 0, width: "100%", height: "100%", borderRadius: 0, backgroundColor: "#c9c9cd" }}
-              />
-            )}
-            <div style={{ position: "absolute", inset: 0, pointerEvents: "none", background: "linear-gradient(to bottom, rgba(205,205,210,0.98) 0%, rgba(205,205,210,0.84) 20%, rgba(205,205,210,0.12) 45%, rgba(15,16,18,0.1) 62%, rgba(15,16,18,0.92) 78%, #111214 100%)" }} />
-
-            <div style={{ position: "relative", zIndex: 1, height: "100%", padding: "34px 28px 18px", boxSizing: "border-box" }}>
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "16px" }}>
-                <div style={{ minWidth: 0 }}>
-                  <span style={{ display: "block", color: "rgba(255,255,255,0.74)", fontSize: "12px", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase" }}>
-                    {pendingMode === "defender" ? "VOCÊ É FÃ DE" : "VOCÊ É HATER DE"}
-                  </span>
-                  <span id="action-modal-title" style={{ display: "block", marginTop: "4px", color: "#fff", fontSize: "34px", lineHeight: 1.05, fontWeight: 400, letterSpacing: "-0.04em", textShadow: "0 1px 12px rgba(0,0,0,0.18)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {selectedCell}
-                  </span>
+            <div style={{ minHeight: 0, flex: 1, overflowY: "auto", overscrollBehavior: "contain", scrollbarWidth: "thin" }}>
+              <div style={{ position: "relative", width: "100%", aspectRatio: "1 / 1", flexShrink: 0, overflow: "hidden", backgroundColor: selectedCellData?.color ?? "#25262b" }}>
+                {selectedCellData && (
+                  <PersonVisual
+                    person={selectedCellData}
+                    alt={`Imagem de ${selectedCellData.name}`}
+                    style={{ position: "absolute", inset: 0, width: "100%", height: "100%", borderRadius: 0 }}
+                  />
+                )}
+                <div style={{ position: "absolute", inset: 0, pointerEvents: "none", background: "linear-gradient(to bottom, rgba(10,10,12,0.68) 0%, rgba(10,10,12,0.05) 35%, rgba(17,18,20,0.02) 54%, rgba(17,18,20,0.82) 92%, #111214 100%)" }} />
+                <div style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 1, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "14px", padding: "24px 24px 0", boxSizing: "border-box" }}>
+                  <h2 id="action-modal-title" style={{ maxWidth: "calc(100% - 52px)", margin: 0, color: "#fff", fontSize: "clamp(24px, 7vw, 34px)", lineHeight: 1.06, fontWeight: 500, letterSpacing: "-0.04em", textShadow: "0 2px 16px rgba(0,0,0,0.36)" }}>
+                    Você é fã ou hater de <strong style={{ fontWeight: 850 }}>{selectedCellData?.name ?? selectedCell}</strong>?
+                  </h2>
+                  <button data-testid="button-close-action" onClick={closeModal} aria-label="Fechar seleção de nível" style={{ width: "40px", height: "40px", flexShrink: 0, borderRadius: "50%", backgroundColor: "rgba(20,21,24,0.72)", color: "#f5f5f5", border: "1px solid rgba(255,255,255,0.18)", cursor: "pointer", display: "grid", placeItems: "center", boxShadow: "0 2px 10px rgba(0,0,0,0.22)" }}><X size={21} strokeWidth={2.3} /></button>
                 </div>
-                <button data-testid="button-close-action" onClick={closeModal} aria-label="Fechar seleção de nível" style={{ width: "38px", height: "38px", flexShrink: 0, borderRadius: "50%", backgroundColor: "rgba(52,53,56,0.72)", color: "#f5f5f5", border: "none", cursor: "pointer", display: "grid", placeItems: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.14)" }}><X size={21} strokeWidth={2.3} /></button>
               </div>
 
-              <div style={{ display: "inline-flex", alignItems: "center", gap: "3px", marginTop: "28px", padding: "4px", borderRadius: "9999px", backgroundColor: "rgba(60,61,65,0.78)", boxShadow: "0 3px 10px rgba(0,0,0,0.12)" }}>
-                <button type="button" data-testid="button-switch-hater" onClick={() => openModal("atacar")} style={{ minWidth: "96px", padding: "10px 14px", border: "none", borderRadius: "9999px", backgroundColor: pendingMode === "atacar" ? "#d52f2f" : "transparent", color: pendingMode === "atacar" ? "#fff" : "rgba(255,255,255,0.62)", fontSize: "15px", fontWeight: 800, cursor: "pointer", boxShadow: pendingMode === "atacar" ? "0 2px 5px rgba(0,0,0,0.16)" : "none" }}>👎 Hater</button>
-                <button type="button" data-testid="button-switch-fan" onClick={() => openModal("defender")} style={{ minWidth: "82px", padding: "10px 14px", border: "none", borderRadius: "9999px", backgroundColor: pendingMode === "defender" ? "#df5184" : "transparent", color: pendingMode === "defender" ? "#fff" : "rgba(255,255,255,0.62)", fontSize: "15px", fontWeight: 800, cursor: "pointer", boxShadow: pendingMode === "defender" ? "0 2px 5px rgba(0,0,0,0.16)" : "none" }}>❤️ Fã</button>
-              </div>
-
-              <div style={{ position: "absolute", left: "16px", right: "16px", bottom: "16px", zIndex: 2, padding: "24px 22px 20px", borderRadius: "26px", backgroundColor: "rgba(20,21,23,0.97)", boxShadow: "0 -8px 26px rgba(0,0,0,0.22)", boxSizing: "border-box" }}>
-                <FanHaterLevelPicker
-                  mode={pendingMode}
-                  levels={levelsByActionType[actionTypeByMode[pendingMode]] ?? []}
-                  value={modalLevel}
-                  onChange={setModalLevel}
-                  basePrice={selectedActionType?.basePriceCurrent}
-                />
-                <div style={{ height: "1px", margin: "18px 0 16px", backgroundColor: "#303238" }} />
-                <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "14px" }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "6px", minWidth: 0 }}>
-                    <span style={{ color: "#8c8f96", fontSize: "11px", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase" }}>CUSTO TOTAL</span>
-                    <span data-testid="text-action-total-price" style={{ color: "#f4f4f5", fontSize: "24px", lineHeight: 1, fontWeight: 600, letterSpacing: "0.03em", whiteSpace: "nowrap" }}>{selectedActionPrice === null ? "—" : formatBRL(selectedActionPrice)}</span>
+              {selectedCellData && (
+                <div style={{ padding: "18px 22px 28px", backgroundColor: "#111214", boxSizing: "border-box" }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "14px", paddingBottom: "17px", borderBottom: "1px solid #2a2c31" }}>
+                    <div style={{ minWidth: 0 }}>
+                      <span style={{ display: "block", color: "#8c8f96", fontSize: "10px", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase" }}>Perfil</span>
+                      <span style={{ display: "block", marginTop: "5px", color: "#f4f4f5", fontSize: "18px", fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedCellData.name}</span>
+                      <span style={{ display: "block", marginTop: "4px", color: "#92959d", fontSize: "12px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedCellData.categoryPath?.map((category) => category.name).join(" / ")}</span>
+                    </div>
+                    {selectedCellData.xProfileUrl && selectedCellData.xUsername ? (
+                      <a
+                        data-testid="link-selected-cell-x-profile"
+                        href={selectedCellData.xProfileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`Abrir perfil de @${String(selectedCellData.xUsername).replace(/^@/, "")} no X`}
+                        onClick={(event) => event.stopPropagation()}
+                        style={{ display: "inline-flex", alignItems: "center", gap: "7px", flexShrink: 0, minHeight: "36px", maxWidth: "46%", padding: "0 11px", border: "1px solid #3a3c43", borderRadius: "9999px", backgroundColor: "#1c1e23", color: "#f5f5f5", textDecoration: "none", boxSizing: "border-box" }}
+                      >
+                        <FaXTwitter size={14} aria-hidden="true" />
+                        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "11px", fontWeight: 750 }}>@{String(selectedCellData.xUsername).replace(/^@/, "")}</span>
+                      </a>
+                    ) : (
+                      <span style={{ flexShrink: 0, color: "#6f727a", fontSize: "11px", alignSelf: "center" }}>Perfil no X não informado</span>
+                    )}
                   </div>
-                  <button data-testid="button-send-action" onClick={confirmAction} disabled={createActionMutation.isPending || !selectedActionType || !selectedLevel} style={{ minWidth: "158px", padding: "14px 18px", borderRadius: "9999px", backgroundColor: pendingMode === "defender" ? "#df5184" : "#ff625f", color: "#fff", fontSize: "16px", fontWeight: 800, border: "none", cursor: createActionMutation.isPending ? "wait" : "pointer", opacity: createActionMutation.isPending || !selectedActionType || !selectedLevel ? 0.55 : 1, boxShadow: "0 5px 16px rgba(255,98,95,0.2)", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
-                    {createActionMutation.isPending ? "Enviando…" : <><span>{pendingMode === "defender" ? "Enviar fã" : "Enviar hate"}</span><ArrowRight size={18} strokeWidth={2.8} aria-hidden="true" /></>}
-                  </button>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "10px", marginTop: "16px" }}>
+                    <div style={{ minWidth: 0, padding: "13px 14px", borderRadius: "14px", backgroundColor: "#1a1c21", border: "1px solid #292c32" }}>
+                      <span style={{ display: "block", color: "#858991", fontSize: "10px", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>Popularidade</span>
+                      <strong style={{ display: "block", marginTop: "7px", color: "#f4f4f5", fontSize: "22px", lineHeight: 1, fontWeight: 850 }}>{Number(selectedCellData.value || 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 })}</strong>
+                      {selectedPopularityRank && <span style={{ display: "block", marginTop: "6px", color: "#858991", fontSize: "11px" }}>#{selectedPopularityRank} no mapa</span>}
+                    </div>
+                    <div style={{ minWidth: 0, padding: "13px 14px", borderRadius: "14px", backgroundColor: "#1a1c21", border: "1px solid #292c32" }}>
+                      <span style={{ display: "block", color: "#858991", fontSize: "10px", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>Polarização</span>
+                      <strong style={{ display: "block", marginTop: "7px", color: "#f4f4f5", fontSize: "16px", lineHeight: 1.1, fontWeight: 800 }}>{selectedTargetActivity.total > 0 ? "Em disputa" : "Sem atividade"}</strong>
+                      <div aria-label="Distribuição das ações ativas entre hater e fã" style={{ display: "flex", height: "6px", marginTop: "10px", overflow: "hidden", borderRadius: "999px", backgroundColor: "#30333a" }}>
+                        <span style={{ width: `${selectedTargetActivity.hatePct}%`, backgroundColor: "#ff625f" }} />
+                        <span style={{ width: `${selectedTargetActivity.fanPct}%`, backgroundColor: "#df5184" }} />
+                      </div>
+                      <span style={{ display: "flex", justifyContent: "space-between", gap: "8px", marginTop: "6px", color: "#858991", fontSize: "10px" }}>
+                        <span>Hater {Math.round(selectedTargetActivity.hatePct)}%</span>
+                        <span>Fã {Math.round(selectedTargetActivity.fanPct)}%</span>
+                      </span>
+                    </div>
+                  </div>
+                  {(selectedCellData.cidade || selectedCellData.estado || selectedCellData.pais) && (
+                    <span style={{ display: "block", marginTop: "14px", color: "#73767e", fontSize: "11px" }}>
+                      {[selectedCellData.cidade, selectedCellData.estado, selectedCellData.pais].filter(Boolean).join(" · ")}
+                    </span>
+                  )}
                 </div>
-                {selectedLevel?.startDelayMs > 0 && !createActionMutation.isPending && <span style={{ display: "block", marginTop: "10px", color: "#8c8f96", fontSize: "11px" }}>A ação inicia em {Math.ceil(selectedLevel.startDelayMs / 1000)}s.</span>}
-                {createActionMutation.error && <span style={{ display: "block", marginTop: "10px", color: "#fca5a5", fontSize: "11px" }}>{actionWasRateLimited ? "Muitas ações em pouco tempo. Aguarde um instante e tente novamente." : "Não foi possível enviar esta ação. Tente novamente."}</span>}
+              )}
+            </div>
+
+            <div style={{ flexShrink: 0, maxHeight: "48%", overflowY: "auto", padding: "16px 22px calc(16px + env(safe-area-inset-bottom))", borderTop: "1px solid #2b2d32", backgroundColor: "rgba(20,21,23,0.98)", boxShadow: "0 -12px 28px rgba(0,0,0,0.28)", boxSizing: "border-box" }}>
+              <div style={{ display: "flex", justifyContent: "center", marginBottom: "14px" }}>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: "3px", padding: "4px", borderRadius: "9999px", backgroundColor: "#292b31", boxShadow: "0 3px 10px rgba(0,0,0,0.16)" }}>
+                  <button type="button" data-testid="button-switch-hater" onClick={() => openModal("atacar")} style={{ minWidth: "96px", padding: "9px 14px", border: "none", borderRadius: "9999px", backgroundColor: pendingMode === "atacar" ? "#d52f2f" : "transparent", color: pendingMode === "atacar" ? "#fff" : "rgba(255,255,255,0.62)", fontSize: "14px", fontWeight: 800, cursor: "pointer", boxShadow: pendingMode === "atacar" ? "0 2px 5px rgba(0,0,0,0.16)" : "none" }}>👎 Hater</button>
+                  <button type="button" data-testid="button-switch-fan" onClick={() => openModal("defender")} style={{ minWidth: "82px", padding: "9px 14px", border: "none", borderRadius: "9999px", backgroundColor: pendingMode === "defender" ? "#df5184" : "transparent", color: pendingMode === "defender" ? "#fff" : "rgba(255,255,255,0.62)", fontSize: "14px", fontWeight: 800, cursor: "pointer", boxShadow: pendingMode === "defender" ? "0 2px 5px rgba(0,0,0,0.16)" : "none" }}>❤️ Fã</button>
+                </div>
               </div>
+              <FanHaterLevelPicker
+                mode={pendingMode}
+                levels={levelsByActionType[actionTypeByMode[pendingMode]] ?? []}
+                value={modalLevel}
+                onChange={setModalLevel}
+                basePrice={selectedActionType?.basePriceCurrent}
+              />
+              <div style={{ height: "1px", margin: "14px 0 14px", backgroundColor: "#303238" }} />
+              <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "14px" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px", minWidth: 0 }}>
+                  <span style={{ color: "#8c8f96", fontSize: "10px", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase" }}>CUSTO TOTAL</span>
+                  <span data-testid="text-action-total-price" style={{ color: "#f4f4f5", fontSize: "22px", lineHeight: 1, fontWeight: 650, letterSpacing: "0.03em", whiteSpace: "nowrap" }}>{selectedActionPrice === null ? "—" : formatBRL(selectedActionPrice)}</span>
+                </div>
+                <button data-testid="button-send-action" onClick={confirmAction} disabled={createActionMutation.isPending || !selectedActionType || !selectedLevel} style={{ minWidth: "158px", padding: "13px 18px", borderRadius: "9999px", backgroundColor: pendingMode === "defender" ? "#df5184" : "#ff625f", color: "#fff", fontSize: "15px", fontWeight: 800, border: "none", cursor: createActionMutation.isPending ? "wait" : "pointer", opacity: createActionMutation.isPending || !selectedActionType || !selectedLevel ? 0.55 : 1, boxShadow: "0 5px 16px rgba(255,98,95,0.2)", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
+                  {createActionMutation.isPending ? "Enviando…" : <><span>{pendingMode === "defender" ? "Enviar apoio" : "Enviar hate"}</span><ArrowRight size={18} strokeWidth={2.8} aria-hidden="true" /></>}
+                </button>
+              </div>
+              {selectedLevel?.startDelayMs > 0 && !createActionMutation.isPending && <span style={{ display: "block", marginTop: "10px", color: "#8c8f96", fontSize: "11px" }}>A ação inicia em {Math.ceil(selectedLevel.startDelayMs / 1000)}s.</span>}
+              {createActionMutation.error && <span style={{ display: "block", marginTop: "10px", color: "#fca5a5", fontSize: "11px" }}>{actionWasRateLimited ? "Muitas ações em pouco tempo. Aguarde um instante e tente novamente." : "Não foi possível enviar esta ação. Tente novamente."}</span>}
             </div>
           </div>
         </div>
