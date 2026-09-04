@@ -938,6 +938,7 @@ export default function PopPersonCanvas() {
   const locallyCreatedActionIdsRef = useRef(new Set());
   const latestServerStateVersionRef = useRef(-1);
   const serverStateHydratedRef = useRef(false);
+  const lastHitSequenceByActionRef = useRef(new Map());
   const transformRef = useRef({ x: 0, y: 0, scale: 1 });
   const fitTransformRef = useRef({ x: 0, y: 0, scale: 1 });
   const recenterAnimRef = useRef(null);
@@ -1013,6 +1014,50 @@ export default function PopPersonCanvas() {
   }, []);
   const executeActionRef = useRef(executeAction);
   useEffect(() => { executeActionRef.current = executeAction; }, [executeAction]);
+  const handleActionHit = useCallback((hit) => {
+    const actionId = hit?.actionId;
+    const hitIndex = Number(hit?.hitIndex);
+    const eventId = String(hit?.eventId ?? `${actionId}:${hitIndex}`);
+    if (!actionId || !Number.isFinite(hitIndex) || processedRealtimeEventIdsRef.current.has(eventId)) return;
+    processedRealtimeEventIdsRef.current.add(eventId);
+    if (processedRealtimeEventIdsRef.current.size > 2000) {
+      const oldestEventId = processedRealtimeEventIdsRef.current.values().next().value;
+      processedRealtimeEventIdsRef.current.delete(oldestEventId);
+    }
+    const previousSequence = Number(lastHitSequenceByActionRef.current.get(actionId) || 0);
+    const sequence = Number(hit?.sequence) || hitIndex;
+    if (sequence <= previousSequence) return;
+    lastHitSequenceByActionRef.current.set(actionId, sequence);
+
+    const targetName = String(hit?.targetName ?? "");
+    const finalValue = Number(hit?.finalValue);
+    if (targetName && Number.isFinite(finalValue)) {
+      serverDatasetRef.current = serverDatasetRef.current.map((person) => (
+        person.name === targetName ? { ...person, value: finalValue } : person
+      ));
+      visualValuesRef.current.set(targetName, finalValue);
+      setDataset((prev) => prev.map((person) => (
+        person.name === targetName ? { ...person, value: finalValue } : person
+      )));
+    }
+
+    setActiveActions((prev) => prev.map((action) => action.id === actionId
+      ? {
+          ...action,
+          hitCount: Math.min(action.count, Math.max(action.hitCount || 0, hitIndex)),
+          lastHitAt: Number(hit?.hitAt) || action.lastHitAt,
+        }
+      : action));
+
+    if (targetName && emojiTargetsRef.current.has(targetName)) {
+      emojiEffectsRef.current?.spawn({
+        targetName,
+        emoji: String(hit?.emoji || "✨"),
+        count: 1,
+        actionType: String(hit?.actionType || "hate"),
+      });
+    }
+  }, []);
   const startResolvedAction = useCallback((serverAction, resolvedEvent) => {
     const actionId = serverAction?.id || resolvedEvent?.actionId;
     const eventId = resolvedEvent?.eventId || actionId;
@@ -1035,7 +1080,7 @@ export default function PopPersonCanvas() {
     }
     setActiveActions((prev) => prev.filter((action) => action.id !== actionId));
     activeActionIdsRef.current = activeActionIdsRef.current.filter((id) => id !== actionId);
-    realtimeDebug("action:resolved-without-animation", {
+    realtimeDebug("action:resolved", {
       eventId,
       actionId,
       targetName,
@@ -1110,17 +1155,10 @@ export default function PopPersonCanvas() {
 
     if (resetVisuals) {
       // A snapshot is the present, not a replay buffer. It updates the board
-      // and never starts an old animation.
-      pendingHitEventsRef.current.clear();
-      queuedHitKeysRef.current.clear();
-      visualizedHitKeysRef.current.clear();
-      visualHitCountsRef.current.clear();
-      emittersRef.current = [];
-      projectilesRef.current = [];
-      impactsRef.current = [];
-      deferredCompletedActionIdsRef.current.clear();
-      animationActionsRef.current.clear();
+      // and never replays old emoji events.
+      emojiEffectsRef.current?.clear();
       latestServerActionsRef.current.clear();
+      lastHitSequenceByActionRef.current.clear();
       activeActionIdsRef.current = [];
       setQueue([]);
       setActiveActions([]);
@@ -1161,117 +1199,25 @@ export default function PopPersonCanvas() {
       locallyCreatedActionIdsRef.current.delete(serverAction.id);
     });
     const incomingActionIds = new Set(incomingActions.map((action) => action.id));
-    if (serverStateHydratedRef.current && !resetVisuals) {
-      for (const [actionId, previousAction] of latestServerActionsRef.current) {
-        if (!incomingActionIds.has(actionId)
-          && (previousAction.status === "queued" || previousAction.status === "running")) {
-          // A polling snapshot can observe completion before its realtime
-          // message. Retain ephemeral effects until their final frames finish.
-          deferredCompletedActionIdsRef.current.add(actionId);
-        }
-      }
-    }
     locallyCreatedActionIdsRef.current.forEach((id) => incomingActionIds.add(id));
     if (Array.isArray(serverState?.dataset)) {
       serverDatasetRef.current = serverState.dataset;
       incomingActions.forEach((serverAction) => {
-        const previousAction = latestServerActionsRef.current.get(serverAction.id);
-        const previousHitCount = Number(previousAction?.hitCount) || 0;
-        const nextHitCount = Math.min(
-          Number(serverAction.count) || 0,
-          Math.max(0, Number(serverAction.hitCount) || 0),
-        );
-        animationActionsRef.current.set(serverAction.id, serverAction);
         latestServerActionsRef.current.set(serverAction.id, serverAction);
-
-        if (!previousAction) {
-          queueAction(serverAction);
-        } else if (
-          previousAction.status === "queued" &&
-          serverAction.status === "running"
-        ) {
-          setQueue((prev) => prev.filter((action) => action.id !== serverAction.id));
-          executeActionRef.current(
-            serverAction,
-          );
-        } else if (
-          serverAction.status === "running" &&
-          !activeActionIdsRef.current.includes(serverAction.id)
-        ) {
-          executeActionRef.current(
-            serverAction,
-          );
-        } else if (serverAction.status === "queued") {
-          setQueue((prev) => prev.map((action) => action.id === serverAction.id
-            ? { ...action, ...serverAction, localExecuteAt: action.localExecuteAt }
-            : action));
-        }
-
-        const visualHitCount = visualHitCountsRef.current.get(serverAction.id) || 0;
-        setActiveActions((prev) => prev.map((action) => action.id === serverAction.id
-          ? {
-              ...action,
-              hitCount: Math.min(action.count, visualHitCount),
-              lastHitAt: serverAction.lastHitAt ?? null,
-            }
-          : action));
+        queueAction(serverAction);
       });
-      const activeTargetNames = new Set(
-        incomingActions
-          .filter((action) => action.status === "queued" || action.status === "running")
-          .map((action) => action.targetName),
-      );
-      locallyCreatedActionIdsRef.current.forEach((actionId) => {
-        const locallyCreatedAction = latestServerActionsRef.current.get(actionId);
-        if (
-          locallyCreatedAction
-          && (locallyCreatedAction.status === "queued" || locallyCreatedAction.status === "running")
-        ) {
-          activeTargetNames.add(locallyCreatedAction.targetName);
-        }
-      });
-      deferredCompletedActionIdsRef.current.forEach((actionId) => {
-        const completedAction = animationActionsRef.current.get(actionId);
-        if (completedAction?.targetName) {
-          activeTargetNames.add(completedAction.targetName);
-        }
-      });
-      if (resetVisuals || activeTargetNames.size === 0) {
-        setDataset(serverState.dataset);
-      } else {
-        setDataset((previousDataset) => serverState.dataset.map((person) => {
-          if (!activeTargetNames.has(person.name)) return person;
-          return previousDataset.find((previousPerson) => previousPerson.name === person.name)
-            ?? person;
-        }));
-      }
+      setDataset(serverState.dataset);
     }
 
     if (serverStateHydratedRef.current && !resetVisuals) {
       setQueue((prev) => prev.filter((action) => incomingActionIds.has(action.id)));
       setActiveActions((prev) => {
-        const next = prev.filter((action) => {
-          if (incomingActionIds.has(action.id)) return true;
-          if (deferredCompletedActionIdsRef.current.has(action.id)) return true;
-          return projectilesRef.current.some((projectile) => projectile.firingId === action.id)
-            || impactsRef.current.some((impact) => impact.actionId === action.id);
-        });
+        const next = prev.filter((action) => incomingActionIds.has(action.id));
         activeActionIdsRef.current = next.map((action) => action.id);
         return next;
       });
-      emittersRef.current = emittersRef.current.filter((emitter) => (
-        incomingActionIds.has(emitter.id)
-        || deferredCompletedActionIdsRef.current.has(emitter.id)
-      ));
-      projectilesRef.current = projectilesRef.current.filter((projectile) => (
-        incomingActionIds.has(projectile.firingId)
-        || deferredCompletedActionIdsRef.current.has(projectile.firingId)
-      ));
-      shakeActionIdsRef.current.forEach((id) => {
-        if (!incomingActionIds.has(id)) shakeActionIdsRef.current.delete(id);
-      });
       for (const id of latestServerActionsRef.current.keys()) {
-        if (!incomingActionIds.has(id) && !deferredCompletedActionIdsRef.current.has(id)) {
+        if (!incomingActionIds.has(id)) {
           latestServerActionsRef.current.delete(id);
         }
       }
@@ -1281,9 +1227,8 @@ export default function PopPersonCanvas() {
       stateVersion: incomingStateVersion,
       actionCount: incomingActions.length,
       resetVisuals,
-      activeProjectiles: projectilesRef.current.length,
     });
-  }, []);
+  }, [queueAction]);
   useEffect(() => {
     if (bootstrapQuery.data?.state) {
       reconcileServerState(bootstrapQuery.data.state, { resetVisuals: true });
@@ -1349,6 +1294,13 @@ export default function PopPersonCanvas() {
             return;
           }
           if (
+            message?.type === "action:hit"
+            && message.hit
+          ) {
+            handleActionHit(message.hit);
+            return;
+          }
+          if (
             message?.type === "action:resolved"
             && message.action
             && message.event
@@ -1394,13 +1346,16 @@ export default function PopPersonCanvas() {
     };
   }, [
     config,
+    handleActionHit,
     removeRealtimeAction,
     reconcileServerState,
     syncServerClock,
   ]);
   const getRemainingUnits = useCallback((item) => {
-    const emitter = emittersRef.current.find((e) => e.id === item.id);
-    return (emitter ? emitter.remaining : 0) + projectilesRef.current.filter((p) => p.firingId === item.id).length;
+    return Math.max(
+      0,
+      (Number(item.count) || 0) - (Number(item.hitCount) || 0),
+    );
   }, []);
   const getActionTiming = useCallback((item, now) => {
     if (item.kind === "queued") {
@@ -1924,13 +1879,8 @@ export default function PopPersonCanvas() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, cw, ch);
     const t = transformRef.current;
-    const shaking = shakeActionIdsRef.current.size > 0;
-    const shakeOffset = shaking
-      ? { x: (Math.random() - 0.5) * 1.4, y: (Math.random() - 0.5) * 1.4 }
-      : { x: 0, y: 0 };
-    canvasShakeOffsetRef.current = shakeOffset;
     ctx.save();
-    ctx.translate(t.x + shakeOffset.x, t.y + shakeOffset.y);
+    ctx.translate(t.x, t.y);
     ctx.scale(t.scale, t.scale);
     const selName = selectedCellRef.current;
     leavesRef.current.forEach((node) => {
@@ -1999,80 +1949,6 @@ export default function PopPersonCanvas() {
         ctx.restore();
       }
     });
-    const now = performance.now();
-    impactsRef.current.forEach((imp) => {
-      const p = Math.min(1, (now - imp.startTime) / imp.duration);
-      const impactTarget = animatedCirclesRef.current.get(imp.targetName)
-        ?? leavesRef.current.find((leaf) => leaf.name === imp.targetName);
-      const impactX = impactTarget?.x ?? imp.x;
-      const impactY = impactTarget?.y ?? imp.y;
-      const impactBaseRadius = impactTarget?.r ?? imp.r;
-      const impactRadius = impactBaseRadius * (0.9 + p * 0.4);
-      const impactGradient = ctx.createRadialGradient(
-        impactX,
-        impactY,
-        impactRadius * 0.08,
-        impactX,
-        impactY,
-        impactRadius,
-      );
-      impactGradient.addColorStop(0, "rgba(0, 0, 0, 0)");
-      impactGradient.addColorStop(0.28, `rgba(${imp.color}, 0.04)`);
-      impactGradient.addColorStop(0.62, `rgba(${imp.color}, 0.34)`);
-      impactGradient.addColorStop(0.84, `rgba(${imp.color}, 0.7)`);
-      impactGradient.addColorStop(1, "rgba(0, 0, 0, 0)");
-      ctx.save();
-      ctx.globalAlpha = 1 - p;
-      ctx.beginPath();
-      ctx.arc(impactX, impactY, impactRadius, 0, Math.PI * 2);
-      ctx.fillStyle = impactGradient;
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(impactX, impactY, impactBaseRadius * (0.72 + p * 0.48), 0, Math.PI * 2);
-      ctx.lineWidth = 2.5 / t.scale;
-      ctx.strokeStyle = `rgba(${imp.color}, 0.82)`;
-      ctx.stroke();
-      ctx.restore();
-    });
-    projectilesRef.current.forEach((p) => {
-      const progress = Math.min(Math.max((now - p.startTime) / p.duration, 0), 1);
-      const eased = easeOutQuad(progress);
-      const targetCircle = animatedCirclesRef.current.get(p.targetName);
-      const targetLeaf = leavesRef.current.find((leaf) => leaf.name === p.targetName);
-      // The layout can move a cell while a projectile is in flight. Keep the
-      // endpoint attached to the animated circle instead of the coordinates
-      // captured when the projectile was spawned.
-      const endX = targetCircle?.x ?? targetLeaf?.x ?? p.endX;
-      const endY = targetCircle?.y ?? targetLeaf?.y ?? p.endY;
-      const originalMidX = (p.startX + p.endX) / 2;
-      const originalMidY = (p.startY + p.endY) / 2;
-      const controlX = (p.startX + endX) / 2 + (p.controlX - originalMidX);
-      const controlY = (p.startY + endY) / 2 + (p.controlY - originalMidY);
-      const x = quadBezier(p.startX, controlX, endX, eased);
-      const y = quadBezier(p.startY, controlY, endY, eased);
-      const targetRadius = targetCircle?.r ?? targetLeaf?.r;
-      const projectileFontSizeScreen = getStableCellTextSize(targetRadius * t.scale);
-      const fontSize = projectileFontSizeScreen / t.scale;
-      [0.09, 0.18, 0.27].forEach((offset, i) => {
-        const tt = eased - offset;
-        if (tt <= 0) return;
-        ctx.save();
-        ctx.globalAlpha = Math.max(0, 0.38 - i * 0.11);
-        ctx.font = `${fontSize * (1 - i * 0.14)}px sans-serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(p.emoji, quadBezier(p.startX, controlX, endX, tt), quadBezier(p.startY, controlY, endY, tt));
-        ctx.restore();
-      });
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(Math.atan2(quadBezierTangent(p.startY, controlY, endY, eased), quadBezierTangent(p.startX, controlX, endX, eased)));
-      ctx.font = `${fontSize}px sans-serif`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(p.emoji, 0, 0);
-      ctx.restore();
-    });
     ctx.restore();
   }, []);
 
@@ -2100,165 +1976,6 @@ export default function PopPersonCanvas() {
         showRecenterRef.current = deviated;
         setShowRecenter(deviated);
       }
-      const serverNow = serverClockRef.current.serverTime
-        + (now - serverClockRef.current.clientPerfAt);
-      let spawnedThisFrame = 0;
-
-      // Expire finished visual objects before scheduling new ones. This keeps
-      // the concurrency limit from becoming a hidden clock: a slow/late hit
-      // must never prevent the next planned projectile from being scheduled.
-      projectilesRef.current = projectilesRef.current.filter((p) => {
-        const hitKey = `${p.firingId}:${p.hitIndex}`;
-        if (visualizedHitKeysRef.current.has(hitKey)) return false;
-        return now - p.startTime < p.duration + PROJECTILE_MAX_LIFETIME_MS;
-      });
-      if (now - lastRealtimeMetricsAtRef.current >= 1000) {
-        const oldestProjectile = projectilesRef.current.reduce(
-          (oldest, projectile) => Math.max(oldest, now - projectile.startTime),
-          0,
-        );
-        realtimeDebug("projectiles:metrics", {
-          count: projectilesRef.current.length,
-          oldestAgeMs: Math.round(oldestProjectile),
-          actionCount: emittersRef.current.length,
-        });
-        lastRealtimeMetricsAtRef.current = now;
-      }
-
-      // Allocate the decorative projectile budget fairly between actions.
-      // Previously the first emitter consumed all 24 slots (and advanced its
-      // schedule even when the cap was full), so later actions could finish
-      // without ever drawing a projectile.
-      const emitters = emittersRef.current;
-      const emitterCount = emitters.length;
-      if (emitterCount > 0) {
-        let cursor = emitterCursorRef.current % emitterCount;
-        while (
-          spawnedThisFrame < 4
-          && projectilesRef.current.length < MAX_CONCURRENT_PROJECTILES
-        ) {
-          let progressedInRound = false;
-          for (
-            let offset = 0;
-            offset < emitterCount && spawnedThisFrame < 4;
-            offset += 1
-          ) {
-            const emitter = emitters[(cursor + offset) % emitterCount];
-            if (
-              emitter.nextIndex >= emitter.count
-              || serverNow < getEmitterHitAtServer(emitter, emitter.nextIndex + 1) - emitter.duration
-            ) {
-              continue;
-            }
-
-            const currentLeaves = leavesRef.current;
-            const target = currentLeaves.find((l) => l.name === emitter.targetName);
-            const hitIndex = emitter.nextIndex;
-            // A filtered-out target must never be replaced by another visible
-            // cell. Consume its scheduled visual slot without drawing it.
-            if (!target) {
-              emitter.nextIndex += 1;
-              emitter.remaining = emitter.count - emitter.nextIndex;
-              progressedInRound = true;
-              continue;
-            }
-
-            const plannedStartServer = getEmitterHitAtServer(emitter, hitIndex + 1)
-              - emitter.duration;
-            const ageMs = Math.max(0, serverNow - plannedStartServer);
-            const arcUnit = deterministicUnit(`${emitter.id}:${hitIndex}:arc`);
-            const sideUnit = deterministicUnit(`${emitter.id}:${hitIndex}:side`);
-            const sourceCircle = emitter.sourceName
-              ? animatedCirclesRef.current.get(emitter.sourceName)
-              : null;
-            const sourceLeaf = emitter.sourceName
-              ? currentLeaves.find((leaf) => leaf.name === emitter.sourceName)
-              : null;
-            const startX = sourceCircle?.x ?? sourceLeaf?.x ?? target.x;
-            const startY = sourceCircle?.y ?? sourceLeaf?.y ?? target.y;
-            const dx = target.x - startX;
-            const dy = target.y - startY;
-            const dist = Math.hypot(dx, dy) || 1;
-            const perpX = -dy / dist;
-            const perpY = dx / dist;
-            const arcMag = (0.18 + arcUnit * 0.22) * dist * (sideUnit < 0.5 ? -1 : 1);
-            projectilesRef.current.push({
-              id: `${emitter.id}:${hitIndex}`,
-              firingId: emitter.id,
-              hitIndex: hitIndex + 1,
-              targetName: target.name,
-              sourceName: emitter.sourceName,
-              startX,
-              startY,
-              endX: target.x,
-              endY: target.y,
-              controlX: (startX + target.x) / 2 + perpX * arcMag,
-              controlY: (startY + target.y) / 2 + perpY * arcMag,
-              startTime: now - ageMs,
-              duration: emitter.duration,
-              growthPerHit: emitter.growthPerHit,
-              direction: emitter.direction,
-              emoji: emitter.emoji,
-              level: emitter.level,
-            });
-            emitter.nextIndex += 1;
-            emitter.remaining = emitter.count - emitter.nextIndex;
-            spawnedThisFrame += 1;
-            progressedInRound = true;
-          }
-          if (!progressedInRound) break;
-          cursor = (cursor + 1) % emitterCount;
-        }
-        emitterCursorRef.current = cursor;
-      }
-
-      emittersRef.current = emitters.filter((emitter) => {
-        while (
-          emitter.nextImpactIndex < emitter.count
-          && serverNow >= getEmitterHitAtServer(emitter, emitter.nextImpactIndex + 1)
-        ) {
-          const hitIndex = emitter.nextImpactIndex + 1;
-          const hitKey = `${emitter.id}:${hitIndex}`;
-          const confirmation = pendingHitEventsRef.current.get(hitKey);
-          commitVisualHit(confirmation ?? {
-            actionId: emitter.id,
-            hitIndex,
-            targetName: emitter.targetName,
-            direction: emitter.direction > 0 ? "defender" : "atacar",
-            hitAt: getEmitterHitAtServer(emitter, hitIndex),
-          });
-          emitter.nextImpactIndex += 1;
-        }
-        return emitter.nextIndex < emitter.count || emitter.nextImpactIndex < emitter.count;
-      });
-      impactsRef.current = impactsRef.current.filter((i) => now - i.startTime < i.duration);
-      deferredCompletedActionIdsRef.current.forEach((actionId) => {
-        const hasProjectile = projectilesRef.current.some(
-          (projectile) => projectile.firingId === actionId,
-        );
-        const hasImpact = impactsRef.current.some((impact) => impact.actionId === actionId);
-        if (!hasProjectile && !hasImpact) {
-          const completedAction = animationActionsRef.current.get(actionId);
-          const targetName = completedAction?.targetName;
-          const finalValue = Number(completedAction?.resolvedFinalValue);
-          if (targetName && Number.isFinite(finalValue)) {
-            visualValuesRef.current.set(targetName, finalValue);
-            setDataset((prev) => prev.map((person) => (
-              person.name === targetName ? { ...person, value: finalValue } : person
-            )));
-          }
-          removeRealtimeAction(actionId);
-        }
-      });
-      // The local projectile animation is only visual feedback. Keep each
-      // action in the HUD until the server removes it from the live state;
-      // otherwise the browser looks finished while the API is still recording
-      // hits and updating the cell.
-      shakeActionIdsRef.current.forEach((id) => {
-        if (!projectilesRef.current.some((p) => p.firingId === id)) {
-          shakeActionIdsRef.current.delete(id);
-        }
-      });
       seedMissingRects();
       animatedCirclesRef.current.forEach((circle) => {
         if (circle.radiusStartedAt === null) return;
@@ -2276,71 +1993,6 @@ export default function PopPersonCanvas() {
         }
       });
 
-      // A resolved action owns one continuous radius progression. The impact
-      // counter remains discrete for the HUD/effects, while the cell size
-      // follows the complete value range between the first and last impact.
-      const continuousRadiusActions = new Map();
-      animationActionsRef.current.forEach((action) => {
-        const targetName = action?.targetName;
-        const previousValue = Number(action?.resolvedPreviousValue);
-        const finalValue = Number(action?.resolvedFinalValue);
-        const delta = Number(action?.resolvedDelta);
-        const firstImpactAtServer = Number(action?.resolvedFirstImpactAtServer);
-        const intervalMs = Math.max(0, Number(action?.resolvedIntervalMs) || 0);
-        const count = Math.max(1, Number(action?.count) || 1);
-        const target = targetName
-          ? animatedCirclesRef.current.get(targetName)
-          : null;
-        if (
-          !target
-          || !Number.isFinite(previousValue)
-          || !Number.isFinite(firstImpactAtServer)
-          || (!Number.isFinite(finalValue) && !Number.isFinite(delta))
-        ) {
-          return;
-        }
-
-        const resolvedTargetValue = Number.isFinite(finalValue)
-          ? finalValue
-          : previousValue + delta;
-        const totalProgressDuration = intervalMs * count;
-        const progress = totalProgressDuration > 0
-          ? Math.min(
-              1,
-              Math.max(
-                0,
-                (serverNow - firstImpactAtServer + intervalMs) / totalProgressDuration,
-              ),
-            )
-          : serverNow >= firstImpactAtServer ? 1 : 0;
-        const visualValue = previousValue
-          + (resolvedTargetValue - previousValue) * progress;
-        const actions = continuousRadiusActions.get(targetName) ?? [];
-        actions.push({
-          previousValue,
-          visualValue,
-          order: Number.isFinite(Number(action?.resolvedAt))
-            ? Number(action.resolvedAt)
-            : firstImpactAtServer,
-        });
-        continuousRadiusActions.set(targetName, actions);
-      });
-      continuousRadiusActions.forEach((actions, targetName) => {
-        const circle = animatedCirclesRef.current.get(targetName);
-        if (!circle) return;
-        actions.sort((a, b) => a.order - b.order);
-        const baseValue = actions[0]?.previousValue ?? 0;
-        const visualValue = baseValue + actions.reduce(
-          (total, action) => total + (action.visualValue - action.previousValue),
-          0,
-        );
-        const radius = Math.sqrt(Math.max(0, visualValue)) * 3.2;
-        circle.r = radius;
-        circle.radiusFrom = radius;
-        circle.radiusTarget = radius;
-        circle.radiusStartedAt = null;
-      });
-
       const lerpFactor = 1 - Math.pow(0.001, dt / 1000);
       leavesRef.current.forEach((target) => {
         const a = animatedCirclesRef.current.get(target.name);
@@ -2354,12 +2006,16 @@ export default function PopPersonCanvas() {
           .map((target) => animatedCirclesRef.current.get(target.name))
           .filter(Boolean),
       );
+      emojiTargetsRef.current.clear();
+      animatedCirclesRef.current.forEach((circle, name) => {
+        emojiTargetsRef.current.set(name, { x: circle.x, y: circle.y });
+      });
       draw();
       raf = requestAnimationFrame(tick);
     }
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [commitVisualHit, draw, removeRealtimeAction, seedMissingRects]);
+  }, [draw, seedMissingRects]);
 
   useEffect(() => {
     function resize() {
@@ -2471,9 +2127,8 @@ export default function PopPersonCanvas() {
         multiPointerGesture = false;
         if (wasClick) {
            const t = transformRef.current;
-           const shakeOffset = canvasShakeOffsetRef.current;
-           const worldX = (px - t.x - shakeOffset.x) / t.scale;
-           const worldY = (py - t.y - shakeOffset.y) / t.scale;
+            const worldX = (px - t.x) / t.scale;
+            const worldY = (py - t.y) / t.scale;
            const hit = leavesRef.current.find((l) => {
              const circle = animatedCirclesRef.current.get(l.name);
              if (!circle) return false;
@@ -2600,6 +2255,12 @@ export default function PopPersonCanvas() {
 
       <div ref={boardWrapRef} style={{ position: "fixed", top: 0, bottom: 0, left: 0, right: 0, zIndex: 1, overflow: "hidden" }}>
         <canvas data-testid="canvas-people" ref={canvasRef} style={{ display: "block", width: "100%", height: "100%", touchAction: "none", cursor: "grab" }} />
+        <EmojiEffectsWebGL
+          ref={emojiEffectsRef}
+          targetsRef={emojiTargetsRef}
+          transformRef={transformRef}
+          maxInstances={50000}
+        />
         {joinPlayerError && (
           <div role="alert" style={{ position: "absolute", left: "50%", bottom: "24px", transform: "translateX(-50%)", zIndex: 5, display: "flex", alignItems: "center", gap: "10px", maxWidth: "calc(100% - 32px)", padding: "10px 12px", borderRadius: "12px", backgroundColor: "rgba(69, 10, 10, 0.94)", border: "1px solid rgba(248, 113, 113, 0.45)", color: "#fecaca", fontSize: "12px", fontWeight: 600, boxShadow: "0 8px 24px rgba(0,0,0,0.35)" }}>
             <span>{joinPlayerError}</span>

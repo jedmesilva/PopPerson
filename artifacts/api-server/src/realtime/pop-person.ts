@@ -2,6 +2,7 @@ import type { WebSocketServer, WebSocket } from "ws";
 import type { PopPersonState } from "@workspace/api-zod";
 import { pool } from "@workspace/db";
 import type {
+  PopPersonHitEvent,
   PopPersonResolvedEvent,
   PopPersonRealtimeNotification,
 } from "../lib/pop-person-store";
@@ -16,6 +17,7 @@ type PopPersonRealtimeMessage = {
   type:
     | "snapshot"
     | "action:started"
+    | "action:hit"
     | "action:resolved"
     | "action:cancelled"
     | "clock:pong";
@@ -23,6 +25,7 @@ type PopPersonRealtimeMessage = {
   action?: Awaited<ReturnType<typeof getPopPersonAction>>;
   actionId?: string;
   event?: PopPersonResolvedEvent;
+  hit?: PopPersonHitEvent;
   serverTime?: number;
   clientTime?: number;
   stateVersion?: number;
@@ -100,6 +103,27 @@ async function handleNotification(
         executeAt: action.executeAt,
         completesAt: action.completesAt,
         stateVersion: notification.event.stateVersion,
+      },
+      `PopPerson ${notification.type} published`,
+    );
+    return;
+  }
+
+  if (notification.type === "action:hit") {
+    broadcast(webSocketServer, {
+      type: "action:hit",
+      actionId: notification.actionId,
+      hit: notification.event,
+      serverTime,
+      stateVersion: notification.event.stateVersion,
+    });
+    logger.info(
+      {
+        actionId: notification.actionId,
+        hitIndex: notification.event.hitIndex,
+        targetName: notification.event.targetName,
+        stateVersion: notification.event.stateVersion,
+        serverTime,
       },
       `PopPerson ${notification.type} published`,
     );

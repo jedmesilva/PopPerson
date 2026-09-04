@@ -67,6 +67,21 @@ export type PopPersonResolvedEvent = {
   stateVersion: number;
   resolvedAt: number;
 };
+export type PopPersonHitEvent = {
+  eventId: string;
+  actionId: string;
+  sequence: number;
+  hitIndex: number;
+  hitAt: number;
+  targetName: string;
+  actionType: PopPersonAction["actionType"];
+  direction: PopPersonAction["mode"];
+  emoji: string;
+  delta: number;
+  previousValue: number;
+  finalValue: number;
+  stateVersion: number;
+};
 export type PopPersonRealtimeNotification =
   | {
       type: "action:started";
@@ -79,6 +94,12 @@ export type PopPersonRealtimeNotification =
       roomId: string;
       actionId: string;
       event: PopPersonResolvedEvent;
+    }
+  | {
+      type: "action:hit";
+      roomId: string;
+      actionId: string;
+      event: PopPersonHitEvent;
     }
   | {
       type: "action:completed" | "action:cancelled";
@@ -1111,10 +1132,14 @@ async function processDueActions(): Promise<void> {
           effectiveImpact: actionsTable.effectiveImpact,
           ruleSnapshot: actionsTable.ruleSnapshot,
           targetName: peopleTable.name,
+          actionType: actionTypesTable.code,
+          levelEmoji: actionLevelsTable.emoji,
         })
         .from(actionsTable)
         .innerJoin(cellsTable, eq(actionsTable.cellId, cellsTable.id))
         .innerJoin(peopleTable, eq(cellsTable.personId, peopleTable.id))
+        .leftJoin(actionTypesTable, eq(actionsTable.actionTypeId, actionTypesTable.id))
+        .innerJoin(actionLevelsTable, eq(actionsTable.actionLevelId, actionLevelsTable.id))
         .where(
           and(
             inArray(actionsTable.status, ["queued", "running"]),
@@ -1157,6 +1182,19 @@ async function processDueActions(): Promise<void> {
           actionId: action.id,
           stateVersion: toNumber(startedRoom?.stateVersion),
         });
+        await tx.insert(actionEventsTable).values({
+          actionId: action.id,
+          roomId: action.roomId,
+          cellId: action.cellId,
+          sequence: await nextActionEventSequence(tx, action.id),
+          eventType: "started",
+          status: "running",
+          payload: {
+            kind: "action:started",
+            actionId: action.id,
+            startedAt: now.toISOString(),
+          },
+        });
       }
 
       const runningActions = await tx
@@ -1171,22 +1209,30 @@ async function processDueActions(): Promise<void> {
           effectiveImpact: actionsTable.effectiveImpact,
           ruleSnapshot: actionsTable.ruleSnapshot,
           targetName: peopleTable.name,
+          actionType: actionTypesTable.code,
+          levelEmoji: actionLevelsTable.emoji,
         })
         .from(actionsTable)
         .innerJoin(cellsTable, eq(actionsTable.cellId, cellsTable.id))
         .innerJoin(peopleTable, eq(cellsTable.personId, peopleTable.id))
+        .leftJoin(actionTypesTable, eq(actionsTable.actionTypeId, actionTypesTable.id))
+        .innerJoin(actionLevelsTable, eq(actionsTable.actionLevelId, actionLevelsTable.id))
         .where(
           and(
             eq(actionsTable.status, "running"),
-            lte(actionsTable.completesAt, now),
+            lte(actionsTable.scheduledFor, now),
           ),
         )
-        .orderBy(asc(actionsTable.completesAt))
+        .orderBy(asc(actionsTable.scheduledFor))
         .limit(100);
 
+      let remainingHitBudget = MAX_HITS_PER_TRANSACTION;
       for (const action of runningActions) {
         const previousEvents = await tx
-          .select({ eventType: actionEventsTable.eventType })
+          .select({
+            eventType: actionEventsTable.eventType,
+            payload: actionEventsTable.payload,
+          })
           .from(actionEventsTable)
           .where(eq(actionEventsTable.actionId, action.id));
         const alreadyResolved = previousEvents.some(
@@ -1211,7 +1257,14 @@ async function processDueActions(): Promise<void> {
           1,
           Math.floor(snapshotNumber(action.ruleSnapshot, "count", 1)),
         );
-        const remainingHitCount = Math.max(0, hitCount - previousHitCount);
+        const timeline = {
+          executeAt: action.scheduledFor.getTime(),
+          duration: Math.max(0, snapshotNumber(action.ruleSnapshot, "durationMs", 0)),
+          staggerMs: Math.max(0, snapshotNumber(action.ruleSnapshot, "staggerMs", 0)),
+          count: hitCount,
+        };
+        const dueHitCount = dueHitCountAt(timeline, now.getTime());
+        const remainingHitCount = Math.max(0, dueHitCount - previousHitCount);
         const direction = action.mode === "defender" ? 1 : -1;
         const growthPerHit = snapshotNumber(
           action.ruleSnapshot,
@@ -1219,14 +1272,8 @@ async function processDueActions(): Promise<void> {
           toNumber(action.effectiveImpact) / hitCount,
         );
         const delta = growthPerHit * direction;
-        const durationMs = Math.max(
-          0,
-          snapshotNumber(action.ruleSnapshot, "durationMs", 0),
-        );
-        const intervalMs = Math.max(
-          0,
-          snapshotNumber(action.ruleSnapshot, "staggerMs", 0),
-        );
+        const durationMs = timeline.duration;
+        const intervalMs = timeline.staggerMs;
 
         const [cell] = await tx
           .select({
@@ -1240,23 +1287,101 @@ async function processDueActions(): Promise<void> {
           throw new Error(`Ação ${action.id} perdeu seu alvo durante a resolução.`);
         }
 
-        const previousValue = toNumber(cell.currentValue);
-        const finalValue = Math.max(
-          toNumber(cell.minimumValue),
-          previousValue + delta * remainingHitCount,
-        );
-        const [updatedCell] = await tx
-          .update(cellsTable)
-          .set({
-            currentValue: String(finalValue),
-            stateVersion: sql`${cellsTable.stateVersion} + 1`,
-            updatedAt: now,
-          })
-          .where(eq(cellsTable.id, action.cellId))
-          .returning({ currentValue: cellsTable.currentValue });
-        if (!updatedCell) {
-          throw new Error(`Ação ${action.id} não conseguiu atualizar sua célula.`);
+        let currentValue = toNumber(cell.currentValue);
+        let lastStateVersion = 0;
+        let processedHits = 0;
+        const firstHitPreviousValue = previousEvents
+          .find((event) => event.eventType === "hit")
+          ?.payload?.previousValue;
+        const actionPreviousValue = Number(firstHitPreviousValue);
+
+        for (
+          let offset = 0;
+          offset < remainingHitCount && remainingHitBudget > 0;
+          offset += 1
+        ) {
+          const hitIndex = previousHitCount + offset + 1;
+          const previousValue = currentValue;
+          const finalValue = Math.max(
+            toNumber(cell.minimumValue),
+            previousValue + delta,
+          );
+          const [updatedCell] = await tx
+            .update(cellsTable)
+            .set({
+              currentValue: String(finalValue),
+              stateVersion: sql`${cellsTable.stateVersion} + 1`,
+              updatedAt: now,
+            })
+            .where(eq(cellsTable.id, action.cellId))
+            .returning({
+              currentValue: cellsTable.currentValue,
+              stateVersion: cellsTable.stateVersion,
+            });
+          if (!updatedCell) {
+            throw new Error(`Ação ${action.id} não conseguiu atualizar sua célula.`);
+          }
+          currentValue = toNumber(updatedCell.currentValue);
+
+          const [updatedRoom] = await tx
+            .update(roomsTable)
+            .set({
+              stateVersion: sql`${roomsTable.stateVersion} + 1`,
+              updatedAt: now,
+            })
+            .where(eq(roomsTable.id, action.roomId))
+            .returning({ stateVersion: roomsTable.stateVersion });
+          lastStateVersion = toNumber(updatedRoom?.stateVersion);
+          const sequence = Number(await nextActionEventSequence(tx, action.id));
+          const hitEvent: PopPersonHitEvent = {
+            eventId: randomUUID(),
+            actionId: action.id,
+            sequence,
+            hitIndex,
+            hitAt: hitAtForIndex(timeline, hitIndex),
+            targetName: action.targetName,
+            actionType: action.actionType === "fan" ? "fan" : "hate",
+            direction: action.mode,
+            emoji: action.levelEmoji || (action.actionType === "fan" ? "❤️" : "💢"),
+            delta: currentValue - previousValue,
+            previousValue,
+            finalValue: currentValue,
+            stateVersion: lastStateVersion,
+          };
+
+          await tx.insert(actionEventsTable).values({
+            actionId: action.id,
+            roomId: action.roomId,
+            cellId: action.cellId,
+            sequence: String(sequence),
+            eventType: "hit",
+            status: "running",
+            deltaValue: String(hitEvent.delta),
+            payload: { kind: "action:hit", ...hitEvent },
+          });
+          await tx
+            .update(actionsTable)
+            .set({
+              updatedAt: now,
+            })
+            .where(eq(actionsTable.id, action.id));
+          await enqueueRealtimeNotification(tx, {
+            type: "action:hit",
+            roomId: action.roomId,
+            actionId: action.id,
+            event: hitEvent,
+          });
+          processedHits += 1;
+          remainingHitBudget -= 1;
         }
+
+        const recordedHitCount = previousHitCount + processedHits;
+        const timelineComplete = isTimelineComplete(
+          timeline,
+          recordedHitCount,
+          now.getTime(),
+        );
+        if (!timelineComplete) continue;
 
         const [claimed] = await tx
           .update(actionsTable)
@@ -1265,44 +1390,34 @@ async function processDueActions(): Promise<void> {
             completedAt: now,
             updatedAt: now,
           })
-          .where(
-            and(
-              eq(actionsTable.id, action.id),
-              inArray(actionsTable.status, ["queued", "running"]),
-            ),
-          )
+          .where(and(eq(actionsTable.id, action.id), eq(actionsTable.status, "running")))
           .returning();
         if (!claimed) continue;
 
-        const [completedRoom] = await tx
-          .update(roomsTable)
-          .set({
-            stateVersion: sql`${roomsTable.stateVersion} + 1`,
-            updatedAt: now,
-          })
-          .where(eq(roomsTable.id, action.roomId))
-          .returning({ stateVersion: roomsTable.stateVersion });
-        const stateVersion = toNumber(completedRoom?.stateVersion);
+        const resolvedPreviousValue = Number.isFinite(actionPreviousValue)
+          ? actionPreviousValue
+          : currentValue - delta * hitCount;
         const resolvedEvent: PopPersonResolvedEvent = {
           eventId: action.id,
           actionId: action.id,
-          hitCount,
+          hitCount: recordedHitCount,
           direction: action.mode,
           delta,
           targetName: action.targetName,
-          previousValue,
-          finalValue: toNumber(updatedCell.currentValue),
+          previousValue: resolvedPreviousValue,
+          finalValue: currentValue,
           durationMs,
           intervalMs,
-          stateVersion,
+          stateVersion: lastStateVersion,
           resolvedAt: now.getTime(),
         };
 
+        const completedSequence = await nextActionEventSequence(tx, claimed.id);
         await tx.insert(actionEventsTable).values({
           actionId: claimed.id,
           roomId: claimed.roomId,
           cellId: claimed.cellId,
-          sequence: await nextActionEventSequence(tx, claimed.id),
+          sequence: completedSequence,
           eventType: "completed",
           status: "completed",
           deltaValue: String(resolvedEvent.finalValue - resolvedEvent.previousValue),
@@ -1318,11 +1433,6 @@ async function processDueActions(): Promise<void> {
           actionId: claimed.id,
           event: resolvedEvent,
         });
-        await enqueueRealtimeNotification(tx, {
-          type: "state:changed",
-          roomId: claimed.roomId,
-          stateVersion,
-        });
         logger.info(
           {
             actionId: claimed.id,
@@ -1330,7 +1440,7 @@ async function processDueActions(): Promise<void> {
             hitCount: resolvedEvent.hitCount,
             previousValue: resolvedEvent.previousValue,
             finalValue: resolvedEvent.finalValue,
-            stateVersion,
+            stateVersion: resolvedEvent.stateVersion,
           },
           "PopPerson action resolved",
         );
