@@ -884,7 +884,7 @@ function modeForActionType(actionType: "hate" | "fan"): "atacar" | "defender" {
 
 export async function createPopPersonAction(
   input: PopPersonActionInput,
-  sessionId?: string,
+  sessionId: string | undefined,
   userId: string,
 ): Promise<PopPersonAction> {
   if (!userId.trim()) {
