@@ -25,7 +25,7 @@ InstaPop — popularidade em movimento. Um aplicativo interativo para descobrir 
 
 - `artifacts/pop-person` — interface principal e fluxo de seleção de ações
 - `artifacts/api-server` — API e cálculo dos valores das ações
-- `lib/db/src/schema` — tabelas de pessoas, itens, níveis e regras
+- `lib/db/src/schema` — tabelas de pessoas, tipos de ação, níveis e histórico de ações
 - `lib/api-spec/openapi.yaml` — contrato da API
 
 ## Deploy externo
@@ -37,14 +37,14 @@ InstaPop — popularidade em movimento. Um aplicativo interativo para descobrir 
 
 ## Architecture decisions
 
-- O preço base do item é unitário; o custo total usa a quantidade de projéteis do nível selecionado.
-- Um `price_override` ativo pode substituir o total calculado para um par item/nível específico.
-- A API é a fonte de verdade para níveis, regras de preço, fila e execução das ações.
+- Os tipos `hate` e `fan`, seus preços base atual/mínimo e os níveis ativos são a fonte de verdade no banco.
+- O custo total é calculado no backend com o preço base efetivo e o multiplicador do nível, e o resultado fica registrado em `actions`.
+- A API é a fonte de verdade para níveis, preço, fila, idempotência e execução das ações.
 
 ## Product
 
 - Visualiza pessoas públicas em círculos e permite filtrar por localização e categoria.
-- Permite escolher elemento, intensidade e ação de ataque ou defesa.
+- Permite escolher intensidade e ação de apoio ou hate.
 - Exibe o custo total correspondente à intensidade antes do envio.
 
 ## User preferences

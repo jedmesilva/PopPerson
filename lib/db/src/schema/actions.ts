@@ -19,9 +19,9 @@ import { actionTypesTable } from "./action-types";
 import { actionLevelsTable } from "./action-levels";
 import { anonymousSessionsTable } from "./sessions";
 import { cellsTable } from "./cells";
-import { itemsTable } from "./items";
 import { roomsTable } from "./rooms";
-import { actionModeEnum } from "./items";
+
+export const actionModeEnum = pgEnum("action_mode", ["atacar", "defender"]);
 
 export const actionStatusEnum = pgEnum("action_status", [
   "queued",
@@ -50,8 +50,6 @@ export const actionsTable = pgTable(
       onDelete: "set null",
       onUpdate: "cascade",
     }),
-    itemId: uuid("item_id")
-      .references(() => itemsTable.id, { onDelete: "restrict", onUpdate: "cascade" }),
     actionTypeId: uuid("action_type_id").references(() => actionTypesTable.id, {
       onDelete: "restrict",
       onUpdate: "cascade",
