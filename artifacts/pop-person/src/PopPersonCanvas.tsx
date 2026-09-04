@@ -1804,6 +1804,16 @@ export default function PopPersonCanvas() {
     () => getActionTotalPrice(selectedCellData?.basePrice, selectedLevel),
     [selectedCellData?.basePrice, selectedLevel],
   );
+  const actionPriceStatus = !selectedCellData
+    ? "Carregando dados…"
+    : selectedCellData.basePrice == null
+      ? "Obtendo valor…"
+      : !selectedLevel
+        ? "Carregando nível…"
+        : selectedActionPrice === null
+          ? "Calculando valor…"
+          : null;
+  const isActionPriceReady = actionPriceStatus === null;
   const selectedPopularityRank = useMemo(() => {
     if (!selectedCellData) return null;
     const ranked = [...leaves].sort((a, b) => Number(b.value) - Number(a.value));
@@ -2986,11 +2996,11 @@ export default function PopPersonCanvas() {
                     <div className="action-modal-total" style={{ display: "flex", flexDirection: "column", gap: "6px", minWidth: 0 }}>
                       <span style={{ color: "#8c8f96", fontSize: "10px", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase" }}>CUSTO TOTAL</span>
                       <span data-testid="text-action-base-price" style={{ color: "#8c8f96", fontSize: "11px", lineHeight: 1, whiteSpace: "nowrap" }}>
-                        Preço-base {selectedCellData?.basePrice == null ? "—" : formatBRL(selectedCellData.basePrice)}
+                        Preço-base {selectedCellData?.basePrice == null ? "Obtendo valor…" : formatBRL(selectedCellData.basePrice)}
                       </span>
-                      <span data-testid="text-action-total-price" style={{ color: "#f4f4f5", fontSize: "22px", lineHeight: 1, fontWeight: 650, letterSpacing: "0.03em", whiteSpace: "nowrap" }}>{selectedActionPrice === null ? "—" : formatBRL(selectedActionPrice)}</span>
+                      <span data-testid="text-action-total-price" style={{ color: "#f4f4f5", fontSize: "22px", lineHeight: 1, fontWeight: 650, letterSpacing: "-0.01em", whiteSpace: "nowrap" }}>{selectedActionPrice === null ? actionPriceStatus : formatBRL(selectedActionPrice)}</span>
                     </div>
-                     <button className="action-modal-send" data-testid="button-send-action" onClick={confirmAction} disabled={createActionMutation.isPending || !selectedActionType || !selectedLevel} style={{ minWidth: "158px", padding: "13px 18px", borderRadius: "9999px", backgroundColor: ACTION_MODE_COLORS[pendingMode], color: "#fff", fontSize: "15px", fontWeight: 800, border: "none", cursor: createActionMutation.isPending ? "wait" : "pointer", opacity: createActionMutation.isPending || !selectedActionType || !selectedLevel ? 0.55 : 1, boxShadow: `0 5px 16px ${ACTION_MODE_COLORS[pendingMode]}33`, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
+                     <button className="action-modal-send" data-testid="button-send-action" onClick={confirmAction} disabled={createActionMutation.isPending || !selectedActionType || !selectedLevel || !isActionPriceReady} title={!isActionPriceReady ? actionPriceStatus ?? "Aguardando valor" : undefined} style={{ minWidth: "158px", padding: "13px 18px", borderRadius: "9999px", backgroundColor: ACTION_MODE_COLORS[pendingMode], color: "#fff", fontSize: "15px", fontWeight: 800, border: "none", cursor: createActionMutation.isPending ? "wait" : !isActionPriceReady ? "not-allowed" : "pointer", opacity: createActionMutation.isPending || !selectedActionType || !selectedLevel || !isActionPriceReady ? 0.55 : 1, boxShadow: `0 5px 16px ${ACTION_MODE_COLORS[pendingMode]}33`, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
                       {createActionMutation.isPending ? "Enviando…" : <><span>{pendingMode === "defender" ? "Enviar apoio" : "Enviar hate"}</span><ArrowRight size={18} strokeWidth={2.8} aria-hidden="true" /></>}
                     </button>
                   </div>
