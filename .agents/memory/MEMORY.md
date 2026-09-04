@@ -13,4 +13,4 @@
 - [Compatibilidade OpenAPI/Zod](openapi-zod-codegen-compatibility.md) — `format: uri` pode gerar `zod.url()` incompatível com a versão de Zod resolvida no workspace.
 - [Entrada durante OAuth](unified-player-oauth-flow.md) — aceite inicia uma intenção temporária; o callback conclui a entrada ou pede só os dados ausentes.
 - [Origem visual da ação](action-source-cell.md) — ações autenticadas usam a célula do participante como origem persistida do projétil.
-- [Compatibilidade sem seleção de item](implicit-default-action-element.md) — o seletor de nível usa internamente o primeiro item enquanto a API antiga ainda exige elementId.
+- [Configuração de níveis Hater/Fã](hater-fan-level-configuration.md) — tipos, preços e os 20 níveis oficiais vêm do banco; itens antigos só permanecem para histórico.

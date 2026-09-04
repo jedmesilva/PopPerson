@@ -15,6 +15,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { z } from "zod/v4";
+import { actionTypesTable } from "./action-types";
 import { actionLevelsTable } from "./action-levels";
 import { anonymousSessionsTable } from "./sessions";
 import { cellsTable } from "./cells";
@@ -50,8 +51,11 @@ export const actionsTable = pgTable(
       onUpdate: "cascade",
     }),
     itemId: uuid("item_id")
-      .notNull()
       .references(() => itemsTable.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    actionTypeId: uuid("action_type_id").references(() => actionTypesTable.id, {
+      onDelete: "restrict",
+      onUpdate: "cascade",
+    }),
     actionLevelId: uuid("action_level_id")
       .notNull()
       .references(() => actionLevelsTable.id, { onDelete: "restrict", onUpdate: "cascade" }),

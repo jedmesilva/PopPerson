@@ -1,32 +1,6 @@
 // @ts-nocheck
 import React, { useState, useCallback } from "react";
 
-const DEFAULT_HATER_LEVELS = [
-  { key: "hater-1", emoji: "😐", name: "Incomodado", multiplier: 1 },
-  { key: "hater-2", emoji: "🙄", name: "Aborrecido", multiplier: 10 },
-  { key: "hater-3", emoji: "😒", name: "Irritado", multiplier: 25 },
-  { key: "hater-4", emoji: "😠", name: "Contrariado", multiplier: 50 },
-  { key: "hater-5", emoji: "😤", name: "Bravo", multiplier: 100 },
-  { key: "hater-6", emoji: "😡", name: "Hostil", multiplier: 175 },
-  { key: "hater-7", emoji: "🤬", name: "Furioso", multiplier: 275 },
-  { key: "hater-8", emoji: "👿", name: "Revoltado", multiplier: 425 },
-  { key: "hater-9", emoji: "💥", name: "Possesso", multiplier: 650 },
-  { key: "hater-10", emoji: "🖕", name: "Enojado", multiplier: 1000 },
-];
-
-const DEFAULT_FAN_LEVELS = [
-  { key: "fan-1", emoji: "🤔", name: "Curioso", multiplier: 1 },
-  { key: "fan-2", emoji: "👀", name: "Interessado", multiplier: 10 },
-  { key: "fan-3", emoji: "🙂", name: "Simpatizante", multiplier: 25 },
-  { key: "fan-4", emoji: "👍", name: "Seguidor", multiplier: 50 },
-  { key: "fan-5", emoji: "😊", name: "Fiel", multiplier: 100 },
-  { key: "fan-6", emoji: "🤩", name: "Entusiasta", multiplier: 175 },
-  { key: "fan-7", emoji: "😍", name: "Dedicado", multiplier: 275 },
-  { key: "fan-8", emoji: "🔥", name: "Obcecado", multiplier: 425 },
-  { key: "fan-9", emoji: "🗿", name: "Admirador", multiplier: 650 },
-  { key: "fan-10", emoji: "❤️", name: "Fanático", multiplier: 1000 },
-];
-
 function easedT(index, count) {
   const raw = count > 1 ? index / (count - 1) : 0;
   return Math.pow(raw, 1.8);
@@ -62,21 +36,12 @@ function formatPrice(value) {
     : "—";
 }
 
-function resolveLevels(levels, mode) {
-  const fallbackLevels = mode === "atacar" ? DEFAULT_HATER_LEVELS : DEFAULT_FAN_LEVELS;
-  if (!levels?.length) return fallbackLevels;
-
-  return levels.map((level, index) => {
-    const fallback = fallbackLevels[index] ?? fallbackLevels[fallbackLevels.length - 1];
-    const multiplier = Number(level.count);
-    return {
-      ...level,
-      emoji: level.emoji || fallback.emoji,
-      name: level.label || fallback.name,
-      multiplier: Number.isFinite(multiplier) && multiplier > 0 ? multiplier : fallback.multiplier,
-      powerLabel: level.powerLabel || `${multiplier || fallback.multiplier}x`,
-    };
-  });
+function resolveLevels(levels) {
+  return (levels ?? []).map((level) => ({
+    ...level,
+    name: level.name,
+    multiplier: Number(level.multiplier),
+  }));
 }
 
 export default function FanHaterLevelPicker({
@@ -87,15 +52,15 @@ export default function FanHaterLevelPicker({
   onChange,
   basePrice = 0,
 }) {
-  const resolvedLevels = resolveLevels(levels, mode);
+  const resolvedLevels = resolveLevels(levels);
   const levelCount = resolvedLevels.length;
   const defaultIndex = Math.max(
     0,
     resolvedLevels.findIndex((level) => level.key === (defaultValue ?? value)),
   );
-  const [internalIndex, setInternalIndex] = useState(defaultIndex);
+  const [internalIndex, setInternalIndex] = useState(Math.max(0, defaultIndex));
   const currentIndex = Math.min(
-    levelCount - 1,
+    Math.max(0, levelCount - 1),
     Math.max(
       0,
       value === undefined
@@ -115,8 +80,16 @@ export default function FanHaterLevelPicker({
   const setLevel = useCallback((nextIndex) => {
     const clampedIndex = Math.min(levelCount - 1, Math.max(0, nextIndex));
     if (value === undefined) setInternalIndex(clampedIndex);
-    onChange?.(resolvedLevels[clampedIndex].key);
+    if (resolvedLevels[clampedIndex]) onChange?.(resolvedLevels[clampedIndex].key);
   }, [levelCount, onChange, resolvedLevels, value]);
+
+  if (levelCount === 0) {
+    return (
+      <div style={{ width: "100%", padding: "18px", borderRadius: 14, background: "#1c1f26", color: "#a3a3a3", fontSize: 13 }}>
+        Nenhum nível disponível para esta ação.
+      </div>
+    );
+  }
 
   return (
     <div style={{
@@ -241,7 +214,7 @@ export default function FanHaterLevelPicker({
           aria-label={title}
         />
         <span aria-hidden="true" style={{ position: "absolute", top: 26, left: badgeLeft, transform: "translateX(-50%)", fontSize: 10, fontWeight: 500, color: accent, whiteSpace: "nowrap", pointerEvents: "none" }}>
-          {currentLevel.powerLabel || `${currentLevel.multiplier}x`}
+          {currentLevel.multiplier}x
         </span>
       </div>
     </div>

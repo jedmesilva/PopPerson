@@ -399,22 +399,23 @@ components:
           enum: [m, f]
     PopPersonLevel:
       type: object
-      required: [key, label, powerLabel, emoji, startDelayMs, count, staggerMs, duration, growthPerHit, impactMultiplier, shake]
+      required: [key, actionType, name, emoji, multiplier, startDelayMs, staggerMs, duration, growthPerHit, impactMultiplier, shake]
       properties:
         key:
           type: string
-        label:
+        actionType:
           type: string
-        powerLabel:
+          enum: [hate, fan]
+        name:
           type: string
         emoji:
           type: string
+        multiplier:
+          type: number
+          minimum: 1
         startDelayMs:
           type: number
           minimum: 0
-        count:
-          type: number
-          minimum: 1
         staggerMs:
           type: number
           minimum: 0
@@ -427,72 +428,58 @@ components:
           type: number
         shake:
           type: boolean
-    PopPersonActionRule:
+    PopPersonActionType:
       type: object
-      required: [elementId, level, startDelayMs, count, staggerMs, duration, growthPerHit, impactMultiplier, price, shake]
+      required: [key, label, basePriceCurrent, basePriceMinimum]
       properties:
-        elementId:
+        key:
           type: string
-        level:
+          enum: [hate, fan]
+        label:
           type: string
-        startDelayMs:
+        basePriceCurrent:
           type: number
           minimum: 0
-        count:
-          type: number
-          minimum: 1
-        staggerMs:
+        basePriceMinimum:
           type: number
           minimum: 0
-        duration:
-          type: number
-          minimum: 0
-        growthPerHit:
-          type: number
-        impactMultiplier:
-          type: number
-        price:
-          type: number
-          minimum: 0
-        shake:
-          type: boolean
     PopPersonConfig:
       type: object
-      required: [elements, levels, actionRules]
+      required: [actionTypes, levels]
       properties:
-        elements:
+        actionTypes:
           type: object
-          required: [atacar, defender]
+          required: [hate, fan]
           properties:
-            atacar:
-              type: array
-              items:
-                $ref: "#/components/schemas/PopPersonElement"
-            defender:
-              type: array
-              items:
-                $ref: "#/components/schemas/PopPersonElement"
+            hate:
+              $ref: "#/components/schemas/PopPersonActionType"
+            fan:
+              $ref: "#/components/schemas/PopPersonActionType"
         levels:
           type: array
           items:
             $ref: "#/components/schemas/PopPersonLevel"
-        actionRules:
-          type: array
-          items:
-            $ref: "#/components/schemas/PopPersonActionRule"
     PopPersonAction:
       type: object
-      required: [id, mode, elementId, level, targetName, sourceName, status, startDelayMs, executeAt, completesAt, startedAt, completedAt, hitCount, lastHitAt, count, growthPerHit, impactMultiplier, staggerMs, duration, price, shake, element]
+      required: [id, mode, actionType, level, levelName, levelEmoji, multiplier, targetName, sourceName, status, startDelayMs, executeAt, completesAt, startedAt, completedAt, hitCount, lastHitAt, count, growthPerHit, impactMultiplier, staggerMs, duration, price, shake]
       properties:
         id:
           type: string
         mode:
           type: string
           enum: [atacar, defender]
-        elementId:
+        actionType:
           type: string
+          enum: [hate, fan]
         level:
           type: string
+        levelName:
+          type: string
+        levelEmoji:
+          type: string
+        multiplier:
+          type: number
+          minimum: 1
         startDelayMs:
           type: number
           minimum: 0
@@ -539,8 +526,6 @@ components:
           minimum: 0
         shake:
           type: boolean
-        element:
-          $ref: "#/components/schemas/PopPersonElement"
     PopPersonState:
       type: object
       required: [stateVersion, dataset, actions]
@@ -657,13 +642,11 @@ components:
           format: date-time
     PopPersonActionInput:
       type: object
-      required: [mode, elementId, level, targetName]
+      required: [actionType, level, targetName]
       properties:
-        mode:
+        actionType:
           type: string
-          enum: [atacar, defender]
-        elementId:
-          type: string
+          enum: [hate, fan]
         level:
           type: string
           minLength: 1

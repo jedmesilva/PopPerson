@@ -5,11 +5,10 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { PopPersonActionInputMode } from './popPersonActionInputMode';
+import type { PopPersonActionInputActionType } from './popPersonActionInputActionType';
 
 export interface PopPersonActionInput {
-  mode: PopPersonActionInputMode;
-  elementId: string;
+  actionType: PopPersonActionInputActionType;
   /** @minLength 1 */
   level: string;
   targetName: string;

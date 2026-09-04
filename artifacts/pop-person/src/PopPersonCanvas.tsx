@@ -146,25 +146,15 @@ function getStableCellTextSize(screenRadius) {
   );
 }
 
-function getActionTotalPrice(element, actionRule) {
-  if (!element || !actionRule) return null;
-
-  const itemPrice = Number(element.price);
-  const intensityCount = Number(actionRule.count);
-  const apiPrice = Number(actionRule.price);
-
-  if (!Number.isFinite(itemPrice) || !Number.isFinite(intensityCount)) return null;
-
-  // `price` is normally the server-calculated total. The fallback keeps the
-  // preview correct when an older API response still contains the item's unit
-  // price instead of the intensity total. Explicit price overrides remain
-  // authoritative because they differ from the unit-price x count calculation.
-  const calculatedTotal = itemPrice * intensityCount;
-  if (!Number.isFinite(apiPrice) || (apiPrice === itemPrice && calculatedTotal !== itemPrice)) {
-    return calculatedTotal;
+function getActionTotalPrice(actionType, level) {
+  if (!actionType || !level) return null;
+  const currentPrice = Number(actionType.basePriceCurrent);
+  const minimumPrice = Number(actionType.basePriceMinimum);
+  const multiplier = Number(level.multiplier);
+  if (!Number.isFinite(currentPrice) || !Number.isFinite(minimumPrice) || !Number.isFinite(multiplier)) {
+    return null;
   }
-
-  return apiPrice;
+  return Math.max(currentPrice, minimumPrice) * multiplier;
 }
 
 function tryPackCircles(ordered, baseRadii, scale) {
@@ -657,7 +647,6 @@ export default function PopPersonCanvas() {
   const [expandedFilterCategoryIds, setExpandedFilterCategoryIds] = useState(new Set());
   const [selectedCell, setSelectedCell] = useState(null);
   const [pendingMode, setPendingMode] = useState(null);
-  const [modalElement, setModalElement] = useState(null);
   const [modalLevel, setModalLevel] = useState("");
   const [showQueueModal, setShowQueueModal] = useState(false);
   const [queue, setQueue] = useState([]);
@@ -700,10 +689,17 @@ export default function PopPersonCanvas() {
   const playerName = bootstrapQuery.data?.player?.isPlayer
     ? bootstrapQuery.data.player.name?.trim() || bootstrapQuery.data.user?.name?.trim() || null
     : null;
-  const elements = config?.elements ?? { atacar: [], defender: [] };
+  const actionTypes = config?.actionTypes ?? { hate: null, fan: null };
   const levels = config?.levels ?? [];
   const levelByKey = useMemo(() => Object.fromEntries(levels.map((level) => [level.key, level])), [levels]);
-  const levelKeys = useMemo(() => levels.map((level) => level.key), [levels]);
+  const actionTypeByMode = { atacar: "hate", defender: "fan" };
+  const levelsByActionType = useMemo(
+    () => ({
+      hate: levels.filter((level) => level.actionType === "hate"),
+      fan: levels.filter((level) => level.actionType === "fan"),
+    }),
+    [levels],
+  );
   const playerCategoryOptions = useMemo(() => {
     const categories = playerRegistration?.categories ?? [];
     const categoryById = new Map(categories.map((category) => [category.id, category]));
@@ -766,16 +762,11 @@ export default function PopPersonCanvas() {
     () => playerCategoryOptions.find((category) => category.id === playerCategoryId),
     [playerCategoryId, playerCategoryOptions],
   );
-  const actionRuleByKey = useMemo(
-    () => Object.fromEntries((config?.actionRules ?? []).map((rule) => [`${rule.elementId}:${rule.level}`, rule])),
-    [config?.actionRules],
-  );
-  const selectedActionRule = modalElement
-    ? actionRuleByKey[`${modalElement.id}:${modalLevel}`]
-    : null;
+  const selectedActionType = pendingMode ? actionTypes[actionTypeByMode[pendingMode]] : null;
+  const selectedLevel = levelByKey[modalLevel] ?? null;
   const selectedActionPrice = useMemo(
-    () => getActionTotalPrice(modalElement, selectedActionRule),
-    [modalElement, selectedActionRule],
+    () => getActionTotalPrice(selectedActionType, selectedLevel),
+    [selectedActionType, selectedLevel],
   );
   const activeFilterLocationSearch = useMemo(() => {
     if (isFilterCountryPickerOpen) return { level: "pais", query: filterCountrySearch };
@@ -1036,7 +1027,11 @@ export default function PopPersonCanvas() {
     if (!actionId || activeActionIdsRef.current.includes(actionId)) return;
     activeActionIdsRef.current = [...activeActionIdsRef.current, actionId];
     const direction = serverAction.mode === "defender" ? 1 : -1;
-    const actionElement = serverAction.element;
+    const actionElement = {
+      id: serverAction.level,
+      emoji: serverAction.levelEmoji ?? (serverAction.mode === "defender" ? "❤️" : "💥"),
+      label: serverAction.levelName ?? serverAction.level,
+    };
     const animationStartedAt = performance.now();
     const totalCount = Math.max(1, Number(serverAction.count) || 1);
     const serverNow = serverClockRef.current.serverTime
@@ -2005,15 +2000,14 @@ export default function PopPersonCanvas() {
     }, 60);
   }, [openPlayerSignup]);
   const openModal = useCallback((mode) => {
-    const defaultElement = elements[mode]?.[0] ?? null;
+    const actionType = actionTypeByMode[mode];
     setPendingMode(mode);
-    setModalElement(defaultElement);
-    setModalLevel(levels[0]?.key ?? "");
-  }, [elements, levels]);
+    setModalLevel(levelsByActionType[actionType]?.[0]?.key ?? "");
+  }, [actionTypeByMode, levelsByActionType]);
   const closeModal = useCallback(() => setPendingMode(null), []);
   const confirmAction = useCallback(() => {
-    if (!pendingMode || !modalElement || !selectedCell || submittingActionRef.current) return;
-    const requestFingerprint = [pendingMode, modalElement.id, modalLevel, selectedCell].join("|");
+    if (!pendingMode || !selectedActionType || !selectedLevel || !selectedCell || submittingActionRef.current) return;
+    const requestFingerprint = [selectedActionType.key, modalLevel, selectedCell].join("|");
     if (idempotencyPayloadRef.current !== requestFingerprint) {
       idempotencyPayloadRef.current = requestFingerprint;
       idempotencyKeyRef.current = crypto.randomUUID();
@@ -2022,8 +2016,7 @@ export default function PopPersonCanvas() {
     createActionMutation.mutate(
       {
         data: {
-          mode: pendingMode,
-          elementId: modalElement.id,
+          actionType: selectedActionType.key,
           level: modalLevel,
           targetName: selectedCell,
           idempotencyKey: idempotencyKeyRef.current,
@@ -2047,7 +2040,7 @@ export default function PopPersonCanvas() {
         },
       },
     );
-  }, [pendingMode, modalElement, modalLevel, selectedCell, closeModal, createActionMutation, queueAction]);
+  }, [pendingMode, selectedActionType, selectedLevel, modalLevel, selectedCell, closeModal, createActionMutation, queueAction]);
   const selectedCellData = useMemo(() => leaves.find((l) => l.name === selectedCell) || null, [leaves, selectedCell]);
 
   function cssSize() {
@@ -3177,8 +3170,8 @@ export default function PopPersonCanvas() {
             <div style={{ display: "flex", flexDirection: "column", gap: "8px", overflowY: "auto" }}>
                {[...activeActions].sort((a, b) => getRemainingUnits(a) - getRemainingUnits(b)).map((a) => ({ kind: "firing", ...a })).concat([...queue].sort((a, b) => a.localExecuteAt - b.localExecuteAt).map((a) => ({ kind: "queued", ...a }))).map((item) => {
                 const color = item.mode === "defender" ? "#22c55e" : "#ef4444";
-                const levelLabel = levelByKey[item.level]?.label ?? item.level;
-                const elementIntensityLabel = `${item.element.label} ${levelLabel}`;
+                 const levelLabel = item.levelName ?? levelByKey[item.level]?.name ?? item.level;
+                 const actionLevelLabel = `${item.levelEmoji ?? (item.mode === "defender" ? "❤️" : "💥")} ${levelLabel}`;
                 const { timeLabel, progress } = getActionTiming(item, performance.now());
                 return (
                   <div key={item.id} data-testid={`queue-item-${item.id}`} style={{ display: "flex", flexDirection: "column", gap: "6px", padding: "10px 12px", borderRadius: "10px", backgroundColor: "#262626" }}>
@@ -3189,8 +3182,8 @@ export default function PopPersonCanvas() {
                     <div style={{ position: "relative", overflow: "hidden", borderRadius: "8px", backgroundColor: "rgba(255,255,255,0.04)" }}>
                       {item.kind === "firing" && <div style={{ position: "absolute", inset: 0, width: `${progress * 100}%`, backgroundColor: `${color}33` }} />}
                       <div style={{ position: "relative", display: "flex", alignItems: "center", gap: "6px", padding: "5px 8px" }}>
-                         <ItemVisual element={item.element} size={14} />
-                        <span style={{ color: "#a3a3a3", fontSize: "12px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{elementIntensityLabel}</span>
+                         <span style={{ fontSize: "16px", lineHeight: 1 }}>{item.levelEmoji ?? (item.mode === "defender" ? "❤️" : "💥")}</span>
+                         <span style={{ color: "#a3a3a3", fontSize: "12px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{actionLevelLabel}</span>
                       </div>
                     </div>
                   </div>
@@ -3540,20 +3533,20 @@ export default function PopPersonCanvas() {
             )}
             <FanHaterLevelPicker
               mode={pendingMode}
-              levels={levels}
+              levels={levelsByActionType[actionTypeByMode[pendingMode]] ?? []}
               value={modalLevel}
               onChange={setModalLevel}
-              basePrice={modalElement?.price}
+              basePrice={selectedActionType?.basePriceCurrent}
             />
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderRadius: "10px", backgroundColor: "#262626", border: "1px solid #333" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: "3px", minWidth: 0 }}>
                 <span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Custo total da ação</span>
-                <span style={{ color: "#f5f5f5", fontSize: "13px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{levelByKey[modalLevel]?.label ?? modalLevel}</span>
+                <span style={{ color: "#f5f5f5", fontSize: "13px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedLevel?.name ?? modalLevel}</span>
               </div>
               <span data-testid="text-action-total-price" style={{ color: "#4ade80", fontSize: "17px", fontWeight: 700, fontFamily: "monospace", flexShrink: 0 }}>{selectedActionPrice === null ? "—" : formatBRL(selectedActionPrice)}</span>
             </div>
             {createActionMutation.error && <span style={{ color: "#fca5a5", fontSize: "11px" }}>{actionWasRateLimited ? "Muitas ações em pouco tempo. Aguarde um instante e tente novamente." : "Não foi possível enviar esta ação. Tente novamente."}</span>}
-            <button data-testid="button-send-action" onClick={confirmAction} disabled={createActionMutation.isPending || !selectedActionRule} style={{ padding: "10px", borderRadius: "9999px", backgroundColor: createActionMutation.isPending || !selectedActionRule ? "#525252" : "#f5f5f5", color: "#0a0a0a", fontWeight: 700, border: "none", cursor: createActionMutation.isPending ? "wait" : "pointer" }}>{createActionMutation.isPending ? "Enviando…" : selectedActionRule?.startDelayMs > 0 ? `Enviar (inicia em ${Math.ceil(selectedActionRule.startDelayMs / 1000)}s)` : "Enviar agora"}</button>
+            <button data-testid="button-send-action" onClick={confirmAction} disabled={createActionMutation.isPending || !selectedActionType || !selectedLevel} style={{ padding: "10px", borderRadius: "9999px", backgroundColor: createActionMutation.isPending || !selectedActionType || !selectedLevel ? "#525252" : "#f5f5f5", color: "#0a0a0a", fontWeight: 700, border: "none", cursor: createActionMutation.isPending ? "wait" : "pointer" }}>{createActionMutation.isPending ? "Enviando…" : selectedLevel?.startDelayMs > 0 ? `Enviar (inicia em ${Math.ceil(selectedLevel.startDelayMs / 1000)}s)` : "Enviar agora"}</button>
           </div>
         </div>
       )}

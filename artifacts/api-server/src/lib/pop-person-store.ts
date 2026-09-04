@@ -13,11 +13,10 @@ import { db } from "@workspace/db";
 import {
   actionEventsTable,
   actionLevelsTable,
+  actionTypesTable,
   actionsTable,
   cellsTable,
   categoriesTable,
-  itemActionRulesTable,
-  itemsTable,
   locationsTable,
   peopleTable,
   roomMembersTable,
@@ -321,34 +320,6 @@ async function getDataset(roomId: string): Promise<PopPerson[]> {
   });
 }
 
-type PopPersonElement = PopPersonConfig["elements"]["atacar"][number];
-
-function toPopPersonElement(item: {
-  code: string;
-  name: string;
-  emoji: string | null;
-  imageUrl: string | null;
-  description: string | null;
-  gender: string | null;
-  impactPower: string;
-  price: string;
-}): PopPersonElement {
-  if (!item.emoji || (item.gender !== "m" && item.gender !== "f")) {
-    throw new Error(`Item "${item.code}" está sem emoji ou gênero válido.`);
-  }
-
-  return {
-    id: item.code,
-    emoji: item.emoji,
-    imageUrl: item.imageUrl,
-    label: item.name,
-    description: item.description,
-    force: toNumber(item.impactPower),
-    price: toNumber(item.price),
-    gender: item.gender,
-  };
-}
-
 async function getActions(
   roomId: string,
   actionId?: string,
@@ -358,15 +329,12 @@ async function getActions(
       id: actionsTable.id,
       sourceCellId: actionsTable.sourceCellId,
       mode: actionsTable.mode,
-      elementId: itemsTable.code,
-      elementName: itemsTable.name,
-      elementEmoji: itemsTable.emoji,
-      elementImageUrl: itemsTable.imageUrl,
-      elementDescription: itemsTable.description,
-      elementGender: itemsTable.gender,
-      elementForce: itemsTable.impactPower,
-      elementPrice: itemsTable.price,
+      actionType: actionTypesTable.code,
+      actionTypeLabel: actionTypesTable.label,
       level: actionLevelsTable.code,
+      levelName: actionLevelsTable.label,
+      levelEmoji: actionLevelsTable.emoji,
+      levelMultiplier: actionLevelsTable.multiplier,
       targetName: peopleTable.name,
       status: actionsTable.status,
       priceCharged: actionsTable.priceCharged,
@@ -375,7 +343,6 @@ async function getActions(
       completesAt: actionsTable.completesAt,
       activatedAt: actionsTable.activatedAt,
       completedAt: actionsTable.completedAt,
-      levelCount: actionLevelsTable.projectileCount,
       levelStaggerMs: actionLevelsTable.staggerMs,
       levelDurationMs: actionLevelsTable.durationMs,
       levelGrowthPerHit: actionLevelsTable.growthPerHit,
@@ -384,7 +351,7 @@ async function getActions(
       ruleSnapshot: actionsTable.ruleSnapshot,
     })
     .from(actionsTable)
-    .innerJoin(itemsTable, eq(actionsTable.itemId, itemsTable.id))
+    .leftJoin(actionTypesTable, eq(actionsTable.actionTypeId, actionTypesTable.id))
     .innerJoin(actionLevelsTable, eq(actionsTable.actionLevelId, actionLevelsTable.id))
     .innerJoin(cellsTable, eq(actionsTable.cellId, cellsTable.id))
     .innerJoin(peopleTable, eq(cellsTable.personId, peopleTable.id))
@@ -447,17 +414,11 @@ async function getActions(
   }
 
   return rows.map((action) => {
-    const element = toPopPersonElement({
-      code: action.elementId,
-      name: action.elementName,
-      emoji: action.elementEmoji,
-      imageUrl: action.elementImageUrl,
-      description: action.elementDescription,
-      gender: action.elementGender,
-      impactPower: action.elementForce,
-      price: action.elementPrice,
-    });
-    const count = snapshotNumber(action.ruleSnapshot, "count", action.levelCount);
+    const count = snapshotNumber(
+      action.ruleSnapshot,
+      "count",
+      toNumber(action.levelMultiplier, 1),
+    );
     const staggerMs = snapshotNumber(
       action.ruleSnapshot,
       "staggerMs",
@@ -480,9 +441,7 @@ async function getActions(
     const growthPerHit = snapshotNumber(
       action.ruleSnapshot,
       "growthPerHit",
-      toNumber(action.levelGrowthPerHit) *
-        (toNumber(action.elementForce) / 5) *
-        impactMultiplier,
+      toNumber(action.levelGrowthPerHit) * impactMultiplier,
     );
     const price = snapshotNumber(
       action.ruleSnapshot,
@@ -494,8 +453,11 @@ async function getActions(
     return {
       id: action.id,
       mode: action.mode,
-      elementId: action.elementId,
+      actionType: action.actionType ?? (action.mode === "defender" ? "fan" : "hate"),
       level: action.level,
+      levelName: action.levelName,
+      levelEmoji: action.levelEmoji ?? (action.mode === "defender" ? "❤️" : "💥"),
+      multiplier: toNumber(action.levelMultiplier, count),
       targetName: action.targetName,
       sourceName: sourceNameByCellId.get(action.sourceCellId ?? "") ?? null,
       status: toActionStatus(action.status),
@@ -513,7 +475,6 @@ async function getActions(
       duration,
       price,
       shake: snapshotBoolean(action.ruleSnapshot, "shake", action.levelShake),
-      element,
     };
   });
 }
@@ -541,31 +502,26 @@ async function currentState(roomId: string): Promise<PopPersonState> {
 }
 
 async function getPopPersonConfig(): Promise<PopPersonConfig> {
-  const [dbItems, dbLevels, dbRules] = await Promise.all([
+  const [dbTypes, dbLevels] = await Promise.all([
     db
       .select({
-        id: itemsTable.id,
-        code: itemsTable.code,
-        mode: itemsTable.mode,
-        name: itemsTable.name,
-        emoji: itemsTable.emoji,
-        imageUrl: itemsTable.imageUrl,
-        description: itemsTable.description,
-        gender: itemsTable.gender,
-        impactPower: itemsTable.impactPower,
-        price: itemsTable.price,
+        id: actionTypesTable.id,
+        code: actionTypesTable.code,
+        label: actionTypesTable.label,
+        basePriceCurrent: actionTypesTable.basePriceCurrent,
+        basePriceMinimum: actionTypesTable.basePriceMinimum,
       })
-      .from(itemsTable)
-      .where(eq(itemsTable.active, true))
-      .orderBy(asc(itemsTable.createdAt)),
+      .from(actionTypesTable)
+      .where(eq(actionTypesTable.active, true))
+      .orderBy(asc(actionTypesTable.code)),
     db
       .select({
         id: actionLevelsTable.id,
+        actionTypeId: actionLevelsTable.actionTypeId,
         code: actionLevelsTable.code,
         label: actionLevelsTable.label,
-        powerLabel: actionLevelsTable.powerLabel,
         emoji: actionLevelsTable.emoji,
-        projectileCount: actionLevelsTable.projectileCount,
+        multiplier: actionLevelsTable.multiplier,
         startDelayMs: actionLevelsTable.startDelayMs,
         staggerMs: actionLevelsTable.staggerMs,
         durationMs: actionLevelsTable.durationMs,
@@ -574,79 +530,58 @@ async function getPopPersonConfig(): Promise<PopPersonConfig> {
         shake: actionLevelsTable.shake,
       })
       .from(actionLevelsTable)
-      .where(eq(actionLevelsTable.active, true))
+      .where(and(eq(actionLevelsTable.active, true), sql`${actionLevelsTable.actionTypeId} IS NOT NULL`))
       .orderBy(asc(actionLevelsTable.sortOrder)),
-    db
-      .select({
-        itemId: itemActionRulesTable.itemId,
-        actionLevelId: itemActionRulesTable.actionLevelId,
-        startDelayMs: itemActionRulesTable.startDelayMs,
-        impactMultiplier: itemActionRulesTable.impactMultiplier,
-        growthPerHit: itemActionRulesTable.growthPerHit,
-        projectileCount: itemActionRulesTable.projectileCount,
-        staggerMs: itemActionRulesTable.staggerMs,
-        durationMs: itemActionRulesTable.durationMs,
-        priceOverride: itemActionRulesTable.priceOverride,
-      })
-      .from(itemActionRulesTable)
-      .where(eq(itemActionRulesTable.active, true)),
   ]);
 
-  const elements: PopPersonConfig["elements"] = {
-    atacar: [],
-    defender: [],
-  };
+  const dbTypeById = new Map(dbTypes.map((type) => [type.id, type]));
+  const activeLevels = dbLevels.map((level) => {
+    const actionType = level.actionTypeId ? dbTypeById.get(level.actionTypeId) : undefined;
+    const multiplier = toNumber(level.multiplier);
+    if (!actionType || !level.emoji || !Number.isInteger(multiplier) || multiplier < 1) {
+      throw new Error(`Nível "${level.code}" está com configuração inválida.`);
+    }
+    return {
+      key: level.code,
+      actionType: actionType.code,
+      name: level.label,
+      emoji: level.emoji,
+      multiplier,
+      startDelayMs: level.startDelayMs,
+      staggerMs: level.staggerMs,
+      duration: level.durationMs,
+      growthPerHit: toNumber(level.growthPerHit),
+      impactMultiplier: toNumber(level.impactMultiplier, 1),
+      shake: level.shake,
+    };
+  });
 
-  for (const item of dbItems) {
-    elements[item.mode].push(toPopPersonElement(item));
+  for (const actionType of ["hate", "fan"] as const) {
+    const count = activeLevels.filter((level) => level.actionType === actionType).length;
+    if (count !== 10) {
+      throw new Error(`O tipo de ação "${actionType}" precisa ter exatamente 10 níveis ativos.`);
+    }
   }
 
-  const rulesByPair = new Map(
-    dbRules.map((rule) => [`${rule.itemId}:${rule.actionLevelId}`, rule]),
-  );
+  const actionTypes = Object.fromEntries(
+    dbTypes.map((type) => [
+      type.code,
+      {
+        key: type.code,
+        label: type.label,
+        basePriceCurrent: toNumber(type.basePriceCurrent),
+        basePriceMinimum: toNumber(type.basePriceMinimum),
+      },
+    ]),
+  ) as PopPersonConfig["actionTypes"];
+
+  if (!actionTypes.hate || !actionTypes.fan) {
+    throw new Error("Os tipos de ação hate e fan precisam estar configurados.");
+  }
 
   return {
-    elements,
-    levels: dbLevels.map((level) => {
-      if (!level.powerLabel || !level.emoji) {
-        throw new Error(`Nível "${level.code}" está com configuração inválida.`);
-      }
-
-      return {
-        key: level.code,
-        label: level.label,
-        powerLabel: level.powerLabel,
-        emoji: level.emoji,
-        count: level.projectileCount,
-        startDelayMs: level.startDelayMs,
-        staggerMs: level.staggerMs,
-        duration: level.durationMs,
-        growthPerHit: toNumber(level.growthPerHit),
-        impactMultiplier: toNumber(level.impactMultiplier, 1),
-        shake: level.shake,
-      };
-    }),
-    actionRules: dbItems.flatMap((item) =>
-      dbLevels.map((level) => {
-        const values = calculateActionValues(
-          item,
-          level,
-          rulesByPair.get(`${item.id}:${level.id}`),
-        );
-        return {
-          elementId: item.code,
-          level: level.code,
-          count: values.count,
-          startDelayMs: values.startDelayMs,
-          staggerMs: values.staggerMs,
-          duration: values.durationMs,
-          growthPerHit: values.growthPerHit,
-          impactMultiplier: values.impactMultiplier,
-          price: values.price,
-          shake: values.shake,
-        };
-      }),
-    ),
+    actionTypes,
+    levels: activeLevels,
   };
 }
 
@@ -903,44 +838,32 @@ export async function joinPopPersonAsPlayer(
 }
 
 function calculateActionValues(
-  item: { impactPower: string; price: string },
+  actionType: {
+    basePriceCurrent: string;
+    basePriceMinimum: string;
+  },
   level: {
     startDelayMs: number;
-    projectileCount: number;
+    multiplier: string;
     staggerMs: number;
     durationMs: number;
     growthPerHit: string;
     impactMultiplier: string;
     shake: boolean;
   },
-  rule: {
-    startDelayMs: number | null;
-    projectileCount: number | null;
-    staggerMs: number | null;
-    durationMs: number | null;
-    growthPerHit: string | null;
-    impactMultiplier: string | null;
-    priceOverride: string | null;
-  } | undefined,
 ) {
-  const startDelayMs = rule?.startDelayMs ?? level.startDelayMs;
-  const count = rule?.projectileCount ?? level.projectileCount;
-  const staggerMs = rule?.staggerMs ?? level.staggerMs;
-  const durationMs = rule?.durationMs ?? level.durationMs;
-  const growthPerHit =
-    toNumber(rule?.growthPerHit ?? level.growthPerHit) *
-    (toNumber(item.impactPower) / 5) *
-    toNumber(rule?.impactMultiplier ?? level.impactMultiplier, 1);
-  const impactMultiplier = toNumber(
-    rule?.impactMultiplier ?? level.impactMultiplier,
-    1,
+  const multiplier = toNumber(level.multiplier, 1);
+  const count = Math.max(1, Math.round(multiplier));
+  const startDelayMs = level.startDelayMs;
+  const staggerMs = level.staggerMs;
+  const durationMs = level.durationMs;
+  const impactMultiplier = toNumber(level.impactMultiplier, 1);
+  const growthPerHit = toNumber(level.growthPerHit) * impactMultiplier;
+  const basePrice = Math.max(
+    toNumber(actionType.basePriceCurrent),
+    toNumber(actionType.basePriceMinimum),
   );
-  // Item price is the unit price. The server derives the total from the
-  // selected intensity's projectile count, while a rule override can define
-  // an explicit total for a specific item/level pair.
-  const price = rule?.priceOverride !== null && rule?.priceOverride !== undefined
-    ? toNumber(rule.priceOverride)
-    : toNumber(item.price) * count;
+  const price = basePrice * multiplier;
   return {
     startDelayMs,
     count,
@@ -951,7 +874,12 @@ function calculateActionValues(
     shake: level.shake,
     price,
     totalImpact: growthPerHit * count,
+      multiplier,
   };
+}
+
+function modeForActionType(actionType: "hate" | "fan"): "atacar" | "defender" {
+  return actionType === "fan" ? "defender" : "atacar";
 }
 
 export async function createPopPersonAction(
@@ -996,14 +924,13 @@ export async function createPopPersonAction(
         ),
       )
       .limit(1);
-    const [item] = await tx
+    const [actionType] = await tx
       .select()
-      .from(itemsTable)
+      .from(actionTypesTable)
       .where(
         and(
-          eq(itemsTable.code, input.elementId),
-          eq(itemsTable.mode, input.mode),
-          eq(itemsTable.active, true),
+          eq(actionTypesTable.code, input.actionType),
+          eq(actionTypesTable.active, true),
         ),
       )
       .limit(1);
@@ -1011,12 +938,16 @@ export async function createPopPersonAction(
       .select()
       .from(actionLevelsTable)
       .where(
-        and(eq(actionLevelsTable.code, input.level), eq(actionLevelsTable.active, true)),
+        and(
+          eq(actionLevelsTable.code, input.level),
+          eq(actionLevelsTable.actionTypeId, actionType?.id ?? ""),
+          eq(actionLevelsTable.active, true),
+        ),
       )
       .limit(1);
 
-    if (!target || !item || !level) {
-      throw new Error("Ação inválida: elemento, intensidade ou alvo não encontrado.");
+    if (!target || !actionType || !level) {
+      throw new Error("Ação inválida: tipo, nível ou alvo não encontrado.");
     }
 
     const [source] = userId
@@ -1034,18 +965,7 @@ export async function createPopPersonAction(
           )
           .limit(1)
       : [];
-    const [rule] = await tx
-      .select()
-      .from(itemActionRulesTable)
-      .where(
-        and(
-          eq(itemActionRulesTable.itemId, item.id),
-          eq(itemActionRulesTable.actionLevelId, level.id),
-          eq(itemActionRulesTable.active, true),
-        ),
-      )
-      .limit(1);
-    const values = calculateActionValues(item, level, rule);
+    const values = calculateActionValues(actionType, level);
     const scheduledFor = new Date(now.getTime() + values.startDelayMs);
     const completesAt = new Date(
       scheduledFor.getTime() +
@@ -1062,8 +982,11 @@ export async function createPopPersonAction(
       shake: values.shake,
       totalImpact: values.totalImpact,
       price: values.price,
-      itemCode: item.code,
+      actionTypeCode: actionType.code,
       levelCode: level.code,
+      levelName: level.label,
+      levelEmoji: level.emoji,
+      multiplier: values.multiplier,
     };
     const [action] = await tx
       .insert(actionsTable)
@@ -1072,9 +995,10 @@ export async function createPopPersonAction(
         cellId: target.cellId,
         sourceCellId: source?.cellId ?? null,
         sessionId: sessionId ?? null,
-        itemId: item.id,
+        itemId: null,
+        actionTypeId: actionType.id,
         actionLevelId: level.id,
-        mode: input.mode,
+        mode: modeForActionType(input.actionType),
         status: "queued",
         startDelayMs: values.startDelayMs,
         scheduledFor,

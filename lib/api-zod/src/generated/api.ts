@@ -83,23 +83,23 @@ export const SearchCountriesResponse = zod.object({
 /**
  * @summary Get PopPerson configuration and state
  */
-export const getPopPersonResponseConfigLevelsItemStartDelayMsMin = 0;
+export const getPopPersonResponseConfigActionTypesHateBasePriceCurrentMin = 0;
 
+export const getPopPersonResponseConfigActionTypesHateBasePriceMinimumMin = 0;
+
+export const getPopPersonResponseConfigActionTypesFanBasePriceCurrentMin = 0;
+
+export const getPopPersonResponseConfigActionTypesFanBasePriceMinimumMin = 0;
+
+
+export const getPopPersonResponseConfigLevelsItemStartDelayMsMin = 0;
 
 export const getPopPersonResponseConfigLevelsItemStaggerMsMin = 0;
 
 export const getPopPersonResponseConfigLevelsItemDurationMin = 0;
 
-export const getPopPersonResponseConfigActionRulesItemStartDelayMsMin = 0;
-
-
-export const getPopPersonResponseConfigActionRulesItemStaggerMsMin = 0;
-
-export const getPopPersonResponseConfigActionRulesItemDurationMin = 0;
-
-export const getPopPersonResponseConfigActionRulesItemPriceMin = 0;
-
 export const getPopPersonResponseStateStateVersionMin = 0;
+
 
 export const getPopPersonResponseStateActionsItemStartDelayMsMin = 0;
 
@@ -126,51 +126,31 @@ export const getPopPersonResponseStateActionsItemPriceMin = 0;
 
 export const GetPopPersonResponse = zod.object({
   "config": zod.object({
-  "elements": zod.object({
-  "atacar": zod.array(zod.object({
-  "id": zod.string(),
-  "emoji": zod.string(),
-  "imageUrl": zod.string().nullable().describe('Optional item image URL. The client can fall back to emoji when absent.'),
+  "actionTypes": zod.object({
+  "hate": zod.object({
+  "key": zod.enum(['hate', 'fan']),
   "label": zod.string(),
-  "description": zod.string().nullable().describe('Optional item description.'),
-  "force": zod.number(),
-  "price": zod.number(),
-  "gender": zod.enum(['m', 'f'])
-})),
-  "defender": zod.array(zod.object({
-  "id": zod.string(),
-  "emoji": zod.string(),
-  "imageUrl": zod.string().nullable().describe('Optional item image URL. The client can fall back to emoji when absent.'),
+  "basePriceCurrent": zod.number().min(getPopPersonResponseConfigActionTypesHateBasePriceCurrentMin),
+  "basePriceMinimum": zod.number().min(getPopPersonResponseConfigActionTypesHateBasePriceMinimumMin)
+}),
+  "fan": zod.object({
+  "key": zod.enum(['hate', 'fan']),
   "label": zod.string(),
-  "description": zod.string().nullable().describe('Optional item description.'),
-  "force": zod.number(),
-  "price": zod.number(),
-  "gender": zod.enum(['m', 'f'])
-}))
+  "basePriceCurrent": zod.number().min(getPopPersonResponseConfigActionTypesFanBasePriceCurrentMin),
+  "basePriceMinimum": zod.number().min(getPopPersonResponseConfigActionTypesFanBasePriceMinimumMin)
+})
 }),
   "levels": zod.array(zod.object({
   "key": zod.string(),
-  "label": zod.string(),
-  "powerLabel": zod.string(),
+  "actionType": zod.enum(['hate', 'fan']),
+  "name": zod.string(),
   "emoji": zod.string(),
+  "multiplier": zod.number().min(1),
   "startDelayMs": zod.number().min(getPopPersonResponseConfigLevelsItemStartDelayMsMin),
-  "count": zod.number().min(1),
   "staggerMs": zod.number().min(getPopPersonResponseConfigLevelsItemStaggerMsMin),
   "duration": zod.number().min(getPopPersonResponseConfigLevelsItemDurationMin),
   "growthPerHit": zod.number(),
   "impactMultiplier": zod.number(),
-  "shake": zod.boolean()
-})),
-  "actionRules": zod.array(zod.object({
-  "elementId": zod.string(),
-  "level": zod.string(),
-  "startDelayMs": zod.number().min(getPopPersonResponseConfigActionRulesItemStartDelayMsMin),
-  "count": zod.number().min(1),
-  "staggerMs": zod.number().min(getPopPersonResponseConfigActionRulesItemStaggerMsMin),
-  "duration": zod.number().min(getPopPersonResponseConfigActionRulesItemDurationMin),
-  "growthPerHit": zod.number(),
-  "impactMultiplier": zod.number(),
-  "price": zod.number().min(getPopPersonResponseConfigActionRulesItemPriceMin),
   "shake": zod.boolean()
 }))
 }),
@@ -206,8 +186,11 @@ export const GetPopPersonResponse = zod.object({
   "actions": zod.array(zod.object({
   "id": zod.string(),
   "mode": zod.enum(['atacar', 'defender']),
-  "elementId": zod.string(),
+  "actionType": zod.enum(['hate', 'fan']),
   "level": zod.string(),
+  "levelName": zod.string(),
+  "levelEmoji": zod.string(),
+  "multiplier": zod.number().min(1),
   "startDelayMs": zod.number().min(getPopPersonResponseStateActionsItemStartDelayMsMin),
   "targetName": zod.string(),
   "sourceName": zod.string().nullable(),
@@ -224,17 +207,7 @@ export const GetPopPersonResponse = zod.object({
   "staggerMs": zod.number().min(getPopPersonResponseStateActionsItemStaggerMsMin),
   "duration": zod.number().min(getPopPersonResponseStateActionsItemDurationMin),
   "price": zod.number().min(getPopPersonResponseStateActionsItemPriceMin),
-  "shake": zod.boolean(),
-  "element": zod.object({
-  "id": zod.string(),
-  "emoji": zod.string(),
-  "imageUrl": zod.string().nullable().describe('Optional item image URL. The client can fall back to emoji when absent.'),
-  "label": zod.string(),
-  "description": zod.string().nullable().describe('Optional item description.'),
-  "force": zod.number(),
-  "price": zod.number(),
-  "gender": zod.enum(['m', 'f'])
-})
+  "shake": zod.boolean()
 }))
 }),
   "user": zod.union([zod.object({
@@ -367,6 +340,7 @@ export const LogoutAuthenticatedUserResponse = zod.void()
  */
 export const getPopPersonStateResponseStateVersionMin = 0;
 
+
 export const getPopPersonStateResponseActionsItemStartDelayMsMin = 0;
 
 export const getPopPersonStateResponseActionsItemExecuteAtMin = 0;
@@ -422,8 +396,11 @@ export const GetPopPersonStateResponse = zod.object({
   "actions": zod.array(zod.object({
   "id": zod.string(),
   "mode": zod.enum(['atacar', 'defender']),
-  "elementId": zod.string(),
+  "actionType": zod.enum(['hate', 'fan']),
   "level": zod.string(),
+  "levelName": zod.string(),
+  "levelEmoji": zod.string(),
+  "multiplier": zod.number().min(1),
   "startDelayMs": zod.number().min(getPopPersonStateResponseActionsItemStartDelayMsMin),
   "targetName": zod.string(),
   "sourceName": zod.string().nullable(),
@@ -440,17 +417,7 @@ export const GetPopPersonStateResponse = zod.object({
   "staggerMs": zod.number().min(getPopPersonStateResponseActionsItemStaggerMsMin),
   "duration": zod.number().min(getPopPersonStateResponseActionsItemDurationMin),
   "price": zod.number().min(getPopPersonStateResponseActionsItemPriceMin),
-  "shake": zod.boolean(),
-  "element": zod.object({
-  "id": zod.string(),
-  "emoji": zod.string(),
-  "imageUrl": zod.string().nullable().describe('Optional item image URL. The client can fall back to emoji when absent.'),
-  "label": zod.string(),
-  "description": zod.string().nullable().describe('Optional item description.'),
-  "force": zod.number(),
-  "price": zod.number(),
-  "gender": zod.enum(['m', 'f'])
-})
+  "shake": zod.boolean()
 }))
 })
 
@@ -464,12 +431,12 @@ export const createPopPersonActionBodyIdempotencyKeyMax = 160;
 
 
 export const CreatePopPersonActionBody = zod.object({
-  "mode": zod.enum(['atacar', 'defender']),
-  "elementId": zod.string(),
+  "actionType": zod.enum(['hate', 'fan']),
   "level": zod.string().min(1),
   "targetName": zod.string(),
   "idempotencyKey": zod.string().min(1).max(createPopPersonActionBodyIdempotencyKeyMax).optional()
 })
+
 
 export const createPopPersonActionResponseStartDelayMsMin = 0;
 
@@ -497,8 +464,11 @@ export const createPopPersonActionResponsePriceMin = 0;
 export const CreatePopPersonActionResponse = zod.object({
   "id": zod.string(),
   "mode": zod.enum(['atacar', 'defender']),
-  "elementId": zod.string(),
+  "actionType": zod.enum(['hate', 'fan']),
   "level": zod.string(),
+  "levelName": zod.string(),
+  "levelEmoji": zod.string(),
+  "multiplier": zod.number().min(1),
   "startDelayMs": zod.number().min(createPopPersonActionResponseStartDelayMsMin),
   "targetName": zod.string(),
   "sourceName": zod.string().nullable(),
@@ -515,17 +485,7 @@ export const CreatePopPersonActionResponse = zod.object({
   "staggerMs": zod.number().min(createPopPersonActionResponseStaggerMsMin),
   "duration": zod.number().min(createPopPersonActionResponseDurationMin),
   "price": zod.number().min(createPopPersonActionResponsePriceMin),
-  "shake": zod.boolean(),
-  "element": zod.object({
-  "id": zod.string(),
-  "emoji": zod.string(),
-  "imageUrl": zod.string().nullable().describe('Optional item image URL. The client can fall back to emoji when absent.'),
-  "label": zod.string(),
-  "description": zod.string().nullable().describe('Optional item description.'),
-  "force": zod.number(),
-  "price": zod.number(),
-  "gender": zod.enum(['m', 'f'])
-})
+  "shake": zod.boolean()
 })
 
 

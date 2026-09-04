@@ -5,16 +5,17 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { PopPersonLevelActionType } from './popPersonLevelActionType';
 
 export interface PopPersonLevel {
   key: string;
-  label: string;
-  powerLabel: string;
+  actionType: PopPersonLevelActionType;
+  name: string;
   emoji: string;
+  /** @minimum 1 */
+  multiplier: number;
   /** @minimum 0 */
   startDelayMs: number;
-  /** @minimum 1 */
-  count: number;
   /** @minimum 0 */
   staggerMs: number;
   /** @minimum 0 */

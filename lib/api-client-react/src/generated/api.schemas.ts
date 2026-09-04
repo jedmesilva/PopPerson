@@ -130,15 +130,23 @@ export interface PopPersonElement {
   gender: PopPersonElementGender;
 }
 
+export type PopPersonLevelActionType = typeof PopPersonLevelActionType[keyof typeof PopPersonLevelActionType];
+
+
+export const PopPersonLevelActionType = {
+  hate: 'hate',
+  fan: 'fan',
+} as const;
+
 export interface PopPersonLevel {
   key: string;
-  label: string;
-  powerLabel: string;
+  actionType: PopPersonLevelActionType;
+  name: string;
   emoji: string;
+  /** @minimum 1 */
+  multiplier: number;
   /** @minimum 0 */
   startDelayMs: number;
-  /** @minimum 1 */
-  count: number;
   /** @minimum 0 */
   staggerMs: number;
   /** @minimum 0 */
@@ -148,33 +156,31 @@ export interface PopPersonLevel {
   shake: boolean;
 }
 
-export interface PopPersonActionRule {
-  elementId: string;
-  level: string;
+export type PopPersonActionTypeKey = typeof PopPersonActionTypeKey[keyof typeof PopPersonActionTypeKey];
+
+
+export const PopPersonActionTypeKey = {
+  hate: 'hate',
+  fan: 'fan',
+} as const;
+
+export interface PopPersonActionType {
+  key: PopPersonActionTypeKey;
+  label: string;
   /** @minimum 0 */
-  startDelayMs: number;
-  /** @minimum 1 */
-  count: number;
+  basePriceCurrent: number;
   /** @minimum 0 */
-  staggerMs: number;
-  /** @minimum 0 */
-  duration: number;
-  growthPerHit: number;
-  impactMultiplier: number;
-  /** @minimum 0 */
-  price: number;
-  shake: boolean;
+  basePriceMinimum: number;
 }
 
-export type PopPersonConfigElements = {
-  atacar: PopPersonElement[];
-  defender: PopPersonElement[];
+export type PopPersonConfigActionTypes = {
+  hate: PopPersonActionType;
+  fan: PopPersonActionType;
 };
 
 export interface PopPersonConfig {
-  elements: PopPersonConfigElements;
+  actionTypes: PopPersonConfigActionTypes;
   levels: PopPersonLevel[];
-  actionRules: PopPersonActionRule[];
 }
 
 export type PopPersonActionMode = typeof PopPersonActionMode[keyof typeof PopPersonActionMode];
@@ -183,6 +189,14 @@ export type PopPersonActionMode = typeof PopPersonActionMode[keyof typeof PopPer
 export const PopPersonActionMode = {
   atacar: 'atacar',
   defender: 'defender',
+} as const;
+
+export type PopPersonActionActionType = typeof PopPersonActionActionType[keyof typeof PopPersonActionActionType];
+
+
+export const PopPersonActionActionType = {
+  hate: 'hate',
+  fan: 'fan',
 } as const;
 
 export type PopPersonActionStatus = typeof PopPersonActionStatus[keyof typeof PopPersonActionStatus];
@@ -197,8 +211,12 @@ export const PopPersonActionStatus = {
 export interface PopPersonAction {
   id: string;
   mode: PopPersonActionMode;
-  elementId: string;
+  actionType: PopPersonActionActionType;
   level: string;
+  levelName: string;
+  levelEmoji: string;
+  /** @minimum 1 */
+  multiplier: number;
   /** @minimum 0 */
   startDelayMs: number;
   targetName: string;
@@ -237,7 +255,6 @@ export interface PopPersonAction {
   /** @minimum 0 */
   price: number;
   shake: boolean;
-  element: PopPersonElement;
 }
 
 export interface PopPersonState {
@@ -314,17 +331,16 @@ export interface PlayerRegistration {
   defaultCategoryId: string | null;
 }
 
-export type PopPersonActionInputMode = typeof PopPersonActionInputMode[keyof typeof PopPersonActionInputMode];
+export type PopPersonActionInputActionType = typeof PopPersonActionInputActionType[keyof typeof PopPersonActionInputActionType];
 
 
-export const PopPersonActionInputMode = {
-  atacar: 'atacar',
-  defender: 'defender',
+export const PopPersonActionInputActionType = {
+  hate: 'hate',
+  fan: 'fan',
 } as const;
 
 export interface PopPersonActionInput {
-  mode: PopPersonActionInputMode;
-  elementId: string;
+  actionType: PopPersonActionInputActionType;
   /** @minLength 1 */
   level: string;
   targetName: string;

@@ -5,15 +5,19 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { PopPersonActionActionType } from './popPersonActionActionType';
 import type { PopPersonActionMode } from './popPersonActionMode';
 import type { PopPersonActionStatus } from './popPersonActionStatus';
-import type { PopPersonElement } from './popPersonElement';
 
 export interface PopPersonAction {
   id: string;
   mode: PopPersonActionMode;
-  elementId: string;
+  actionType: PopPersonActionActionType;
   level: string;
+  levelName: string;
+  levelEmoji: string;
+  /** @minimum 1 */
+  multiplier: number;
   /** @minimum 0 */
   startDelayMs: number;
   targetName: string;
@@ -52,5 +56,4 @@ export interface PopPersonAction {
   /** @minimum 0 */
   price: number;
   shake: boolean;
-  element: PopPersonElement;
 }
