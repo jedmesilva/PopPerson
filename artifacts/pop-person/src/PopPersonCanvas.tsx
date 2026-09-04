@@ -1091,7 +1091,10 @@ export default function PopPersonCanvas() {
     setActiveActions((prev) => prev.map((action) => action.id === actionId
       ? {
           ...action,
-          hitCount: Math.min(action.count, Math.max(action.hitCount || 0, hitIndex)),
+          hitCount: Math.min(
+            Number(action.count) || 0,
+            Math.max(Number(action.hitCount) || 0, hitIndex),
+          ),
           lastHitAt: Number(hit?.hitAt) || action.lastHitAt,
         }
       : action));
@@ -1117,6 +1120,11 @@ export default function PopPersonCanvas() {
         person.name === targetName ? { ...person, value: eventFinalValue } : person
       )));
     }
+    latestServerActionsRef.current.delete(actionId);
+    locallyCreatedActionIdsRef.current.delete(actionId);
+    spawnedEmojiActionIdsRef.current.delete(actionId);
+    lastHitSequenceByActionRef.current.delete(actionId);
+    setQueue((prev) => prev.filter((action) => action.id !== actionId));
     setActiveActions((prev) => prev.filter((action) => action.id !== actionId));
     activeActionIdsRef.current = activeActionIdsRef.current.filter((id) => id !== actionId);
     realtimeDebug("action:resolved", {
@@ -1143,14 +1151,31 @@ export default function PopPersonCanvas() {
     latestServerActionsRef.current.set(serverAction.id, serverAction);
     if (activeActionIdsRef.current.includes(serverAction.id)) {
       setActiveActions((prev) => prev.map((action) => action.id === serverAction.id
-        ? {
-            ...action,
-            count: Math.max(action.count, Number(serverAction.count) || 0),
-            hitCount: Math.min(action.count, Math.max(0, Number(serverAction.hitCount) || 0)),
-            levelEmoji: serverAction.levelEmoji ?? action.levelEmoji ?? null,
-            levelName: serverAction.levelName ?? action.levelName ?? null,
-            lastHitAt: serverAction.lastHitAt ?? null,
-          }
+        ? (() => {
+            const count = Math.max(
+              Number(action.count) || 0,
+              Number(serverAction.count) || 0,
+            );
+            const hitCount = Math.min(
+              count,
+              Math.max(
+                Number(action.hitCount) || 0,
+                Number(serverAction.hitCount) || 0,
+              ),
+            );
+            const lastHitAt = Math.max(
+              Number(action.lastHitAt) || 0,
+              Number(serverAction.lastHitAt) || 0,
+            );
+            return {
+              ...action,
+              count,
+              hitCount,
+              levelEmoji: serverAction.levelEmoji ?? action.levelEmoji ?? null,
+              levelName: serverAction.levelName ?? action.levelName ?? null,
+              lastHitAt: lastHitAt > 0 ? lastHitAt : null,
+            };
+          })()
         : action));
       return;
     }
