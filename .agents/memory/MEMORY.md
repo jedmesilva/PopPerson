@@ -14,3 +14,4 @@
 - [Entrada durante OAuth](unified-player-oauth-flow.md) — aceite inicia uma intenção temporária; o callback conclui a entrada ou pede só os dados ausentes.
 - [Origem visual da ação](action-source-cell.md) — ações autenticadas usam a célula do participante como origem persistida do projétil.
 - [Configuração de níveis Hater/Fã](hater-fan-level-configuration.md) — tipos, preços e os 20 níveis oficiais vêm do banco; itens antigos só permanecem para histórico.
+- [HUD de ações](action-hud-rendering.md) — pill e fila devem compartilhar dados normalizados e atualização temporizada, sem emojis duplicados nem renderização contínua.

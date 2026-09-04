@@ -19,6 +19,16 @@ function easeOutQuad(t) {
 }
 
 const MODE_LABEL = { atacar: "Hater", defender: "Fã" };
+const DEFAULT_ACTION_EMOJI = { atacar: "💢", defender: "❤️" };
+
+function getActionDisplay(item, levelByKey = {}) {
+  const mode = item?.mode === "defender" ? "defender" : "atacar";
+  const level = item?.level ? levelByKey[item.level] : null;
+  return {
+    emoji: item?.levelEmoji ?? item?.element?.emoji ?? level?.emoji ?? DEFAULT_ACTION_EMOJI[mode],
+    label: item?.levelName ?? item?.element?.label ?? level?.name ?? item?.level ?? MODE_LABEL[mode],
+  };
+}
 const MIN_CELL_VALUE = 2;
 const CIRCLE_GAP = 2.5;
 // Keep zoom effectively unbounded for users while avoiding browser floating-
@@ -992,18 +1002,14 @@ export default function PopPersonCanvas() {
       activeActionIdsRef.current = [...activeActionIdsRef.current, serverAction.id];
     }
     const totalCount = Math.max(1, Number(serverAction.count) || 1);
-    const actionElement = {
-      id: serverAction.level,
-      emoji: serverAction.levelEmoji ?? (serverAction.actionType === "fan" ? "❤️" : "💢"),
-      label: serverAction.levelName ?? serverAction.level,
-    };
     setActiveActions((prev) => {
       if (prev.some((action) => action.id === serverAction.id)) return prev;
       return [...prev, {
         id: serverAction.id,
         mode: serverAction.mode,
         level: serverAction.level,
-        element: actionElement,
+        levelEmoji: serverAction.levelEmoji ?? null,
+        levelName: serverAction.levelName ?? null,
         targetName: serverAction.targetName,
         count: totalCount,
         hitCount: Math.min(totalCount, Math.max(0, Number(serverAction.hitCount) || 0)),
@@ -1141,6 +1147,8 @@ export default function PopPersonCanvas() {
             ...action,
             count: Math.max(action.count, Number(serverAction.count) || 0),
             hitCount: Math.min(action.count, Math.max(0, Number(serverAction.hitCount) || 0)),
+            levelEmoji: serverAction.levelEmoji ?? action.levelEmoji ?? null,
+            levelName: serverAction.levelName ?? action.levelName ?? null,
             lastHitAt: serverAction.lastHitAt ?? null,
           }
         : action));
@@ -1407,20 +1415,24 @@ export default function PopPersonCanvas() {
 
   useEffect(() => {
     if (queue.length === 0 && activeActions.length === 0) return undefined;
-    let hudRaf;
-    function hudTick() {
-      const now = performance.now();
+    const hudTimer = window.setInterval(() => {
       // The local clock only updates the queue countdown. The server must
       // promote the action to `running` before its emoji burst is spawned.
       // Otherwise the canvas could show feedback before the action exists in
       // the realtime ledger.
       forceTick((t) => t + 1);
-      hudRaf = requestAnimationFrame(hudTick);
-    }
-    hudRaf = requestAnimationFrame(hudTick);
-    return () => cancelAnimationFrame(hudRaf);
+    }, 100);
+    return () => window.clearInterval(hudTimer);
   }, [queue.length > 0, activeActions.length > 0]);
   useEffect(() => { if (queue.length === 0 && activeActions.length === 0) setShowQueueModal(false); }, [queue.length, activeActions.length]);
+  const liveActionEntries = useMemo(() => [
+    ...[...activeActions]
+      .sort((a, b) => getRemainingUnits(a) - getRemainingUnits(b))
+      .map((action) => ({ kind: "firing", ...action })),
+    ...[...queue]
+      .sort((a, b) => a.localExecuteAt - b.localExecuteAt)
+      .map((action) => ({ kind: "queued", ...action })),
+  ], [activeActions, getRemainingUnits, queue]);
 
   const openPlayerSignup = useCallback(async ({ autoJoin = false } = {}) => {
     if (!canJoinAsPlayer || isJoiningPlayer || isLoadingPlayerRegistration) return;
@@ -2217,18 +2229,11 @@ export default function PopPersonCanvas() {
           </button>
         )}
         <div className="action-pill-container" style={{ flex: "1 1 auto", minWidth: 0, display: "flex", justifyContent: "center", containerType: "inline-size" }}>
-          {(queue.length > 0 || activeActions.length > 0) && (() => {
-            const entries = [
-              ...[...activeActions]
-                .sort((a, b) => getRemainingUnits(a) - getRemainingUnits(b))
-                .map((action) => ({ kind: "firing", ...action })),
-              ...[...queue]
-                .sort((a, b) => a.localExecuteAt - b.localExecuteAt)
-                .map((action) => ({ kind: "queued", ...action })),
-            ];
-            const primaryEntry = entries[0];
-            const additionalEntryCount = Math.max(0, entries.length - 1);
+          {liveActionEntries.length > 0 && (() => {
+            const primaryEntry = liveActionEntries[0];
+            const additionalEntryCount = Math.max(0, liveActionEntries.length - 1);
             const actionColor = primaryEntry.mode === "defender" ? "#22c55e" : "#ef4444";
+            const actionDisplay = getActionDisplay(primaryEntry, levelByKey);
             const { timeLabel, progress } = getActionTiming(primaryEntry, performance.now());
             return (
               <button
@@ -2238,6 +2243,7 @@ export default function PopPersonCanvas() {
                 style={{ position: "relative", overflow: "hidden", display: "flex", alignItems: "center", gap: "7px", flex: "0 1 auto", minWidth: 0, maxWidth: "min(280px, 58vw)", padding: "7px 12px", borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.55)", backdropFilter: "blur(6px)", border: `1px solid ${actionColor}55`, cursor: "pointer" }}
               >
                 {primaryEntry.kind === "firing" && <div style={{ position: "absolute", inset: 0, width: `${progress * 100}%`, backgroundColor: `${actionColor}33` }} />}
+                <span aria-hidden="true" style={{ position: "relative", flexShrink: 0, fontSize: "14px", lineHeight: 1 }}>{actionDisplay.emoji}</span>
                 <span className="action-pill-target" style={{ position: "relative", color: "#f5f5f5", fontSize: "12px", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, flex: "1 1 auto", textAlign: "left" }}>{MODE_LABEL[primaryEntry.mode]} a {primaryEntry.targetName}</span>
                 <span style={{ position: "relative", color: actionColor, fontFamily: "monospace", fontSize: "12px", fontWeight: 700, flexShrink: 0 }}>{timeLabel}</span>
                 {additionalEntryCount > 0 && (
@@ -2547,17 +2553,16 @@ export default function PopPersonCanvas() {
       )}
 
       {showQueueModal && (
-        <div onClick={() => setShowQueueModal(false)} style={{ position: "fixed", inset: 0, zIndex: 100, backgroundColor: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: "380px", maxHeight: "70vh", backgroundColor: "#171717", border: "1px solid #333", borderRadius: "16px", padding: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
+        <div onClick={() => setShowQueueModal(false)} style={{ position: "fixed", inset: 0, zIndex: 100, backgroundColor: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: "max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left))", boxSizing: "border-box" }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="queue-modal-title" onClick={(e) => e.stopPropagation()} style={{ width: "min(94vw, 420px)", maxWidth: "100%", maxHeight: "min(78dvh, 620px)", minHeight: 0, backgroundColor: "#171717", border: "1px solid #333", borderRadius: "16px", padding: "16px", display: "flex", flexDirection: "column", gap: "12px", boxSizing: "border-box", overflow: "hidden" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ color: "#fff", fontWeight: 800, fontSize: "18px", letterSpacing: "-0.01em" }}>Ações</span>
-              <button data-testid="button-close-queue" onClick={() => setShowQueueModal(false)} style={closeButtonStyle}><X size={13} /></button>
+              <span id="queue-modal-title" style={{ color: "#fff", fontWeight: 800, fontSize: "18px", letterSpacing: "-0.01em" }}>Ações</span>
+              <button type="button" data-testid="button-close-queue" onClick={() => setShowQueueModal(false)} aria-label="Fechar lista de ações" style={closeButtonStyle}><X size={13} /></button>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px", overflowY: "auto" }}>
-               {[...activeActions].sort((a, b) => getRemainingUnits(a) - getRemainingUnits(b)).map((a) => ({ kind: "firing", ...a })).concat([...queue].sort((a, b) => a.localExecuteAt - b.localExecuteAt).map((a) => ({ kind: "queued", ...a }))).map((item) => {
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", WebkitOverflowScrolling: "touch" }}>
+              {liveActionEntries.map((item) => {
                 const color = item.mode === "defender" ? "#22c55e" : "#ef4444";
-                 const levelLabel = item.levelName ?? levelByKey[item.level]?.name ?? item.level;
-                 const actionLevelLabel = `${item.levelEmoji ?? (item.mode === "defender" ? "❤️" : "💥")} ${levelLabel}`;
+                const actionDisplay = getActionDisplay(item, levelByKey);
                 const { timeLabel, progress } = getActionTiming(item, performance.now());
                 return (
                   <div key={item.id} data-testid={`queue-item-${item.id}`} style={{ display: "flex", flexDirection: "column", gap: "6px", padding: "10px 12px", borderRadius: "10px", backgroundColor: "#262626" }}>
@@ -2568,8 +2573,8 @@ export default function PopPersonCanvas() {
                     <div style={{ position: "relative", overflow: "hidden", borderRadius: "8px", backgroundColor: "rgba(255,255,255,0.04)" }}>
                       {item.kind === "firing" && <div style={{ position: "absolute", inset: 0, width: `${progress * 100}%`, backgroundColor: `${color}33` }} />}
                       <div style={{ position: "relative", display: "flex", alignItems: "center", gap: "6px", padding: "5px 8px" }}>
-                         <span style={{ fontSize: "16px", lineHeight: 1 }}>{item.levelEmoji ?? (item.mode === "defender" ? "❤️" : "💥")}</span>
-                         <span style={{ color: "#a3a3a3", fontSize: "12px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{actionLevelLabel}</span>
+                        <span aria-hidden="true" style={{ fontSize: "16px", lineHeight: 1, flexShrink: 0 }}>{actionDisplay.emoji}</span>
+                        <span style={{ color: "#a3a3a3", fontSize: "12px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{actionDisplay.label}</span>
                       </div>
                     </div>
                   </div>
