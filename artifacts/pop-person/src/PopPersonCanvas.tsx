@@ -2686,6 +2686,10 @@ export default function PopPersonCanvas() {
       transformRef.current = { scale: newScale, x: mx - worldX * newScale, y: my - worldY * newScale };
     }
     function onPointerDown(e) {
+      // Cell selection is handled explicitly on pointerup below. Prevent the
+      // compatibility click from being retargeted to a modal button that may
+      // be mounted before the browser finishes this same pointer sequence.
+      e.preventDefault();
       recenterAnimRef.current = null;
       canvas.setPointerCapture(e.pointerId);
       activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
