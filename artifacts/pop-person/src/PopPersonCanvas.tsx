@@ -518,8 +518,9 @@ function AccountModal({ user, onClose, onLogout, isLoggingOut, logoutError, clos
   );
 }
 
-function ConnectXModal({ onClose, onConnect, closeButtonRef }) {
+function ConnectXModal({ onClose, onConnect, closeButtonRef, purpose = "player" }) {
   const [hasAcceptedTerms, setHasAcceptedTerms] = useState(false);
+  const isActionPurpose = purpose === "action";
 
   return (
     <div
@@ -537,8 +538,8 @@ function ConnectXModal({ onClose, onConnect, closeButtonRef }) {
       >
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
           <div style={{ minWidth: 0 }}>
-            <span id="connect-title" style={{ display: "block", color: "#fff", fontWeight: 800, fontSize: "18px", lineHeight: 1.2, letterSpacing: "-0.02em" }}>Conectar e entrar na disputa</span>
-            <span id="connect-description" style={{ display: "block", marginTop: "5px", color: "#8f8f8f", fontSize: "12px", lineHeight: 1.45 }}>Conecte seu perfil X para criar sua participação no InstaPop.</span>
+            <span id="connect-title" style={{ display: "block", color: "#fff", fontWeight: 800, fontSize: "18px", lineHeight: 1.2, letterSpacing: "-0.02em" }}>{isActionPurpose ? "Conectar para enviar" : "Conectar e entrar na disputa"}</span>
+            <span id="connect-description" style={{ display: "block", marginTop: "5px", color: "#8f8f8f", fontSize: "12px", lineHeight: 1.45 }}>{isActionPurpose ? "Apoio, fã e hate só podem ser enviados por contas conectadas ao X." : "Conecte seu perfil X para criar sua participação no InstaPop."}</span>
           </div>
           <button
             ref={closeButtonRef}
@@ -563,7 +564,7 @@ function ConnectXModal({ onClose, onConnect, closeButtonRef }) {
         </div>
 
         <p style={{ margin: 0, color: "#a3a3a3", fontSize: "12px", lineHeight: 1.5 }}>
-          Você será redirecionado para <strong style={{ color: "#e5e5e5" }}>x.com</strong> para autorizar a conexão com sua conta. Ao concluir, seu perfil será incluído na disputa de popularidade.
+          Você será redirecionado para <strong style={{ color: "#e5e5e5" }}>x.com</strong> para autorizar a conexão com sua conta. {isActionPurpose ? "Depois, volte ao perfil para enviar sua ação." : "Ao concluir, seu perfil será incluído na disputa de popularidade."}
         </p>
         <label style={{ display: "flex", alignItems: "flex-start", gap: "9px", color: "#a3a3a3", fontSize: "11px", lineHeight: 1.5, cursor: "pointer" }}>
           <input
@@ -589,7 +590,7 @@ function ConnectXModal({ onClose, onConnect, closeButtonRef }) {
             disabled={!hasAcceptedTerms}
             style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", minHeight: "42px", padding: "10px 14px", borderRadius: "9999px", backgroundColor: hasAcceptedTerms ? "#f5f5f5" : "#383838", color: hasAcceptedTerms ? "#0a0a0a" : "#8a8a8a", border: "none", fontSize: "12px", fontWeight: 800, cursor: hasAcceptedTerms ? "pointer" : "default", opacity: hasAcceptedTerms ? 1 : 0.72 }}
           >
-            Conectar com X e entrar na disputa
+            {isActionPurpose ? "Conectar com X para continuar" : "Conectar com X e entrar na disputa"}
           </button>
           <button
             data-testid="button-cancel-connect"

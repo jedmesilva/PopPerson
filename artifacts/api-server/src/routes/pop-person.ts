@@ -83,6 +83,12 @@ router.post("/pop-person/player", async (req, res): Promise<void> => {
 });
 
 router.post("/pop-person/actions", actionRateLimit, async (req, res): Promise<void> => {
+  const user = res.locals.authenticatedUser;
+  if (!user) {
+    res.status(401).json({ error: "Conecte sua conta do X para enviar ações." });
+    return;
+  }
+
   const parsed = CreatePopPersonActionBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -93,7 +99,7 @@ router.post("/pop-person/actions", actionRateLimit, async (req, res): Promise<vo
     const action = await createPopPersonAction(
       parsed.data,
       res.locals.anonymousSessionId,
-      res.locals.authenticatedUser?.id,
+      user.id,
     );
     res.status(201).json(CreatePopPersonActionResponse.parse(action));
   } catch (error) {

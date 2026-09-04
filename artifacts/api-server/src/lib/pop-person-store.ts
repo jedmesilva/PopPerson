@@ -885,8 +885,12 @@ function modeForActionType(actionType: "hate" | "fan"): "atacar" | "defender" {
 export async function createPopPersonAction(
   input: PopPersonActionInput,
   sessionId?: string,
-  userId?: string,
+  userId: string,
 ): Promise<PopPersonAction> {
+  if (!userId.trim()) {
+    throw new Error("Conecte sua conta do X para enviar ações.");
+  }
+
   const roomId = await getRoomId();
   const idempotencyKey = input.idempotencyKey ?? randomUUID();
   await ensureRoomMembership(roomId, sessionId);
