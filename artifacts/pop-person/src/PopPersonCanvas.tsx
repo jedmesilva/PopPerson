@@ -20,6 +20,7 @@ function easeOutQuad(t) {
 
 const MODE_LABEL = { atacar: "Hater", defender: "Fã" };
 const DEFAULT_ACTION_EMOJI = { atacar: "💢", defender: "❤️" };
+const ACTION_MODE_COLORS = { atacar: "#ff625f", defender: "#df5184" };
 
 function getActionDisplay(item, levelByKey = {}) {
   const mode = item?.mode === "defender" ? "defender" : "atacar";
@@ -1749,7 +1750,7 @@ export default function PopPersonCanvas() {
         return;
       }
       setSelectedCell((prev) => prev === name ? null : name);
-      openModal("atacar");
+      openModal("defender");
     }, 60);
   }, [openModal, openPlayerSignup]);
   const closeModal = useCallback(() => {
@@ -2988,8 +2989,8 @@ export default function PopPersonCanvas() {
             <div className="action-modal-footer" style={{ padding: "16px 22px calc(16px + env(safe-area-inset-bottom))", borderTop: "1px solid #2b2d32", backgroundColor: "rgba(20,21,23,0.98)", boxShadow: "0 -12px 28px rgba(0,0,0,0.28)", boxSizing: "border-box" }}>
               <div className="action-modal-toggle-wrap" style={{ display: "flex", justifyContent: "center", marginBottom: "14px" }}>
                 <div className="action-modal-toggle" style={{ display: "inline-flex", alignItems: "center", gap: "3px", padding: "4px", borderRadius: "9999px", backgroundColor: "#292b31", boxShadow: "0 3px 10px rgba(0,0,0,0.16)" }}>
-                  <button type="button" data-testid="button-switch-hater" onClick={() => openModal("atacar")} style={{ minWidth: "96px", padding: "9px 14px", border: "none", borderRadius: "9999px", backgroundColor: pendingMode === "atacar" ? "#d52f2f" : "transparent", color: pendingMode === "atacar" ? "#fff" : "rgba(255,255,255,0.62)", fontSize: "14px", fontWeight: 800, cursor: "pointer", boxShadow: pendingMode === "atacar" ? "0 2px 5px rgba(0,0,0,0.16)" : "none" }}>👎 Hater</button>
-                  <button type="button" data-testid="button-switch-fan" onClick={() => openModal("defender")} style={{ minWidth: "82px", padding: "9px 14px", border: "none", borderRadius: "9999px", backgroundColor: pendingMode === "defender" ? "#df5184" : "transparent", color: pendingMode === "defender" ? "#fff" : "rgba(255,255,255,0.62)", fontSize: "14px", fontWeight: 800, cursor: "pointer", boxShadow: pendingMode === "defender" ? "0 2px 5px rgba(0,0,0,0.16)" : "none" }}>❤️ Fã</button>
+                   <button type="button" data-testid="button-switch-hater" onClick={() => openModal("atacar")} style={{ minWidth: "96px", padding: "9px 14px", border: "none", borderRadius: "9999px", backgroundColor: pendingMode === "atacar" ? ACTION_MODE_COLORS.atacar : "transparent", color: pendingMode === "atacar" ? "#fff" : "rgba(255,255,255,0.62)", fontSize: "14px", fontWeight: 800, cursor: "pointer", boxShadow: pendingMode === "atacar" ? "0 2px 5px rgba(0,0,0,0.16)" : "none" }}>👎 Hater</button>
+                   <button type="button" data-testid="button-switch-fan" onClick={() => openModal("defender")} style={{ minWidth: "82px", padding: "9px 14px", border: "none", borderRadius: "9999px", backgroundColor: pendingMode === "defender" ? ACTION_MODE_COLORS.defender : "transparent", color: pendingMode === "defender" ? "#fff" : "rgba(255,255,255,0.62)", fontSize: "14px", fontWeight: 800, cursor: "pointer", boxShadow: pendingMode === "defender" ? "0 2px 5px rgba(0,0,0,0.16)" : "none" }}>❤️ Fã</button>
                 </div>
               </div>
               {authenticatedUser ? (
@@ -3007,7 +3008,7 @@ export default function PopPersonCanvas() {
                       <span style={{ color: "#8c8f96", fontSize: "10px", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase" }}>CUSTO TOTAL</span>
                       <span data-testid="text-action-total-price" style={{ color: "#f4f4f5", fontSize: "22px", lineHeight: 1, fontWeight: 650, letterSpacing: "0.03em", whiteSpace: "nowrap" }}>{selectedActionPrice === null ? "—" : formatBRL(selectedActionPrice)}</span>
                     </div>
-                    <button className="action-modal-send" data-testid="button-send-action" onClick={confirmAction} disabled={createActionMutation.isPending || !selectedActionType || !selectedLevel} style={{ minWidth: "158px", padding: "13px 18px", borderRadius: "9999px", backgroundColor: pendingMode === "defender" ? "#df5184" : "#ff625f", color: "#fff", fontSize: "15px", fontWeight: 800, border: "none", cursor: createActionMutation.isPending ? "wait" : "pointer", opacity: createActionMutation.isPending || !selectedActionType || !selectedLevel ? 0.55 : 1, boxShadow: "0 5px 16px rgba(255,98,95,0.2)", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
+                     <button className="action-modal-send" data-testid="button-send-action" onClick={confirmAction} disabled={createActionMutation.isPending || !selectedActionType || !selectedLevel} style={{ minWidth: "158px", padding: "13px 18px", borderRadius: "9999px", backgroundColor: ACTION_MODE_COLORS[pendingMode], color: "#fff", fontSize: "15px", fontWeight: 800, border: "none", cursor: createActionMutation.isPending ? "wait" : "pointer", opacity: createActionMutation.isPending || !selectedActionType || !selectedLevel ? 0.55 : 1, boxShadow: `0 5px 16px ${ACTION_MODE_COLORS[pendingMode]}33`, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
                       {createActionMutation.isPending ? "Enviando…" : <><span>{pendingMode === "defender" ? "Enviar apoio" : "Enviar hate"}</span><ArrowRight size={18} strokeWidth={2.8} aria-hidden="true" /></>}
                     </button>
                   </div>
