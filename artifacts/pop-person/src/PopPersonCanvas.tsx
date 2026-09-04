@@ -1457,8 +1457,7 @@ export default function PopPersonCanvas() {
   const getActionTiming = useCallback((item, now) => {
     if (item.kind === "queued") {
       const secondsLeft = Math.max(0, (item.localExecuteAt - now) / 1000);
-      const delayMs = Math.max(0, item.startDelayMs);
-      return { timeLabel: secondsLeft > 0 ? `Inicia em ${secondsLeft.toFixed(1)}s` : "Iniciando", progress: delayMs > 0 ? 1 - (secondsLeft * 1000) / delayMs : 1 };
+      return { timeLabel: secondsLeft > 0 ? `Inicia em ${secondsLeft.toFixed(1)}s` : "0%", progress: 0 };
     }
     const totalCount = item.count;
     if (!totalCount) return { timeLabel: "—", progress: 0 };
