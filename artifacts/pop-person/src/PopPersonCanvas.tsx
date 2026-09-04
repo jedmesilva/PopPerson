@@ -3608,7 +3608,7 @@ export default function PopPersonCanvas() {
                 </>
               ) : (
                 <div data-testid="action-auth-prompt" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px", padding: "16px 8px 4px", textAlign: "center" }}>
-                  <div style={{ display: "grid", placeItems: "center", width: "38px", height: "38px", borderRadius: "9999px", backgroundColor: "#292b31", color: "#c7d2fe", fontSize: "18px" }}>X</div>
+                  <div style={{ display: "grid", placeItems: "center", width: "38px", height: "38px", borderRadius: "9999px", backgroundColor: "#292b31", color: "#c7d2fe" }}><FaXTwitter size={19} aria-hidden="true" /></div>
                   <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
                     <strong style={{ color: "#f4f4f5", fontSize: "14px" }}>Conecte-se para escolher o nível</strong>
                     <span style={{ color: "#92959d", fontSize: "11px", lineHeight: 1.45 }}>Ações de fã/apoio e hate só podem ser enviadas por contas conectadas ao X.</span>
