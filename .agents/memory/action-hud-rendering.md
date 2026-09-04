@@ -20,3 +20,9 @@ A linha do tempo visual precisa ser determinística e o worker deve materializar
 **Why:** A animação local podia terminar em segundos enquanto milhares de updates/notifications individuais mantinham os hits reais atrasados por minutos, criando uma divergência impossível de explicar para o usuário.
 
 **How to apply:** Não introduza jitter de duração no projétil quando o progresso depende do relógio visual; no worker, agrupe updates da célula/sala, inserção de eventos e publicação realtime por lote.
+
+Ao agrupar notificações PostgreSQL, cada payload individual ainda precisa respeitar o limite de tamanho do `NOTIFY`; agrupe a execução SQL, não todos os eventos em um único payload JSON.
+
+**Why:** Um lote JSON com muitos impactos ultrapassou o limite do PostgreSQL, abortou a transação e deixou ações vencidas em `running`, fazendo o HUD ficar em 100% sem receber `action:resolved`.
+
+**How to apply:** Publique os eventos individualmente a partir de uma lista JSON dentro de uma única consulta, e valide a recuperação de uma ação interrompida após reiniciar o worker.

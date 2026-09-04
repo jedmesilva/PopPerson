@@ -152,11 +152,11 @@ async function enqueueRealtimeNotificationBatch(
   notifications: PopPersonRealtimeNotification[],
 ): Promise<void> {
   if (notifications.length === 0) return;
+  const payloads = notifications.map((notification) => JSON.stringify(notification));
   await tx.execute(
-    sql`SELECT pg_notify(
-      ${POP_PERSON_REALTIME_CHANNEL},
-      ${JSON.stringify({ type: "batch", notifications })}
-    )`,
+    sql`SELECT pg_notify(${POP_PERSON_REALTIME_CHANNEL}, notification_payload)
+      FROM jsonb_array_elements_text(${JSON.stringify(payloads)}::jsonb)
+      AS notification_payload`,
   );
 }
 
