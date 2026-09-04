@@ -3,6 +3,7 @@ import React, { useState, useRef, useCallback, useEffect, useMemo } from "react"
 import { SlidersHorizontal, ArrowLeftRight, ArrowRight, X, ChevronDown, ChevronRight, Locate, Search, ScanFace, Plus, CircleUserRound, Pencil, CalendarDays, LogOut, Mail, MapPin } from "lucide-react";
 import { FaXTwitter } from "react-icons/fa6";
 import FanHaterLevelPicker from "./components/fan-hater-level-picker";
+import EmojiEffectsWebGL from "./components/emoji-effects-webgl";
 import {
   useCreatePopPersonAction,
   useGetAccessLocation,
@@ -17,28 +18,7 @@ function easeOutQuad(t) {
   return 1 - (1 - t) * (1 - t);
 }
 
-function quadBezier(p0, p1, p2, t) {
-  const mt = 1 - t;
-  return mt * mt * p0 + 2 * mt * t * p1 + t * t * p2;
-}
-
-function quadBezierTangent(p0, p1, p2, t) {
-  return 2 * (1 - t) * (p1 - p0) + 2 * t * (p2 - p1);
-}
-
-function deterministicUnit(seed) {
-  let hash = 2166136261;
-  for (let index = 0; index < seed.length; index += 1) {
-    hash ^= seed.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0) / 4294967296;
-}
-
 const MODE_LABEL = { atacar: "Hater", defender: "Fã" };
-const MAX_CONCURRENT_PROJECTILES = 24;
-const IMPACT_DURATION_MS = 350;
-const PROJECTILE_MAX_LIFETIME_MS = 3000;
 const MIN_CELL_VALUE = 2;
 const CIRCLE_GAP = 2.5;
 // Keep zoom effectively unbounded for users while avoiding browser floating-
@@ -105,14 +85,6 @@ function realtimeDebug(event, details = {}) {
       ...details,
     });
   }
-}
-
-function getEmitterHitAtServer(emitter, hitIndex) {
-  const explicitHitAt = emitter.hitAtByIndex?.get(hitIndex);
-  if (Number.isFinite(explicitHitAt)) return explicitHitAt;
-  return emitter.startAtServer
-    + emitter.duration
-    + (hitIndex - 1) * emitter.staggerMs;
 }
 
 function normalizeLocationValue(value) {
@@ -950,35 +922,23 @@ export default function PopPersonCanvas() {
   const animatedCirclesRef = useRef(new Map());
   const visualValuesRef = useRef(new Map());
   const serverDatasetRef = useRef([]);
-  const emittersRef = useRef([]);
-  const emitterCursorRef = useRef(0);
-  const projectilesRef = useRef([]);
-  const pendingHitEventsRef = useRef(new Map());
-  const queuedHitKeysRef = useRef(new Set());
-  const visualHitCountsRef = useRef(new Map());
-  const nextHitSpawnAtRef = useRef(0);
   const serverClockRef = useRef({
     serverTime: Date.now(),
     clientPerfAt: performance.now(),
   });
-  const impactsRef = useRef([]);
-  const pendingRadiusAnimationsRef = useRef(new Set());
+  const emojiEffectsRef = useRef(null);
+  const emojiTargetsRef = useRef(new Map());
+  const spawnedEmojiActionIdsRef = useRef(new Set());
   const pendingPlayerFocusRef = useRef(false);
   const playerFocusTimeoutRef = useRef(null);
-  const visualizedHitKeysRef = useRef(new Set());
-  const deferredCompletedActionIdsRef = useRef(new Set());
   const personImagesRef = useRef(new Map());
-  const shakeActionIdsRef = useRef(new Set());
   const activeActionIdsRef = useRef([]);
   const latestServerActionsRef = useRef(new Map());
-  const animationActionsRef = useRef(new Map());
   const processedRealtimeEventIdsRef = useRef(new Set());
   const locallyCreatedActionIdsRef = useRef(new Set());
   const latestServerStateVersionRef = useRef(-1);
   const serverStateHydratedRef = useRef(false);
-  const lastRealtimeMetricsAtRef = useRef(0);
   const transformRef = useRef({ x: 0, y: 0, scale: 1 });
-  const canvasShakeOffsetRef = useRef({ x: 0, y: 0 });
   const fitTransformRef = useRef({ x: 0, y: 0, scale: 1 });
   const recenterAnimRef = useRef(null);
   const showRecenterRef = useRef(false);
@@ -1026,90 +986,29 @@ export default function PopPersonCanvas() {
   }, [dataset]);
 
   const executeAction = useCallback((serverAction) => {
-    const actionId = serverAction.id;
-    if (!actionId || activeActionIdsRef.current.includes(actionId)) return;
-    activeActionIdsRef.current = [...activeActionIdsRef.current, actionId];
-    const direction = serverAction.mode === "defender" ? 1 : -1;
+    if (!serverAction?.id) return;
+    if (!activeActionIdsRef.current.includes(serverAction.id)) {
+      activeActionIdsRef.current = [...activeActionIdsRef.current, serverAction.id];
+    }
+    const totalCount = Math.max(1, Number(serverAction.count) || 1);
     const actionElement = {
       id: serverAction.level,
-      emoji: serverAction.levelEmoji ?? (serverAction.mode === "defender" ? "❤️" : "💥"),
+      emoji: serverAction.levelEmoji ?? (serverAction.actionType === "fan" ? "❤️" : "💢"),
       label: serverAction.levelName ?? serverAction.level,
     };
-    const animationStartedAt = performance.now();
-    const totalCount = Math.max(1, Number(serverAction.count) || 1);
-    const serverNow = serverClockRef.current.serverTime
-      + (animationStartedAt - serverClockRef.current.clientPerfAt);
-    const startAtServer = Number(serverAction.executeAt) || serverNow;
-    // The realtime notification can arrive after the scheduled start because
-    // it crosses the API/database boundary. Never replay all overdue impacts
-    // in one frame: a late visual start gets a fresh local timeline instead.
-    const visualStartAtServer = Math.max(startAtServer, serverNow);
-    const staggerMs = Math.max(0, Number(serverAction.staggerMs) || 0);
-    const elapsedMs = Math.max(0, serverNow - visualStartAtServer);
-    const hitCount = Math.min(totalCount, Math.max(0, Number(serverAction.hitCount) || 0));
-    const timelineIndex = elapsedMs <= 0
-      ? 0
-      : staggerMs > 0
-        ? Math.min(totalCount, Math.floor(elapsedMs / staggerMs))
-        : totalCount;
-    // The snapshot's hitCount is authoritative progress, while the timeline
-    // prevents a delayed/reconnected browser from replaying old projectiles.
-    const nextIndex = Math.max(hitCount, timelineIndex);
-    const firstHitAtServer = visualStartAtServer + Math.max(0, Number(serverAction.duration) || 0);
-    const elapsedToFirstImpact = Math.max(0, serverNow - firstHitAtServer);
-    const impactTimelineIndex = elapsedToFirstImpact <= 0
-      ? 0
-      : staggerMs > 0
-        ? Math.min(totalCount, Math.floor(elapsedToFirstImpact / staggerMs) + 1)
-        : totalCount;
-    const nextImpactIndex = Math.max(hitCount, impactTimelineIndex);
-    if (!visualHitCountsRef.current.has(actionId)) {
-      visualHitCountsRef.current.set(actionId, hitCount);
-    }
-    for (let historicalHit = 1; historicalHit <= hitCount; historicalHit += 1) {
-      visualizedHitKeysRef.current.add(`${actionId}:${historicalHit}`);
-      pendingHitEventsRef.current.delete(`${actionId}:${historicalHit}`);
-      queuedHitKeysRef.current.delete(`${actionId}:${historicalHit}`);
-    }
-    emittersRef.current.push({
-      id: actionId,
-      sourceName: serverAction.sourceName,
-      targetName: serverAction.targetName,
-      nextIndex,
-      nextImpactIndex,
-      count: totalCount,
-      startAtServer: visualStartAtServer,
-      staggerMs,
-      duration: Math.max(0, Number(serverAction.duration) || 0),
-      hitAtByIndex: new Map(),
-      growthPerHit: serverAction.growthPerHit,
-      direction,
-      emoji: actionElement.emoji,
-      level: serverAction.level,
-      remaining: totalCount - nextIndex,
-    });
-    setActiveActions((prev) => [
-      ...prev,
-      {
-        id: actionId,
+    setActiveActions((prev) => {
+      if (prev.some((action) => action.id === serverAction.id)) return prev;
+      return [...prev, {
+        id: serverAction.id,
         mode: serverAction.mode,
         level: serverAction.level,
         element: actionElement,
         targetName: serverAction.targetName,
         count: totalCount,
-        hitCount: Math.min(totalCount, visualHitCountsRef.current.get(actionId) || 0),
+        hitCount: Math.min(totalCount, Math.max(0, Number(serverAction.hitCount) || 0)),
         lastHitAt: serverAction.lastHitAt ?? null,
-        firedAt: animationStartedAt,
-      },
-    ]);
-    if (serverAction.shake) shakeActionIdsRef.current.add(actionId);
-    realtimeDebug("action:visual-started", {
-      actionId,
-      hitCount,
-      totalCount,
-      executeAt: startAtServer,
-      visualStartAt: visualStartAtServer,
-      completesAt: serverAction.completesAt,
+        firedAt: performance.now(),
+      }];
     });
   }, []);
   const executeActionRef = useRef(executeAction);
@@ -1123,119 +1022,30 @@ export default function PopPersonCanvas() {
       const oldestEventId = processedRealtimeEventIdsRef.current.values().next().value;
       processedRealtimeEventIdsRef.current.delete(oldestEventId);
     }
-    const serverNow = serverClockRef.current.serverTime
-      + (performance.now() - serverClockRef.current.clientPerfAt);
     const targetName = resolvedEvent?.targetName || serverAction.targetName;
-    const eventPreviousValue = Number(resolvedEvent?.previousValue);
-    const eventDelta = Number(resolvedEvent?.delta);
     const eventFinalValue = Number(resolvedEvent?.finalValue);
-    const currentVisualValue = Number(
-      leavesRef.current.find((leaf) => leaf.name === targetName)?.value,
-    );
-    const previousValue = Number.isFinite(eventPreviousValue)
-      ? eventPreviousValue
-      : currentVisualValue;
-    const finalValue = Number.isFinite(eventFinalValue)
-      ? eventFinalValue
-      : Number.isFinite(previousValue) && Number.isFinite(eventDelta)
-        ? previousValue + eventDelta
-        : Number.NaN;
-
-    if (activeActionIdsRef.current.includes(actionId)) {
-      const existingAction = animationActionsRef.current.get(actionId);
-      if (existingAction) {
-        animationActionsRef.current.set(actionId, {
-          ...existingAction,
-          ...serverAction,
-          status: "running",
-          resolvedPreviousValue: Number.isFinite(previousValue) ? previousValue : null,
-          resolvedFinalValue: Number.isFinite(finalValue) ? finalValue : null,
-          resolvedDelta: Number.isFinite(eventDelta) ? eventDelta : null,
-          resolvedStateVersion: Number(resolvedEvent?.stateVersion),
-           resolvedAt: Number(resolvedEvent?.resolvedAt),
-        });
-      }
-      if (targetName && Number.isFinite(finalValue)) {
-        serverDatasetRef.current = serverDatasetRef.current.map((person) => (
-          person.name === targetName ? { ...person, value: finalValue } : person
-        ));
-        // If the visual timeline was delayed by realtime delivery, let it
-        // finish its local impacts before applying the authoritative final
-        // value. Otherwise the cell jumps to the final radius at resolution.
-        deferredCompletedActionIdsRef.current.add(actionId);
-      }
-      realtimeDebug("action:authoritative-update", {
-        eventId,
-        actionId,
-        targetName,
-        finalValue: Number.isFinite(finalValue) ? finalValue : null,
-      });
-      return;
-    }
-
-    // Keep the server's resolved value separate from the value rendered by the
-    // canvas. The visual dataset advances only when each projectile lands.
-    if (targetName && Number.isFinite(finalValue)) {
+    if (targetName && Number.isFinite(eventFinalValue)) {
       serverDatasetRef.current = serverDatasetRef.current.map((person) => (
-        person.name === targetName ? { ...person, value: finalValue } : person
+        person.name === targetName ? { ...person, value: eventFinalValue } : person
       ));
+      visualValuesRef.current.set(targetName, eventFinalValue);
+      setDataset((prev) => prev.map((person) => (
+        person.name === targetName ? { ...person, value: eventFinalValue } : person
+      )));
     }
-
-    // A resolved event is only an authoritative correction. It must never
-    // start a late animation for an action this client did not receive.
-    setDataset((prev) => prev.map((person) => (
-      person.name === targetName && Number.isFinite(finalValue)
-        ? { ...person, value: finalValue }
-        : person
-    )));
+    setActiveActions((prev) => prev.filter((action) => action.id !== actionId));
+    activeActionIdsRef.current = activeActionIdsRef.current.filter((id) => id !== actionId);
     realtimeDebug("action:resolved-without-animation", {
       eventId,
       actionId,
       targetName,
-      finalValue: Number.isFinite(finalValue) ? finalValue : null,
-      previousValue: Number.isFinite(previousValue) ? previousValue : null,
+      finalValue: Number.isFinite(eventFinalValue) ? eventFinalValue : null,
     });
   }, []);
   const startResolvedActionRef = useRef(startResolvedAction);
   useEffect(() => { startResolvedActionRef.current = startResolvedAction; }, [startResolvedAction]);
-  const enqueueHitEvent = useCallback((event) => {
-    if (!event?.actionId || !Number.isFinite(Number(event.hitIndex))) return;
-    const hitIndex = Math.max(1, Number(event.hitIndex));
-    const key = `${event.actionId}:${hitIndex}`;
-    const normalizedEvent = {
-      ...event,
-      hitIndex,
-      sequence: Number(event.sequence) || hitIndex + 2,
-    };
-    const emitter = emittersRef.current.find((item) => item.id === event.actionId);
-    const hitAt = Number(event.hitAt);
-    if (emitter && Number.isFinite(hitAt)) {
-      emitter.hitAtByIndex.set(hitIndex, hitAt);
-    }
-    // A late confirmation must still reconcile the authoritative cell, but
-    // can never create a second impact after the timeline already rendered it.
-    if (visualizedHitKeysRef.current.has(key)) {
-      pendingHitEventsRef.current.set(key, normalizedEvent);
-      realtimeDebug("hit:confirmation-late", {
-        actionId: event.actionId,
-        hitIndex,
-        stateVersion: event.stateVersion,
-      });
-      return;
-    }
-    if (queuedHitKeysRef.current.has(key)) return;
-    queuedHitKeysRef.current.add(key);
-    pendingHitEventsRef.current.set(key, normalizedEvent);
-    realtimeDebug("hit:confirmation-received", {
-      actionId: event.actionId,
-      hitIndex,
-      hitAt: Number.isFinite(hitAt) ? hitAt : null,
-      stateVersion: event.stateVersion,
-    });
-  }, []);
   const queueAction = useCallback((serverAction) => {
     if (!serverAction?.id) return;
-    animationActionsRef.current.set(serverAction.id, serverAction);
     if (serverAction.status !== "queued" && serverAction.status !== "running") {
       latestServerActionsRef.current.delete(serverAction.id);
       setQueue((prev) => prev.filter((action) => action.id !== serverAction.id));
@@ -1251,10 +1061,8 @@ export default function PopPersonCanvas() {
       setActiveActions((prev) => prev.map((action) => action.id === serverAction.id
         ? {
             ...action,
-            hitCount: Math.min(
-              action.count,
-              visualHitCountsRef.current.get(serverAction.id) || 0,
-            ),
+            count: Math.max(action.count, Number(serverAction.count) || 0),
+            hitCount: Math.min(action.count, Math.max(0, Number(serverAction.hitCount) || 0)),
             lastHitAt: serverAction.lastHitAt ?? null,
           }
         : action));
@@ -1281,153 +1089,17 @@ export default function PopPersonCanvas() {
   }, []);
   const removeRealtimeAction = useCallback((actionId, options = {}) => {
     if (!actionId) return;
-    const preserveImpacts = options.preserveImpacts === true;
     latestServerActionsRef.current.delete(actionId);
-    animationActionsRef.current.delete(actionId);
     locallyCreatedActionIdsRef.current.delete(actionId);
-    deferredCompletedActionIdsRef.current.delete(actionId);
-    for (const key of queuedHitKeysRef.current) {
-      if (key.startsWith(`${actionId}:`)) queuedHitKeysRef.current.delete(key);
-    }
-    for (const key of pendingHitEventsRef.current.keys()) {
-      if (key.startsWith(`${actionId}:`)) pendingHitEventsRef.current.delete(key);
-    }
+    spawnedEmojiActionIdsRef.current.delete(actionId);
     setQueue((prev) => prev.filter((action) => action.id !== actionId));
     setActiveActions((prev) => {
       const next = prev.filter((action) => action.id !== actionId);
       activeActionIdsRef.current = next.map((action) => action.id);
       return next;
     });
-    for (const key of visualizedHitKeysRef.current) {
-      if (key.startsWith(`${actionId}:`)) visualizedHitKeysRef.current.delete(key);
-    }
-    emittersRef.current = emittersRef.current.filter((emitter) => emitter.id !== actionId);
-    projectilesRef.current = projectilesRef.current.filter(
-      (projectile) => projectile.firingId !== actionId,
-    );
-    if (!preserveImpacts) {
-      impactsRef.current = impactsRef.current.filter((impact) => impact.actionId !== actionId);
-    }
-    shakeActionIdsRef.current.delete(actionId);
-    realtimeDebug("action:removed", { actionId, preserveImpacts });
-  }, []);
-  const commitVisualHit = useCallback((event) => {
-    const actionId = event?.actionId;
-    const hitIndex = Math.max(1, Number(event?.hitIndex) || 0);
-    if (!actionId || !hitIndex) return false;
-    const hitKey = `${actionId}:${hitIndex}`;
-    const action = animationActionsRef.current.get(event?.actionId);
-    const targetName = event?.targetName || action?.targetName;
-    const totalCount = Math.max(1, Number(action?.count) || hitIndex);
-    const eventValue = Number(event?.value);
-    const resolvedPreviousValue = Number(action?.resolvedPreviousValue);
-    const resolvedFinalValue = Number(action?.resolvedFinalValue);
-    const resolvedDelta = Number(action?.resolvedDelta);
-    const hasContinuousResolution = Number.isFinite(resolvedPreviousValue)
-      && (Number.isFinite(resolvedFinalValue) || Number.isFinite(resolvedDelta));
-    const resolvedValue = Number.isFinite(resolvedPreviousValue)
-      && Number.isFinite(resolvedFinalValue)
-      ? resolvedPreviousValue
-        + (resolvedFinalValue - resolvedPreviousValue)
-          * (Math.min(totalCount, hitIndex) / totalCount)
-      : Number.isFinite(resolvedPreviousValue) && Number.isFinite(resolvedDelta)
-        ? resolvedPreviousValue
-          + resolvedDelta * (Math.min(totalCount, hitIndex) / totalCount)
-        : Number.NaN;
-    const direction = action?.mode === "defender" ? 1 : -1;
-    const growthPerHit = Number(action?.growthPerHit);
-    const currentVisualValue = Number.isFinite(Number(visualValuesRef.current.get(targetName)))
-      ? Number(visualValuesRef.current.get(targetName))
-      : Number(leavesRef.current.find((person) => person.name === targetName)?.value);
-    const localValue = Number.isFinite(currentVisualValue) && Number.isFinite(growthPerHit)
-      ? Math.max(MIN_CELL_VALUE, currentVisualValue + growthPerHit * direction)
-      : Number.NaN;
-    const value = Number.isFinite(eventValue)
-      ? eventValue
-      : Number.isFinite(resolvedValue)
-        ? resolvedValue
-        : localValue;
-    const alreadyVisualized = visualizedHitKeysRef.current.has(hitKey);
-    if (targetName && Number.isFinite(value) && !hasContinuousResolution) {
-      pendingRadiusAnimationsRef.current.add(targetName);
-    }
-    const eventVersion = Number(event?.stateVersion);
-    if (Number.isFinite(eventVersion)) {
-      latestServerStateVersionRef.current = Math.max(
-        latestServerStateVersionRef.current,
-        eventVersion,
-      );
-    }
-    // The layout is derived from the React dataset. Commit every impact while
-    // the action is running so the target cell can grow frame by frame instead
-    // of receiving the complete value only when the action resolves.
-    const shouldCommitDataset = !hasContinuousResolution || hitIndex >= totalCount;
-    if (targetName && Number.isFinite(value)) {
-      visualValuesRef.current.set(targetName, value);
-      if (shouldCommitDataset) {
-        setDataset((prev) => prev.map((person) => (
-          person.name === targetName ? { ...person, value } : person
-        )));
-      }
-    }
-    pendingHitEventsRef.current.delete(hitKey);
-    queuedHitKeysRef.current.delete(hitKey);
-    if (alreadyVisualized) {
-      realtimeDebug("hit:authoritative-value-reconciled", {
-        actionId,
-        hitIndex,
-        value: Number.isFinite(value) ? value : null,
-        stateVersion: eventVersion,
-      });
-      return false;
-    }
-
-    visualizedHitKeysRef.current.add(hitKey);
-    const target = targetName
-      ? leavesRef.current.find((leaf) => leaf.name === targetName)
-      : null;
-    const emitter = emittersRef.current.find((item) => item.id === actionId);
-    const animatedTarget = targetName
-      ? animatedCirclesRef.current.get(targetName)
-      : null;
-    if (target) {
-      impactsRef.current.push({
-        actionId,
-        targetName,
-        x: animatedTarget?.x ?? target.x,
-        y: animatedTarget?.y ?? target.y,
-        r: animatedTarget?.r ?? target.r,
-        color: (event?.direction || action?.mode) === "defender"
-          ? "34, 197, 94"
-          : "239, 68, 68",
-        startTime: performance.now(),
-        duration: IMPACT_DURATION_MS,
-      });
-    }
-    projectilesRef.current = projectilesRef.current.filter((projectile) => (
-      projectile.firingId !== actionId || projectile.hitIndex !== hitIndex
-    ));
-    const actionTotalCount = Math.max(1, Number(action?.count) || Number(emitter?.count) || hitIndex);
-    const previousCount = visualHitCountsRef.current.get(actionId) || 0;
-    const visualCount = Math.min(actionTotalCount, Math.max(previousCount, hitIndex));
-    visualHitCountsRef.current.set(actionId, visualCount);
-    setActiveActions((prev) => prev.map((activeAction) => activeAction.id === actionId
-      ? {
-          ...activeAction,
-          hitCount: visualCount,
-          lastHitAt: Number.isFinite(Number(event?.hitAt))
-            ? Number(event.hitAt)
-            : activeAction.lastHitAt,
-        }
-      : activeAction));
-    realtimeDebug("hit:rendered", {
-      actionId,
-      hitIndex,
-      value: Number.isFinite(value) ? value : null,
-      stateVersion: eventVersion,
-      activeProjectiles: projectilesRef.current.length,
-    });
-    return true;
+    spawnedEmojiActionIdsRef.current.delete(actionId);
+    realtimeDebug("action:removed", { actionId, preserveImpacts: Boolean(options.preserveImpacts) });
   }, []);
   const reconcileServerState = useCallback((serverState, options = {}) => {
     const incomingStateVersion = Number(serverState?.stateVersion);

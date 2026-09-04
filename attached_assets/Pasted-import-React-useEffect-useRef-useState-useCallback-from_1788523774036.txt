@@ -1,0 +1,493 @@
+import React, { useEffect, useRef, useState, useCallback } from "react";
+
+// Paleta de emojis padrão — troque à vontade
+const DEFAULT_EMOJIS = ["❤️", "🔥", "😂", "👏", "😍", "🎉", "💯", "😮"];
+
+const COLORS = {
+  bg: "#0a0a0a",
+  surface: "#141414",
+  border: "#262626",
+  text: "#ededed",
+  textMuted: "#8a8a8a",
+};
+
+// -----------------------------------------------------------------------
+// Shaders
+// -----------------------------------------------------------------------
+
+const VERTEX_SRC = `#version 300 es
+layout(location = 0) in vec2 aCorner;   // -0.5..0.5 quad corner
+layout(location = 1) in vec2 aUV;       // 0..1 quad uv
+layout(location = 2) in float aSpawnTime;
+layout(location = 3) in float aDuration;
+layout(location = 4) in float aDrift;
+layout(location = 5) in float aSize;
+layout(location = 6) in float aRotate;
+layout(location = 7) in float aTexIndex;
+
+uniform float uTime;
+uniform vec2 uResolution;
+uniform vec2 uOrigin;
+uniform float uRise;
+uniform float uAtlasCols;
+
+out vec2 vUV;
+out float vAlpha;
+
+// Aproxima cubic-bezier(0.18, 0.7, 0.4, 1) via Newton-Raphson
+float bezierEase(float t) {
+  float p1x = 0.18, p1y = 0.7, p2x = 0.4, p2y = 1.0;
+  float u = t;
+  for (int i = 0; i < 5; i++) {
+    float x = 3.0*u*(1.0-u)*(1.0-u)*p1x + 3.0*u*u*(1.0-u)*p2x + u*u*u;
+    float dx = 3.0*(1.0-u)*(1.0-u)*p1x + 6.0*u*(1.0-u)*(p2x-p1x) + 3.0*u*u*(1.0-p2x);
+    if (abs(dx) < 1e-6) break;
+    u = clamp(u - (x - t) / dx, 0.0, 1.0);
+  }
+  return 3.0*u*(1.0-u)*(1.0-u)*p1y + 3.0*u*u*(1.0-u)*p2y + u*u*u;
+}
+
+float remap(float t, float a, float b) {
+  return clamp((t - a) / (b - a), 0.0, 1.0);
+}
+
+void main() {
+  float t = clamp((uTime - aSpawnTime) / aDuration, 0.0, 1.0);
+  float e = bezierEase(t);
+  float k1 = 0.12;
+  float k2 = 0.75;
+
+  float scale = e < k1
+    ? mix(0.6, 1.0, remap(e, 0.0, k1))
+    : mix(1.0, 0.9, remap(e, k1, 1.0));
+
+  float driftF = e < k1
+    ? mix(0.0, 0.15, remap(e, 0.0, k1))
+    : mix(0.15, 1.0, remap(e, k1, 1.0));
+
+  float riseF = e < k1
+    ? mix(0.0, 0.1, remap(e, 0.0, k1))
+    : mix(0.1, 1.0, remap(e, k1, 1.0));
+
+  float rotF = e < k1
+    ? mix(0.0, 0.2, remap(e, 0.0, k1))
+    : mix(0.2, 1.0, remap(e, k1, 1.0));
+
+  float alpha;
+  if (e < k1) alpha = remap(e, 0.0, k1);
+  else if (e < k2) alpha = 1.0;
+  else alpha = 1.0 - remap(e, k2, 1.0);
+
+  float ang = radians(aRotate) * rotF;
+  float c = cos(ang);
+  float s = sin(ang);
+  vec2 corner = aCorner * aSize * scale;
+  vec2 rotated = vec2(c*corner.x - s*corner.y, s*corner.x + c*corner.y);
+
+  vec2 centerPx = uOrigin + vec2(aDrift * driftF, uRise * riseF);
+  vec2 posPx = centerPx + rotated;
+
+  vec2 clip = vec2(
+    (posPx.x / uResolution.x) * 2.0 - 1.0,
+    1.0 - (posPx.y / uResolution.y) * 2.0
+  );
+
+  gl_Position = vec4(clip, 0.0, 1.0);
+  vUV = vec2((aUV.x + aTexIndex) / uAtlasCols, aUV.y);
+  vAlpha = alpha;
+}`;
+
+const FRAGMENT_SRC = `#version 300 es
+precision mediump float;
+in vec2 vUV;
+in float vAlpha;
+uniform sampler2D uAtlas;
+out vec4 fragColor;
+void main() {
+  vec4 tex = texture(uAtlas, vUV);
+  fragColor = vec4(tex.rgb, tex.a * vAlpha);
+}`;
+
+const FLOATS_PER_INSTANCE = 6; // spawnTime, duration, drift, size, rotate, texIndex
+
+function compileShader(gl, type, src) {
+  const shader = gl.createShader(type);
+  gl.shaderSource(shader, src);
+  gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    const info = gl.getShaderInfoLog(shader);
+    gl.deleteShader(shader);
+    throw new Error("Shader compile error: " + info);
+  }
+  return shader;
+}
+
+function buildAtlas(gl, emojis, cellSize) {
+  const atlasCanvas = document.createElement("canvas");
+  atlasCanvas.width = cellSize * emojis.length;
+  atlasCanvas.height = cellSize;
+  const ctx = atlasCanvas.getContext("2d");
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = `${Math.floor(cellSize * 0.72)}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+  emojis.forEach((emoji, i) => {
+    ctx.fillText(emoji, i * cellSize + cellSize / 2, cellSize / 2 + cellSize * 0.04);
+  });
+
+  const texture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, atlasCanvas);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  return texture;
+}
+
+// -----------------------------------------------------------------------
+// Component
+// -----------------------------------------------------------------------
+
+export default function EmojiRainGL({
+  emojis = DEFAULT_EMOJIS,
+  riseDistance = 70,
+  maxInstances = 20000,
+  cellSize = 128,
+}) {
+  const canvasRef = useRef(null);
+  const wrapRef = useRef(null);
+  const stateRef = useRef(null); // holds all mutable GL state across frames
+  const [supported, setSupported] = useState(true);
+  const [stats, setStats] = useState({ count: 0, fps: 0 });
+
+  const spawnMany = useCallback((entries) => {
+    const st = stateRef.current;
+    if (!st) return;
+    const { gl, instanceBuf, capacity } = st;
+    const now = performance.now() / 1000 - st.startTime;
+
+    const data = new Float32Array(entries.length * FLOATS_PER_INSTANCE);
+    entries.forEach((entry, i) => {
+      const drift = (Math.random() - 0.5) * 120;
+      const duration = 2.2 + Math.random() * 1.4;
+      const size = 28 + Math.random() * 20;
+      const rotate = (Math.random() - 0.5) * 40;
+      const spawnTime = now + entry.delay;
+      const o = i * FLOATS_PER_INSTANCE;
+      data[o + 0] = spawnTime;
+      data[o + 1] = duration;
+      data[o + 2] = drift;
+      data[o + 3] = size;
+      data[o + 4] = rotate;
+      data[o + 5] = entry.texIndex;
+    });
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuf);
+    let remaining = entries.length;
+    let srcOffset = 0;
+    while (remaining > 0) {
+      const spaceToEnd = capacity - st.writeIndex;
+      const chunk = Math.min(remaining, spaceToEnd);
+      gl.bufferSubData(
+        gl.ARRAY_BUFFER,
+        st.writeIndex * FLOATS_PER_INSTANCE * 4,
+        data,
+        srcOffset * FLOATS_PER_INSTANCE,
+        chunk * FLOATS_PER_INSTANCE
+      );
+      st.writeIndex = (st.writeIndex + chunk) % capacity;
+      st.totalSpawned += chunk;
+      remaining -= chunk;
+      srcOffset += chunk;
+    }
+    st.activeCount = Math.min(st.totalSpawned, capacity);
+  }, []);
+
+  const spawnEmoji = useCallback(
+    (texIndex) => spawnMany([{ texIndex, delay: 0 }]),
+    [spawnMany]
+  );
+
+  const spawnBurst = useCallback(
+    (count) => {
+      const entries = new Array(count);
+      for (let i = 0; i < count; i++) {
+        entries[i] = {
+          texIndex: Math.floor(Math.random() * emojis.length),
+          delay: Math.random() * 0.4, // espalha a rajada em ~400ms
+        };
+      }
+      spawnMany(entries);
+    },
+    [emojis.length, spawnMany]
+  );
+
+  const clearAll = useCallback(() => {
+    const st = stateRef.current;
+    if (!st) return;
+    st.writeIndex = 0;
+    st.totalSpawned = 0;
+    st.activeCount = 0;
+  }, []);
+
+  // Init WebGL once
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const gl = canvas.getContext("webgl2");
+    if (!gl) {
+      setSupported(false);
+      return;
+    }
+
+    const vs = compileShader(gl, gl.VERTEX_SHADER, VERTEX_SRC);
+    const fs = compileShader(gl, gl.FRAGMENT_SHADER, FRAGMENT_SRC);
+    const program = gl.createProgram();
+    gl.attachShader(program, vs);
+    gl.attachShader(program, fs);
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      throw new Error("Program link error: " + gl.getProgramInfoLog(program));
+    }
+    gl.useProgram(program);
+
+    // Static quad: 2 triangles, corner (-0.5..0.5) + uv (0..1)
+    const quad = new Float32Array([
+      -0.5, -0.5, 0, 1,
+       0.5, -0.5, 1, 1,
+       0.5,  0.5, 1, 0,
+      -0.5, -0.5, 0, 1,
+       0.5,  0.5, 1, 0,
+      -0.5,  0.5, 0, 0,
+    ]);
+    const quadBuf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, quad, gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 16, 0);
+    gl.enableVertexAttribArray(1);
+    gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 16, 8);
+
+    // Instance buffer
+    const instanceBuf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, maxInstances * FLOATS_PER_INSTANCE * 4, gl.DYNAMIC_DRAW);
+    const stride = FLOATS_PER_INSTANCE * 4;
+    [2, 3, 4, 5, 6, 7].forEach((loc, i) => {
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, 1, gl.FLOAT, false, stride, i * 4);
+      gl.vertexAttribDivisor(loc, 1);
+    });
+
+    const atlas = buildAtlas(gl, emojis, cellSize);
+
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+    const uniforms = {
+      uTime: gl.getUniformLocation(program, "uTime"),
+      uResolution: gl.getUniformLocation(program, "uResolution"),
+      uOrigin: gl.getUniformLocation(program, "uOrigin"),
+      uRise: gl.getUniformLocation(program, "uRise"),
+      uAtlasCols: gl.getUniformLocation(program, "uAtlasCols"),
+      uAtlas: gl.getUniformLocation(program, "uAtlas"),
+    };
+    gl.uniform1i(uniforms.uAtlas, 0);
+    gl.uniform1f(uniforms.uAtlasCols, emojis.length);
+
+    stateRef.current = {
+      gl,
+      program,
+      quadBuf,
+      instanceBuf,
+      atlas,
+      uniforms,
+      capacity: maxInstances,
+      writeIndex: 0,
+      totalSpawned: 0,
+      activeCount: 0,
+      startTime: performance.now() / 1000,
+    };
+
+    let raf;
+    let frameCount = 0;
+    let lastFpsSample = performance.now();
+
+    const resize = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+      canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.uniform2f(uniforms.uResolution, canvas.width, canvas.height);
+      gl.uniform2f(uniforms.uOrigin, canvas.width / 2, canvas.height - 64 * dpr);
+      gl.uniform1f(uniforms.uRise, -riseDistance * dpr);
+    };
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(canvas);
+
+    const frame = () => {
+      const st = stateRef.current;
+      const now = performance.now() / 1000 - st.startTime;
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.uniform1f(uniforms.uTime, now);
+
+      if (st.activeCount > 0) {
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, st.atlas);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, st.activeCount);
+      }
+
+      frameCount++;
+      const nowMs = performance.now();
+      if (nowMs - lastFpsSample > 500) {
+        const fps = Math.round((frameCount * 1000) / (nowMs - lastFpsSample));
+        setStats({ count: st.totalSpawned > st.capacity ? st.capacity : st.totalSpawned, fps });
+        frameCount = 0;
+        lastFpsSample = nowMs;
+      }
+
+      raf = requestAnimationFrame(frame);
+    };
+    raf = requestAnimationFrame(frame);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      gl.deleteBuffer(quadBuf);
+      gl.deleteBuffer(instanceBuf);
+      gl.deleteTexture(atlas);
+      gl.deleteProgram(program);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [emojis, riseDistance, maxInstances, cellSize]);
+
+  return (
+    <div ref={wrapRef} style={styles.wrapper}>
+      <div style={styles.stage}>
+        {supported ? (
+          <canvas ref={canvasRef} style={styles.canvas} />
+        ) : (
+          <p style={styles.hint}>WebGL2 não suportado neste navegador</p>
+        )}
+        <p style={styles.hint}>toque em um emoji para enviar</p>
+        <p style={styles.stats}>{stats.count} na tela · {stats.fps} fps</p>
+      </div>
+
+      <div style={styles.dock}>
+        {emojis.map((emoji, i) => (
+          <button
+            key={emoji}
+            onClick={() => spawnEmoji(i)}
+            style={styles.emojiButton}
+            aria-label={`Enviar ${emoji}`}
+          >
+            {emoji}
+          </button>
+        ))}
+      </div>
+
+      <div style={styles.testDock}>
+        <button style={styles.testButton} onClick={() => spawnBurst(100)}>+100</button>
+        <button style={styles.testButton} onClick={() => spawnBurst(1000)}>+1.000</button>
+        <button style={styles.testButton} onClick={() => spawnBurst(5000)}>+5.000</button>
+        <button style={styles.testButton} onClick={() => spawnBurst(20000)}>+20.000</button>
+        <button style={styles.testButtonClear} onClick={clearAll}>Limpar</button>
+      </div>
+    </div>
+  );
+}
+
+const styles = {
+  wrapper: {
+    width: "100%",
+    maxWidth: 380,
+    margin: "0 auto",
+    background: COLORS.bg,
+    borderRadius: 20,
+    border: `1px solid ${COLORS.border}`,
+    overflow: "hidden",
+    fontFamily: "'Inter', 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif",
+  },
+  stage: {
+    position: "relative",
+    height: 260,
+    overflow: "hidden",
+  },
+  canvas: {
+    position: "absolute",
+    inset: 0,
+    width: "100%",
+    height: "100%",
+    display: "block",
+  },
+  hint: {
+    position: "absolute",
+    top: 20,
+    left: 0,
+    right: 0,
+    textAlign: "center",
+    color: COLORS.textMuted,
+    fontSize: 13,
+    margin: 0,
+    letterSpacing: 0.2,
+  },
+  stats: {
+    position: "absolute",
+    top: 20,
+    right: 14,
+    color: COLORS.textMuted,
+    fontSize: 11,
+    margin: 0,
+    fontVariantNumeric: "tabular-nums",
+  },
+  dock: {
+    display: "flex",
+    gap: 8,
+    padding: 14,
+    background: COLORS.surface,
+    borderTop: `1px solid ${COLORS.border}`,
+  },
+  emojiButton: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    border: `1px solid ${COLORS.border}`,
+    background: "#1c1c1c",
+    fontSize: 20,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    transition: "transform 0.1s ease, background 0.15s ease",
+  },
+  testDock: {
+    display: "flex",
+    gap: 8,
+    padding: "0 14px 14px",
+    background: COLORS.surface,
+  },
+  testButton: {
+    flex: 1,
+    height: 32,
+    borderRadius: 8,
+    border: `1px solid ${COLORS.border}`,
+    background: "#1c1c1c",
+    color: COLORS.text,
+    fontSize: 11,
+    cursor: "pointer",
+  },
+  testButtonClear: {
+    flex: 1,
+    height: 32,
+    borderRadius: 8,
+    border: `1px solid ${COLORS.border}`,
+    background: "transparent",
+    color: COLORS.textMuted,
+    fontSize: 11,
+    cursor: "pointer",
+  },
+};
