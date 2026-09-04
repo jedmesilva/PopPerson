@@ -14,3 +14,9 @@ O progresso de uma ação deve ser monotônico durante a sessão: eventos `actio
 **Why:** Eventos realtime e snapshots são entregues por caminhos independentes e podem chegar em ordens diferentes; aceitar um valor antigo deixa a porcentagem visual voltar ou mantém uma ação concluída presa no HUD.
 
 **How to apply:** Ao reconciliar qualquer fonte, use o maior progresso conhecido limitado ao total da ação e limpe todas as referências locais quando a resolução for confirmada.
+
+A linha do tempo visual precisa ser determinística e o worker deve materializar os impactos em lotes: o HUD e os projéteis usam início, duração, intervalo e quantidade iguais, enquanto a célula permanece autorizada pelo servidor.
+
+**Why:** A animação local podia terminar em segundos enquanto milhares de updates/notifications individuais mantinham os hits reais atrasados por minutos, criando uma divergência impossível de explicar para o usuário.
+
+**How to apply:** Não introduza jitter de duração no projétil quando o progresso depende do relógio visual; no worker, agrupe updates da célula/sala, inserção de eventos e publicação realtime por lote.

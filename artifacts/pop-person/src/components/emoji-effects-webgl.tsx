@@ -387,7 +387,10 @@ function enqueueSpawn(
       fallbackX: fallbackWorldX,
       fallbackY: fallbackWorldY,
       spawnTime: now + startDelaySeconds + index * staggerSeconds,
-      duration: Math.max(0.24, baseDuration + (Math.random() - 0.5) * 0.16),
+      // The HUD uses this same timeline to show impact progress. Keep the
+      // travel duration deterministic so a projectile and its percentage
+      // arrive together instead of drifting apart by a random amount.
+      duration: Math.max(0.24, baseDuration),
       drift: (Math.random() - 0.5) * profile.drift,
       size: profile.sizeMin + Math.random() * (profile.sizeMax - profile.sizeMin),
       rotation: (Math.random() - 0.5) * profile.rotation,

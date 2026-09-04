@@ -182,9 +182,24 @@ export async function registerPopPersonRealtime(
     try {
       const notification = JSON.parse(
         message.payload,
-      ) as PopPersonRealtimeNotification;
+      ) as PopPersonRealtimeNotification | {
+        type: "batch";
+        notifications: PopPersonRealtimeNotification[];
+      };
+      if (notification.type === "batch" && Array.isArray(notification.notifications)) {
+        notificationChain = notificationChain
+          .then(async () => {
+            for (const item of notification.notifications) {
+              await handleNotification(webSocketServer, item);
+            }
+          })
+          .catch((error) => {
+            logger.error({ err: error }, "Failed to deliver PopPerson realtime batch");
+          });
+        return;
+      }
       notificationChain = notificationChain
-        .then(() => handleNotification(webSocketServer, notification))
+        .then(() => handleNotification(webSocketServer, notification as PopPersonRealtimeNotification))
         .catch((error) => {
           logger.error({ err: error }, "Failed to deliver PopPerson realtime event");
         });

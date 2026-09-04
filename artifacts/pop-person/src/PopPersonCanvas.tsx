@@ -944,6 +944,7 @@ export default function PopPersonCanvas() {
   const personImagesRef = useRef(new Map());
   const activeActionIdsRef = useRef([]);
   const latestServerActionsRef = useRef(new Map());
+  const visualActionTimelinesRef = useRef(new Map());
   const processedRealtimeEventIdsRef = useRef(new Set());
   const locallyCreatedActionIdsRef = useRef(new Set());
   const latestServerStateVersionRef = useRef(-1);
@@ -1002,6 +1003,7 @@ export default function PopPersonCanvas() {
       activeActionIdsRef.current = [...activeActionIdsRef.current, serverAction.id];
     }
     const totalCount = Math.max(1, Number(serverAction.count) || 1);
+    const hasVisualTimeline = visualActionTimelinesRef.current.has(serverAction.id);
     setActiveActions((prev) => {
       if (prev.some((action) => action.id === serverAction.id)) return prev;
       return [...prev, {
@@ -1012,7 +1014,9 @@ export default function PopPersonCanvas() {
         levelName: serverAction.levelName ?? null,
         targetName: serverAction.targetName,
         count: totalCount,
-        hitCount: Math.min(totalCount, Math.max(0, Number(serverAction.hitCount) || 0)),
+        hitCount: hasVisualTimeline
+          ? 0
+          : Math.min(totalCount, Math.max(0, Number(serverAction.hitCount) || 0)),
         lastHitAt: serverAction.lastHitAt ?? null,
         firedAt: performance.now(),
       }];
@@ -1037,6 +1041,27 @@ export default function PopPersonCanvas() {
     const serverNow = serverClockRef.current.serverTime
       + (performance.now() - serverClockRef.current.clientPerfAt);
     const startedAt = Number(serverAction.startedAt);
+    const visualStartAt = Number.isFinite(startedAt)
+      ? Math.max(startedAt, serverNow)
+      : serverNow;
+    const actionType = String(serverAction.actionType || "hate");
+    const configuredDurationMs = Number(serverAction.duration);
+    const durationMs = Math.max(
+      240,
+      Number.isFinite(configuredDurationMs) && configuredDurationMs > 0
+        ? configuredDurationMs
+        : actionType === "fan" ? 1500 : 1650,
+    );
+    const staggerMs = Math.min(
+      2_000,
+      Math.max(4, Number(serverAction.staggerMs) || 0),
+    );
+    visualActionTimelinesRef.current.set(actionId, {
+      startAt: visualStartAt,
+      count,
+      durationMs,
+      staggerMs,
+    });
     const startDelayMs = Number.isFinite(startedAt)
       ? Math.max(0, startedAt - serverNow)
       : 0;
@@ -1047,9 +1072,9 @@ export default function PopPersonCanvas() {
           || (serverAction.actionType === "fan" ? "❤️" : "💢"),
       ),
       count,
-      actionType: String(serverAction.actionType || "hate"),
-      staggerMs: Number(serverAction.staggerMs) || 0,
-      durationMs: Number(serverAction.duration) || 0,
+      actionType,
+      staggerMs,
+      durationMs,
       startDelayMs,
     });
     realtimeDebug("action:emoji-burst", {
@@ -1123,6 +1148,7 @@ export default function PopPersonCanvas() {
     latestServerActionsRef.current.delete(actionId);
     locallyCreatedActionIdsRef.current.delete(actionId);
     spawnedEmojiActionIdsRef.current.delete(actionId);
+    visualActionTimelinesRef.current.delete(actionId);
     lastHitSequenceByActionRef.current.delete(actionId);
     setQueue((prev) => prev.filter((action) => action.id !== actionId));
     setActiveActions((prev) => prev.filter((action) => action.id !== actionId));
@@ -1203,6 +1229,7 @@ export default function PopPersonCanvas() {
     latestServerActionsRef.current.delete(actionId);
     locallyCreatedActionIdsRef.current.delete(actionId);
     spawnedEmojiActionIdsRef.current.delete(actionId);
+    visualActionTimelinesRef.current.delete(actionId);
     setQueue((prev) => prev.filter((action) => action.id !== actionId));
     setActiveActions((prev) => {
       const next = prev.filter((action) => action.id !== actionId);
@@ -1223,6 +1250,7 @@ export default function PopPersonCanvas() {
       // and never replays old emoji events.
       emojiEffectsRef.current?.clear();
       spawnedEmojiActionIdsRef.current.clear();
+      visualActionTimelinesRef.current.clear();
       latestServerActionsRef.current.clear();
       lastHitSequenceByActionRef.current.clear();
       activeActionIdsRef.current = [];
@@ -1285,6 +1313,7 @@ export default function PopPersonCanvas() {
       for (const id of latestServerActionsRef.current.keys()) {
         if (!incomingActionIds.has(id)) {
           latestServerActionsRef.current.delete(id);
+          visualActionTimelinesRef.current.delete(id);
         }
       }
     }
@@ -1351,8 +1380,8 @@ export default function PopPersonCanvas() {
             message?.type === "action:started"
             && message.action
           ) {
-            queueAction(message.action);
             spawnActionEmojis(message.action);
+            queueAction(message.action);
             realtimeDebug("action:server-authorized", {
               actionId: message.action.id,
               executeAt: message.action.executeAt,
@@ -1433,7 +1462,23 @@ export default function PopPersonCanvas() {
     }
     const totalCount = item.count;
     if (!totalCount) return { timeLabel: "—", progress: 0 };
-    const landed = Math.min(totalCount, Math.max(0, Number(item.hitCount) || 0));
+    const timeline = visualActionTimelinesRef.current.get(item.id);
+    let landed = Math.max(0, Number(item.hitCount) || 0);
+    if (timeline) {
+      const serverNow = serverClockRef.current.serverTime
+        + (now - serverClockRef.current.clientPerfAt);
+      const firstImpactAt = timeline.startAt + timeline.durationMs;
+      const scheduledImpacts = serverNow < firstImpactAt
+        ? 0
+        : Math.floor((serverNow - firstImpactAt) / timeline.staggerMs) + 1;
+      // This is the same schedule used by the WebGL projectiles. Confirmed
+      // server hits remain a fallback for actions restored without animation.
+      landed = Math.min(
+        timeline.count,
+        Math.max(0, scheduledImpacts),
+      );
+    }
+    landed = Math.min(totalCount, landed);
     const percentage = Math.round((landed / totalCount) * 100);
     return { timeLabel: `${percentage}%`, progress: landed / totalCount };
   }, []);

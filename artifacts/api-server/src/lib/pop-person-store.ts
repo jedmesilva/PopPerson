@@ -147,6 +147,19 @@ async function enqueueRealtimeNotification(
   );
 }
 
+async function enqueueRealtimeNotificationBatch(
+  tx: SqlExecutor,
+  notifications: PopPersonRealtimeNotification[],
+): Promise<void> {
+  if (notifications.length === 0) return;
+  await tx.execute(
+    sql`SELECT pg_notify(
+      ${POP_PERSON_REALTIME_CHANNEL},
+      ${JSON.stringify({ type: "batch", notifications })}
+    )`,
+  );
+}
+
 function toNumber(value: unknown, fallback = 0): number {
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -1227,9 +1240,11 @@ async function processDueActions(): Promise<void> {
         .limit(100);
 
       let remainingHitBudget = MAX_HITS_PER_TRANSACTION;
+      const roomStateVersions = new Map<string, number>();
       for (const action of runningActions) {
         const previousEvents = await tx
           .select({
+            sequence: actionEventsTable.sequence,
             eventType: actionEventsTable.eventType,
             payload: actionEventsTable.payload,
           })
@@ -1253,6 +1268,10 @@ async function processDueActions(): Promise<void> {
         const previousHitCount = previousEvents.filter(
           (event) => event.eventType === "hit",
         ).length;
+        const previousSequence = previousEvents.reduce(
+          (highest, event) => Math.max(highest, toNumber(event.sequence)),
+          0,
+        );
         const hitCount = Math.max(
           1,
           Math.floor(snapshotNumber(action.ruleSnapshot, "count", 1)),
@@ -1288,8 +1307,21 @@ async function processDueActions(): Promise<void> {
         }
 
         let currentValue = toNumber(cell.currentValue);
-        let lastStateVersion = 0;
+        let roomStateVersion = roomStateVersions.get(action.roomId);
+        if (roomStateVersion === undefined) {
+          const [room] = await tx
+            .select({ stateVersion: roomsTable.stateVersion })
+            .from(roomsTable)
+            .where(eq(roomsTable.id, action.roomId))
+            .limit(1);
+          if (!room) throw new Error(`Ação ${action.id} perdeu sua sala durante a resolução.`);
+          roomStateVersion = toNumber(room.stateVersion);
+          roomStateVersions.set(action.roomId, roomStateVersion);
+        }
+        let lastStateVersion = roomStateVersion;
         let processedHits = 0;
+        const pendingHitEventRows: Array<typeof actionEventsTable.$inferInsert> = [];
+        const pendingHitNotifications: PopPersonRealtimeNotification[] = [];
         const firstHitPreviousValue = previousEvents
           .find((event) => event.eventType === "hit")
           ?.payload?.previousValue;
@@ -1306,33 +1338,11 @@ async function processDueActions(): Promise<void> {
             toNumber(cell.minimumValue),
             previousValue + delta,
           );
-          const [updatedCell] = await tx
-            .update(cellsTable)
-            .set({
-              currentValue: String(finalValue),
-              stateVersion: sql`${cellsTable.stateVersion} + 1`,
-              updatedAt: now,
-            })
-            .where(eq(cellsTable.id, action.cellId))
-            .returning({
-              currentValue: cellsTable.currentValue,
-              stateVersion: cellsTable.stateVersion,
-            });
-          if (!updatedCell) {
-            throw new Error(`Ação ${action.id} não conseguiu atualizar sua célula.`);
-          }
-          currentValue = toNumber(updatedCell.currentValue);
-
-          const [updatedRoom] = await tx
-            .update(roomsTable)
-            .set({
-              stateVersion: sql`${roomsTable.stateVersion} + 1`,
-              updatedAt: now,
-            })
-            .where(eq(roomsTable.id, action.roomId))
-            .returning({ stateVersion: roomsTable.stateVersion });
-          lastStateVersion = toNumber(updatedRoom?.stateVersion);
-          const sequence = Number(await nextActionEventSequence(tx, action.id));
+          currentValue = finalValue;
+          processedHits += 1;
+          roomStateVersion += 1;
+          lastStateVersion = roomStateVersion;
+          const sequence = previousSequence + processedHits;
           const hitEvent: PopPersonHitEvent = {
             eventId: randomUUID(),
             actionId: action.id,
@@ -1349,7 +1359,7 @@ async function processDueActions(): Promise<void> {
             stateVersion: lastStateVersion,
           };
 
-          await tx.insert(actionEventsTable).values({
+          pendingHitEventRows.push({
             actionId: action.id,
             roomId: action.roomId,
             cellId: action.cellId,
@@ -1359,20 +1369,45 @@ async function processDueActions(): Promise<void> {
             deltaValue: String(hitEvent.delta),
             payload: { kind: "action:hit", ...hitEvent },
           });
-          await tx
-            .update(actionsTable)
-            .set({
-              updatedAt: now,
-            })
-            .where(eq(actionsTable.id, action.id));
-          await enqueueRealtimeNotification(tx, {
+          pendingHitNotifications.push({
             type: "action:hit",
             roomId: action.roomId,
             actionId: action.id,
             event: hitEvent,
           });
-          processedHits += 1;
           remainingHitBudget -= 1;
+        }
+
+        if (processedHits > 0) {
+          const [updatedCell] = await tx
+            .update(cellsTable)
+            .set({
+              currentValue: String(currentValue),
+              stateVersion: sql`${cellsTable.stateVersion} + ${processedHits}`,
+              updatedAt: now,
+            })
+            .where(eq(cellsTable.id, action.cellId))
+            .returning({ id: cellsTable.id });
+          if (!updatedCell) {
+            throw new Error(`Ação ${action.id} não conseguiu atualizar sua célula.`);
+          }
+          const [updatedRoom] = await tx
+            .update(roomsTable)
+            .set({
+              stateVersion: sql`${roomsTable.stateVersion} + ${processedHits}`,
+              updatedAt: now,
+            })
+            .where(eq(roomsTable.id, action.roomId))
+            .returning({ stateVersion: roomsTable.stateVersion });
+          roomStateVersion = toNumber(updatedRoom?.stateVersion, roomStateVersion);
+          roomStateVersions.set(action.roomId, roomStateVersion);
+          lastStateVersion = roomStateVersion;
+          await tx.insert(actionEventsTable).values(pendingHitEventRows);
+          await tx
+            .update(actionsTable)
+            .set({ updatedAt: now })
+            .where(eq(actionsTable.id, action.id));
+          await enqueueRealtimeNotificationBatch(tx, pendingHitNotifications);
         }
 
         const recordedHitCount = previousHitCount + processedHits;
