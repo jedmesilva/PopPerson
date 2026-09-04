@@ -207,57 +207,31 @@ function createProgram(
 function getActionProfile(actionType: string): ActionProfile {
   const action = actionType.trim().toLowerCase();
 
-  if (
-    action.includes("attack")
-    || action.includes("atacar")
-    || action.includes("damage")
-    || action.includes("strike")
-  ) {
+  if (action === "hate") {
+    return {
+      duration: 1.65,
+      rise: -126,
+      drift: 42,
+      sizeMin: 30,
+      sizeMax: 48,
+      rotation: 32,
+    };
+  }
+
+  if (action === "fan") {
     return {
       duration: 1.5,
-      rise: -118,
-      drift: 34,
-      sizeMin: 30,
-      sizeMax: 45,
-      rotation: 34,
-    };
-  }
-
-  if (
-    action.includes("defend")
-    || action.includes("defesa")
-    || action.includes("shield")
-    || action.includes("protect")
-  ) {
-    return {
-      duration: 1.35,
-      rise: -78,
-      drift: 21,
-      sizeMin: 29,
-      sizeMax: 42,
-      rotation: 18,
-    };
-  }
-
-  if (
-    action.includes("like")
-    || action.includes("react")
-    || action.includes("love")
-    || action.includes("heart")
-  ) {
-    return {
-      duration: 1.7,
-      rise: -96,
+      rise: -92,
       drift: 28,
-      sizeMin: 31,
+      sizeMin: 30,
       sizeMax: 46,
-      rotation: 24,
+      rotation: 22,
     };
   }
 
   return {
-    duration: 1.65,
-    rise: -92,
+    duration: 1.55,
+    rise: -104,
     drift: 28,
     sizeMin: 29,
     sizeMax: 44,

@@ -1014,6 +1014,36 @@ export default function PopPersonCanvas() {
   }, []);
   const executeActionRef = useRef(executeAction);
   useEffect(() => { executeActionRef.current = executeAction; }, [executeAction]);
+  const spawnActionEmojis = useCallback((serverAction) => {
+    const actionId = String(serverAction?.id ?? "");
+    const targetName = String(serverAction?.targetName ?? "");
+    if (!actionId || !targetName) return;
+
+    const spawnedActions = spawnedEmojiActionIdsRef.current;
+    if (spawnedActions.has(actionId)) return;
+    spawnedActions.add(actionId);
+    if (spawnedActions.size > 2000) {
+      const oldestActionId = spawnedActions.values().next().value;
+      if (oldestActionId) spawnedActions.delete(oldestActionId);
+    }
+
+    const count = Math.min(50_000, Math.max(1, Math.floor(Number(serverAction.count) || 1)));
+    emojiEffectsRef.current?.spawn({
+      targetName,
+      emoji: String(
+        serverAction.levelEmoji
+          || (serverAction.actionType === "fan" ? "❤️" : "💢"),
+      ),
+      count,
+      actionType: String(serverAction.actionType || "hate"),
+    });
+    realtimeDebug("action:emoji-burst", {
+      actionId,
+      targetName,
+      count,
+      actionType: serverAction.actionType,
+    });
+  }, []);
   const handleActionHit = useCallback((hit) => {
     const actionId = hit?.actionId;
     const hitIndex = Number(hit?.hitIndex);
@@ -1049,14 +1079,6 @@ export default function PopPersonCanvas() {
         }
       : action));
 
-    if (targetName && emojiTargetsRef.current.has(targetName)) {
-      emojiEffectsRef.current?.spawn({
-        targetName,
-        emoji: String(hit?.emoji || "✨"),
-        count: 1,
-        actionType: String(hit?.actionType || "hate"),
-      });
-    }
   }, []);
   const startResolvedAction = useCallback((serverAction, resolvedEvent) => {
     const actionId = serverAction?.id || resolvedEvent?.actionId;
@@ -1143,7 +1165,6 @@ export default function PopPersonCanvas() {
       activeActionIdsRef.current = next.map((action) => action.id);
       return next;
     });
-    spawnedEmojiActionIdsRef.current.delete(actionId);
     realtimeDebug("action:removed", { actionId, preserveImpacts: Boolean(options.preserveImpacts) });
   }, []);
   const reconcileServerState = useCallback((serverState, options = {}) => {
@@ -1157,6 +1178,7 @@ export default function PopPersonCanvas() {
       // A snapshot is the present, not a replay buffer. It updates the board
       // and never replays old emoji events.
       emojiEffectsRef.current?.clear();
+      spawnedEmojiActionIdsRef.current.clear();
       latestServerActionsRef.current.clear();
       lastHitSequenceByActionRef.current.clear();
       activeActionIdsRef.current = [];
@@ -1228,7 +1250,7 @@ export default function PopPersonCanvas() {
       actionCount: incomingActions.length,
       resetVisuals,
     });
-  }, [queueAction]);
+  }, [queueAction, spawnActionEmojis]);
   useEffect(() => {
     if (bootstrapQuery.data?.state) {
       reconcileServerState(bootstrapQuery.data.state, { resetVisuals: true });
@@ -1286,6 +1308,7 @@ export default function PopPersonCanvas() {
             && message.action
           ) {
             queueAction(message.action);
+            spawnActionEmojis(message.action);
             realtimeDebug("action:server-authorized", {
               actionId: message.action.id,
               executeAt: message.action.executeAt,
@@ -1349,6 +1372,7 @@ export default function PopPersonCanvas() {
     handleActionHit,
     removeRealtimeAction,
     reconcileServerState,
+    spawnActionEmojis,
     syncServerClock,
   ]);
   const getRemainingUnits = useCallback((item) => {
@@ -1376,8 +1400,9 @@ export default function PopPersonCanvas() {
     function hudTick() {
       const now = performance.now();
       // The local clock only updates the queue countdown. The server must
-      // promote the action to `running` before any projectile is spawned.
-      // Otherwise the canvas could show hits before they exist in the ledger.
+      // promote the action to `running` before its emoji burst is spawned.
+      // Otherwise the canvas could show feedback before the action exists in
+      // the realtime ledger.
       forceTick((t) => t + 1);
       hudRaf = requestAnimationFrame(hudTick);
     }
@@ -1825,7 +1850,7 @@ export default function PopPersonCanvas() {
     };
   }, []);
 
-  const seedMissingRects = useCallback((now = performance.now()) => {
+  const seedMissingRects = useCallback(() => {
     const names = new Set();
     leavesRef.current.forEach((l) => {
       names.add(l.name);
@@ -1841,33 +1866,15 @@ export default function PopPersonCanvas() {
           x: l.x,
           y: l.y,
           r: radius,
-          radiusTarget: radius,
-          radiusFrom: radius,
-          radiusStartedAt: null,
         });
         return;
       }
 
-      if (Math.abs(current.radiusTarget - radius) < 0.001) {
-        pendingRadiusAnimationsRef.current.delete(l.name);
-        return;
-      }
-      const shouldAnimate = pendingRadiusAnimationsRef.current.has(l.name);
-      pendingRadiusAnimationsRef.current.delete(l.name);
-      current.radiusTarget = radius;
-      if (shouldAnimate) {
-        current.radiusFrom = current.r;
-        current.radiusStartedAt = now;
-      } else {
-        current.r = radius;
-        current.radiusFrom = radius;
-        current.radiusStartedAt = null;
-      }
+      // Cell size follows the authoritative value immediately. Action feedback
+      // is rendered exclusively by the WebGL emoji layer.
+      current.r = radius;
     });
     for (const key of animatedCirclesRef.current.keys()) if (!names.has(key)) animatedCirclesRef.current.delete(key);
-    for (const key of pendingRadiusAnimationsRef.current) {
-      if (!names.has(key)) pendingRadiusAnimationsRef.current.delete(key);
-    }
   }, []);
 
   const draw = useCallback(() => {
@@ -1977,22 +1984,6 @@ export default function PopPersonCanvas() {
         setShowRecenter(deviated);
       }
       seedMissingRects();
-      animatedCirclesRef.current.forEach((circle) => {
-        if (circle.radiusStartedAt === null) return;
-        const progress = Math.min(
-          1,
-          Math.max(0, (now - circle.radiusStartedAt) / IMPACT_DURATION_MS),
-        );
-        const eased = easeOutQuad(progress);
-        circle.r = circle.radiusFrom
-          + (circle.radiusTarget - circle.radiusFrom) * eased;
-        if (progress >= 1) {
-          circle.r = circle.radiusTarget;
-          circle.radiusFrom = circle.radiusTarget;
-          circle.radiusStartedAt = null;
-        }
-      });
-
       const lerpFactor = 1 - Math.pow(0.001, dt / 1000);
       leavesRef.current.forEach((target) => {
         const a = animatedCirclesRef.current.get(target.name);
