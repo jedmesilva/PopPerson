@@ -7,10 +7,35 @@ import { logger } from "./lib/logger";
 import { anonymousIdentity } from "./middlewares/anonymous-identity";
 import { authenticatedIdentity } from "./middlewares/authenticated-identity";
 import { generalApiRateLimit } from "./middlewares/rate-limit";
+import { processStripeWebhook } from "./lib/stripe-webhook";
 
 const app: Express = express();
 
 app.set("trust proxy", 1);
+
+// Stripe signs the raw request body. Register this before express.json().
+app.post(
+  "/api/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  async (req, res): Promise<void> => {
+    const signature = req.headers["stripe-signature"];
+    if (!signature) {
+      res.status(400).json({ error: "Missing stripe-signature." });
+      return;
+    }
+
+    try {
+      await processStripeWebhook(
+        req.body as Buffer,
+        Array.isArray(signature) ? signature[0] : signature,
+      );
+      res.status(200).json({ received: true });
+    } catch (error) {
+      req.log.error({ err: error }, "Stripe webhook processing failed");
+      res.status(400).json({ error: "Webhook processing failed." });
+    }
+  },
+);
 
 const corsOrigins = new Set(
   (process.env.CORS_ORIGIN ?? "")

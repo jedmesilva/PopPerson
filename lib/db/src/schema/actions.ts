@@ -13,6 +13,7 @@ import {
   timestamp,
   uniqueIndex,
   uuid,
+  varchar,
 } from "drizzle-orm/pg-core";
 import { z } from "zod/v4";
 import { actionTypesTable } from "./action-types";
@@ -68,6 +69,7 @@ export const actionsTable = pgTable(
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     effectiveImpact: numeric("effective_impact", { precision: 14, scale: 6 }),
     priceCharged: numeric("price_charged", { precision: 14, scale: 2 }),
+    priceCurrency: varchar("price_currency", { length: 3 }).notNull().default("usd"),
     ruleSnapshot: jsonb("rule_snapshot").$type<Record<string, unknown>>().notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
     failureReason: text("failure_reason"),
