@@ -1,0 +1,397 @@
+import React, { useState, useCallback } from "react";
+
+// Dados padrão de fallback, usados só enquanto o backend não fornece a lista de níveis.
+// Formato esperado por nível, vindo da API: { emoji: string, name: string, multiplier: number }
+const DEFAULT_LEVELS = {
+  pt: [
+    { emoji: "😐", name: "Incomodado", multiplier: 1 },
+    { emoji: "🙄", name: "Aborrecido", multiplier: 10 },
+    { emoji: "😒", name: "Irritado", multiplier: 25 },
+    { emoji: "😠", name: "Contrariado", multiplier: 50 },
+    { emoji: "😤", name: "Bravo", multiplier: 100 },
+    { emoji: "😡", name: "Hostil", multiplier: 175 },
+    { emoji: "🤬", name: "Furioso", multiplier: 275 },
+    { emoji: "👿", name: "Revoltado", multiplier: 425 },
+    { emoji: "💥", name: "Possesso", multiplier: 650 },
+    { emoji: "🖕", name: "Enojado", multiplier: 1000 },
+  ],
+  en: [
+    { emoji: "😐", name: "Bothered", multiplier: 1 },
+    { emoji: "🙄", name: "Annoyed", multiplier: 10 },
+    { emoji: "😒", name: "Irritated", multiplier: 25 },
+    { emoji: "😠", name: "Frustrated", multiplier: 50 },
+    { emoji: "😤", name: "Angry", multiplier: 100 },
+    { emoji: "😡", name: "Hostile", multiplier: 175 },
+    { emoji: "🤬", name: "Furious", multiplier: 275 },
+    { emoji: "👿", name: "Outraged", multiplier: 425 },
+    { emoji: "💥", name: "Possessed", multiplier: 650 },
+    { emoji: "🖕", name: "Disgusted", multiplier: 1000 },
+  ],
+};
+
+const UI_TEXT = {
+  pt: {
+    defaultTitle: "Nível de hate",
+    ariaSetIntensity: (n, emoji, name) => `Definir intensidade ${n}: ${emoji} ${name}`,
+    locale: "pt-BR",
+    currency: "BRL",
+  },
+  en: {
+    defaultTitle: "Hate level",
+    ariaSetIntensity: (n, emoji, name) => `Set intensity ${n}: ${emoji} ${name}`,
+    locale: "en-US",
+    currency: "USD",
+  },
+};
+
+// Curva de easing: segura o crescimento nos níveis baixos e acelera
+// forte perto do topo, pra dar impacto real ao "máximo".
+// index é 0-based, count é o total de níveis (vem do tamanho da lista `levels`).
+function easedT(index, count) {
+  const raw = count > 1 ? index / (count - 1) : 0; // 0 a 1
+  return Math.pow(raw, 1.8);
+}
+
+// Interpola de um laranja (nível 1) até um vermelho profundo (nível máximo)
+function levelHsl(index, count) {
+  const t = easedT(index, count);
+  const hue = 28 - t * 28; // 28 (laranja) -> 0 (vermelho)
+  const sat = 62 + t * 30;
+  const light = 56 - t * 16;
+  return { hue, sat, light };
+}
+
+function colorForLevel(index, count) {
+  const { hue, sat, light } = levelHsl(index, count);
+  return `hsl(${hue}, ${sat}%, ${light}%)`;
+}
+
+function accentBgForLevel(index, count) {
+  const { hue, sat, light } = levelHsl(index, count);
+  return `hsla(${hue}, ${sat}%, ${light}%, 0.22)`;
+}
+
+function accentBorderForLevel(index, count) {
+  const { hue, sat, light } = levelHsl(index, count);
+  return `hsla(${hue}, ${sat}%, ${light}%, 0.5)`;
+}
+
+export default function HateSliderPriced({
+  title,
+  value,
+  defaultValue = 4,
+  onChange,
+  lang = "pt",
+  basePrice = 1,
+  // Lista de níveis vinda do backend: [{ emoji, name, multiplier }, ...].
+  // Se não vier, usa o fallback padrão em DEFAULT_LEVELS[lang].
+  levels,
+}) {
+  const resolvedLevels = levels ?? DEFAULT_LEVELS[lang] ?? DEFAULT_LEVELS.pt;
+  const levelCount = resolvedLevels.length;
+
+  const [internalLevel, setInternalLevel] = useState(
+    Math.min(levelCount, Math.max(1, defaultValue))
+  );
+  const level = value ?? internalLevel; // 1-indexed
+  const strings = UI_TEXT[lang] ?? UI_TEXT.pt;
+  const resolvedTitle = title ?? strings.defaultTitle;
+
+  const setLevel = useCallback(
+    (next) => {
+      const clamped = Math.min(levelCount, Math.max(1, next));
+      if (value === undefined) setInternalLevel(clamped);
+      const multiplier = resolvedLevels[clamped - 1].multiplier;
+      onChange?.(clamped, multiplier * basePrice);
+    },
+    [value, onChange, resolvedLevels, basePrice, levelCount]
+  );
+
+  const currentLevelData = resolvedLevels[level - 1];
+  const accent = colorForLevel(level - 1, levelCount);
+  const t = easedT(level - 1, levelCount);
+  const glowPx = t > 0.6 ? (t - 0.6) * 40 : 0;
+
+  const multiplier = currentLevelData.multiplier;
+  const formattedBasePrice = new Intl.NumberFormat(strings.locale, {
+    style: "currency",
+    currency: strings.currency,
+  }).format(basePrice);
+
+  // Escala linear direto sobre o multiplicador: como os valores já crescem de
+  // forma exponencial, o mapeamento linear preserva esse formato
+  // (quase plano no início, disparando no topo) em vez de achatar com log.
+  const multiplierValues = resolvedLevels.map((l) => l.multiplier);
+  const minM = Math.min(...multiplierValues);
+  const maxM = Math.max(...multiplierValues);
+  const mRange = maxM - minM || 1;
+  const barHeightForMultiplier = (m) => {
+    const normalized = (m - minM) / mRange;
+    return 8 + normalized * 66;
+  };
+
+  const THUMB_SIZE = 20; // deve bater com o width do ::-webkit-slider-thumb
+  const fillPct = levelCount > 1 ? ((level - 1) / (levelCount - 1)) * 100 : 0;
+  // Fórmula padrão pra alinhar um elemento externo ao centro do thumb de um <input type="range">:
+  // compensa o fato do thumb não percorrer 0-100% da largura total do input (ele "para" a
+  // meio-thumb de cada borda).
+  const badgeLeft = `calc(${fillPct}% + ${(0.5 - fillPct / 100) * THUMB_SIZE}px)`;
+
+  return (
+    <div style={styles.wrapper}>
+      <style>{`
+        .hate-range {
+          -webkit-appearance: none;
+          appearance: none;
+          width: 100%;
+          height: 20px;
+          background: transparent;
+          outline: none;
+          margin: 0;
+          padding: 0;
+          border: 0;
+        }
+        .hate-range::-webkit-slider-runnable-track {
+          width: 100%;
+          height: 4px;
+          border-radius: 2px;
+          border: 0;
+          margin: 0;
+          background: linear-gradient(
+            to right,
+            var(--accent) 0%,
+            var(--accent) var(--fill-pct),
+            #3a3f4a var(--fill-pct),
+            #3a3f4a 100%
+          );
+        }
+        .hate-range::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          appearance: none;
+          box-sizing: border-box;
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          background: var(--accent);
+          border: 3px solid #1c1f26;
+          box-shadow: 0 0 0 1px var(--accent), 0 0 var(--thumb-glow, 0px) var(--accent);
+          cursor: pointer;
+          margin-top: -8px;
+        }
+        .hate-range::-moz-range-track {
+          width: 100%;
+          height: 4px;
+          border-radius: 2px;
+          border: 0;
+          margin: 0;
+          background: linear-gradient(
+            to right,
+            var(--accent) 0%,
+            var(--accent) var(--fill-pct),
+            #3a3f4a var(--fill-pct),
+            #3a3f4a 100%
+          );
+        }
+        .hate-range::-moz-range-thumb {
+          box-sizing: border-box;
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          background: var(--accent);
+          border: 3px solid #1c1f26;
+          box-shadow: 0 0 0 1px var(--accent), 0 0 var(--thumb-glow, 0px) var(--accent);
+          cursor: pointer;
+        }
+      `}</style>
+
+      <div style={styles.header}>
+        <div style={styles.titleColumn}>
+          <span style={styles.title}>{resolvedTitle}</span>
+          <span style={styles.priceLabel}>{formattedBasePrice}</span>
+        </div>
+        <div
+          style={{
+            ...styles.statusGroup,
+            background: accentBgForLevel(level - 1, levelCount),
+            border: `1px solid ${accentBorderForLevel(level - 1, levelCount)}`,
+            boxShadow: glowPx > 0 ? `0 0 ${glowPx}px ${accentBgForLevel(level - 1, levelCount)}` : "none",
+          }}
+        >
+          <span style={styles.statusEmoji}>{currentLevelData.emoji}</span>
+          <span style={styles.statusLabel}>{currentLevelData.name}</span>
+        </div>
+      </div>
+
+      <div style={styles.barsRow}>
+        {resolvedLevels.map((levelData, i) => {
+          const n = i + 1;
+          const active = n <= level;
+          const isCurrent = n === level;
+          const t = easedT(i, levelCount);
+          const barHeight = barHeightForMultiplier(levelData.multiplier); // 8px a 74px
+          const emojiSize = 12 + t * 11; // 12px a 23px
+          const emojiOpacity = isCurrent ? 1 : 0.3 + t * 0.45; // 0.3 a 0.75, exceto o selecionado
+          const glow = t > 0.6 ? `0 0 ${(t - 0.6) * 45}px ${accent}` : "none";
+          return (
+            <button
+              key={n}
+              type="button"
+              aria-label={strings.ariaSetIntensity(n, levelData.emoji, levelData.name)}
+              aria-pressed={n === level}
+              onClick={() => setLevel(n)}
+              style={styles.barButton}
+            >
+              <div style={styles.barColumn}>
+                <span
+                  aria-hidden="true"
+                  style={{ ...styles.barEmoji, fontSize: emojiSize, opacity: emojiOpacity }}
+                >
+                  {levelData.emoji}
+                </span>
+                <div
+                  style={{
+                    ...styles.bar,
+                    height: barHeight,
+                    background: active ? accent : "#3a3f4a",
+                    opacity: active ? 1 : 0.55,
+                    boxShadow: active ? glow : "none",
+                  }}
+                />
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div style={styles.sliderWrapper}>
+        <input
+          className="hate-range"
+          type="range"
+          min={1}
+          max={levelCount}
+          step={1}
+          value={level}
+          onChange={(e) => setLevel(Number(e.target.value))}
+          style={{
+            "--accent": accent,
+            "--fill-pct": `${fillPct}%`,
+            "--thumb-glow": `${glowPx}px`,
+          }}
+          aria-label={resolvedTitle}
+        />
+        <span
+          aria-hidden="true"
+          style={{
+            ...styles.multiplierBadge,
+            left: badgeLeft,
+            color: accent,
+          }}
+        >
+          {multiplier}x
+        </span>
+      </div>
+    </div>
+  );
+}
+
+const styles = {
+  wrapper: {
+    width: "100%",
+    maxWidth: 420,
+    background: "#1c1f26",
+    borderRadius: 14,
+    padding: "18px 20px 14px",
+    boxSizing: "border-box",
+    fontFamily:
+      "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  },
+  header: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 18,
+  },
+  titleColumn: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+  },
+  title: {
+    fontSize: 14,
+    fontWeight: 600,
+    color: "#e8eaed",
+  },
+  priceLabel: {
+    fontSize: 11,
+    fontWeight: 400,
+    color: "#7a7f8a",
+  },
+  statusGroup: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "6px 12px 6px 8px",
+    borderRadius: 14,
+    boxSizing: "border-box",
+    transition: "background 120ms ease, border-color 120ms ease",
+  },
+  statusEmoji: {
+    fontSize: 18,
+    lineHeight: 1,
+  },
+  statusLabel: {
+    fontSize: 13,
+    fontWeight: 500,
+    color: "#e8eaed",
+  },
+  sliderWrapper: {
+    position: "relative",
+    paddingBottom: 28,
+  },
+  multiplierBadge: {
+    position: "absolute",
+    top: 26,
+    transform: "translateX(-50%)",
+    fontSize: 10,
+    fontWeight: 500,
+    whiteSpace: "nowrap",
+    pointerEvents: "none",
+    transition: "background 120ms ease",
+  },
+  barsRow: {
+    display: "flex",
+    alignItems: "flex-end",
+    gap: 8,
+    height: 100,
+    marginBottom: 10,
+  },
+  barButton: {
+    flex: 1,
+    height: "100%",
+    display: "flex",
+    alignItems: "flex-end",
+    justifyContent: "center",
+    background: "transparent",
+    border: "none",
+    padding: 0,
+    cursor: "pointer",
+  },
+  barColumn: {
+    width: "100%",
+    maxWidth: 22,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 4,
+  },
+  barEmoji: {
+    lineHeight: 1,
+    transition: "font-size 120ms ease, opacity 120ms ease",
+  },
+  bar: {
+    width: "100%",
+    borderRadius: 3,
+    transition: "background 120ms ease, opacity 120ms ease, height 120ms ease, box-shadow 120ms ease",
+  },
+};
