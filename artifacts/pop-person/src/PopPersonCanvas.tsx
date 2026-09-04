@@ -38,6 +38,7 @@ const MODE_LABEL = { atacar: "Ataque", defender: "Defesa" };
 const MAX_CONCURRENT_PROJECTILES = 24;
 const IMPACT_DURATION_MS = 350;
 const PROJECTILE_MAX_LIFETIME_MS = 3000;
+const MIN_CELL_VALUE = 2;
 const CIRCLE_GAP = 2.5;
 // Keep zoom effectively unbounded for users while avoiding browser floating-
 // point and canvas precision problems at the extreme ends of the scale.
@@ -952,6 +953,7 @@ export default function PopPersonCanvas() {
   const leavesRef = useRef([]);
   const selectedCellRef = useRef(null);
   const animatedCirclesRef = useRef(new Map());
+  const visualValuesRef = useRef(new Map());
   const serverDatasetRef = useRef([]);
   const emittersRef = useRef([]);
   const emitterCursorRef = useRef(0);
@@ -986,6 +988,13 @@ export default function PopPersonCanvas() {
   const recenterAnimRef = useRef(null);
   const showRecenterRef = useRef(false);
   useEffect(() => { leavesRef.current = leaves; }, [leaves]);
+  useEffect(() => {
+    dataset.forEach((person) => {
+      if (Number.isFinite(Number(person.value))) {
+        visualValuesRef.current.set(person.name, Number(person.value));
+      }
+    });
+  }, [dataset]);
   useEffect(() => { selectedCellRef.current = selectedCell; }, [selectedCell]);
   useEffect(() => { activeActionIdsRef.current = activeActions.map((a) => a.id); }, [activeActions]);
   const syncServerClock = useCallback((serverTime, clientPerfAt = performance.now()) => {
@@ -1141,6 +1150,10 @@ export default function PopPersonCanvas() {
         serverDatasetRef.current = serverDatasetRef.current.map((person) => (
           person.name === targetName ? { ...person, value: finalValue } : person
         ));
+        visualValuesRef.current.set(targetName, finalValue);
+        setDataset((prev) => prev.map((person) => (
+          person.name === targetName ? { ...person, value: finalValue } : person
+        )));
       }
       realtimeDebug("action:authoritative-update", {
         eventId,
@@ -1312,7 +1325,19 @@ export default function PopPersonCanvas() {
         ? resolvedPreviousValue
           + resolvedDelta * (Math.min(totalCount, hitIndex) / totalCount)
         : Number.NaN;
-    const value = Number.isFinite(eventValue) ? eventValue : resolvedValue;
+    const direction = action?.mode === "defender" ? 1 : -1;
+    const growthPerHit = Number(action?.growthPerHit);
+    const currentVisualValue = Number.isFinite(Number(visualValuesRef.current.get(targetName)))
+      ? Number(visualValuesRef.current.get(targetName))
+      : Number(leavesRef.current.find((person) => person.name === targetName)?.value);
+    const localValue = Number.isFinite(currentVisualValue) && Number.isFinite(growthPerHit)
+      ? Math.max(MIN_CELL_VALUE, currentVisualValue + growthPerHit * direction)
+      : Number.NaN;
+    const value = Number.isFinite(eventValue)
+      ? eventValue
+      : Number.isFinite(resolvedValue)
+        ? resolvedValue
+        : localValue;
     const alreadyVisualized = visualizedHitKeysRef.current.has(hitKey);
     if (targetName && Number.isFinite(value) && !hasContinuousResolution) {
       pendingRadiusAnimationsRef.current.add(targetName);
@@ -1328,10 +1353,13 @@ export default function PopPersonCanvas() {
     // Only commit the final value to React so intermediate hits do not cause
     // the radius tween to chase a new layout target on every impact.
     const shouldCommitDataset = !hasContinuousResolution || hitIndex >= totalCount;
-    if (targetName && Number.isFinite(value) && shouldCommitDataset) {
-      setDataset((prev) => prev.map((person) => (
-        person.name === targetName ? { ...person, value } : person
-      )));
+    if (targetName && Number.isFinite(value)) {
+      visualValuesRef.current.set(targetName, value);
+      if (shouldCommitDataset && hitIndex >= totalCount) {
+        setDataset((prev) => prev.map((person) => (
+          person.name === targetName ? { ...person, value } : person
+        )));
+      }
     }
     pendingHitEventsRef.current.delete(hitKey);
     queuedHitKeysRef.current.delete(hitKey);
@@ -2111,9 +2139,12 @@ export default function PopPersonCanvas() {
     const names = new Set();
     leavesRef.current.forEach((l) => {
       names.add(l.name);
+      const visualValue = Number(visualValuesRef.current.get(l.name));
       const radius = l.isAddCell
         ? getAddPlayerCellWorldRadius(transformRef.current.scale)
-        : l.r;
+        : Number.isFinite(visualValue)
+          ? Math.sqrt(Math.max(0, visualValue)) * 3.2
+          : l.r;
       const current = animatedCirclesRef.current.get(l.name);
       if (!current) {
         animatedCirclesRef.current.set(l.name, {

@@ -7,7 +7,7 @@ Durante uma ação ativa, mantenha o dataset autoritativo recebido do servidor s
 
 **Why:** snapshots podem chegar à frente da animação local ou depois de uma reconexão. Aplicá-los diretamente na célula-alvo faz o valor mudar sem impacto, enquanto ignorá-los por completo pode deixar o cliente divergente após a ação.
 
-**How to apply:** derive the local timeline from `executeAt`, `count`, `staggerMs`, and `duration`; deduplicate local visual effects by `actionId + hitIndex`, and preserve them through final reconciliation.
+**How to apply:** derive the local timeline from `executeAt`, `count`, `staggerMs`, and `duration`; update the displayed radius per local hit using `growthPerHit` and direction; deduplicate effects by `actionId + hitIndex`, and reconcile the final value from the server.
 
 Após um POST de ação confirmado, o cliente pode iniciar um fallback visual local; se o evento resolvido chegar depois, ele deve reconciliar os valores autoritativos sem iniciar uma segunda animação.
 
