@@ -1,0 +1,161 @@
+# Precificação dinâmica de ações de fã/hater por popularidade
+
+## Ideia central
+
+O preço de uma ação (fã ou hater) sobre uma pessoa não é fixo. Ele cresce
+conforme a pessoa fica mais popular — o que barateia entrar cedo em alguém
+novo e encarece manter o mesmo ritmo de crescimento pra quem já é grande.
+
+Isso combina **duas curvas multiplicativas independentes**:
+
+```
+preço final = preçoBase(popularidade) × multiplicadorDoNível
+```
+
+1. **`preçoBase(popularidade)`** — sobe com a fama acumulada da pessoa.
+   Calculado no backend, muda a cada ação.
+2. **`multiplicadorDoNível`** — a intensidade escolhida no slider (1x a
+   1000x), já implementado no frontend (`IntensitySliderPriced` /
+   `HateSliderPriced`). Não muda com popularidade, é fixo por nível.
+
+## 1. Popularidade líquida
+
+```
+popularidade = max(0, totalFãs - totalHaters)
+```
+
+- Ação de **fã** soma popularidade.
+- Ação de **hater** subtrai popularidade.
+- Nunca fica negativa (clamp em 0).
+
+Isso significa que dar hate em alguém popular literalmente barateia agir
+sobre essa pessoa de novo — é o mecanismo que "derruba" quem está no topo.
+
+## 2. Fórmula do preço-base
+
+```
+preçoBase = precoMinimo × (1 + (popularidade / escala) ^ expoente)
+```
+
+| Parâmetro | O que controla | Valor testado no simulador |
+|---|---|---|
+| `precoMinimo` | Preço de alguém com popularidade 0 | R$ 0,10 |
+| `escala` (k) | A partir de que popularidade o preço começa a subir de verdade | 100 |
+| `expoente` | Quão agressiva é a subida pra quem já é popular | 2,0 |
+
+Com esses três valores, o preço-base fica quase parado no começo e dispara
+depois que a popularidade líquida passa da escala (k).
+
+## 3. Exemplos (com k=100, expoente=2, base=R$0,10)
+
+| Popularidade líquida | Preço-base | Preço-base × nível 10 (1000x) |
+|---|---|---|
+| 0 (usuário novo) | R$ 0,10 | R$ 100,00 |
+| 45 | R$ 0,12 | R$ 120,00 |
+| 190 | R$ 0,46 | R$ 460,00 |
+| 850 | R$ 7,33 | R$ 7.330,00 |
+
+O ponto de atenção: como as duas curvas (popularidade e nível) são
+multiplicativas, o topo cresce rápido. Vale testar no simulador antes de
+travar os valores em produção — `escala` e `expoente` controlam o quanto
+isso acelera.
+
+## 4. Onde cada peça vem do backend
+
+Conforme já combinado nos componentes de slider, três coisas vêm prontas
+da API e o frontend só renderiza:
+
+```json
+{
+  "basePrice": 0.46,
+  "levels": [
+    { "emoji": "🤔", "name": "Curioso", "multiplier": 1 },
+    { "emoji": "👀", "name": "Interessado", "multiplier": 10 },
+    { "emoji": "🙂", "name": "Simpatizante", "multiplier": 25 }
+  ]
+}
+```
+
+- `basePrice` — já calculado no backend a partir da popularidade líquida
+  atual da pessoa naquele momento (recalcular a cada carregamento da tela,
+  não no frontend).
+- `levels[].multiplier` — os multiplicadores por nível (podem, no futuro,
+  também ser ajustados dinamicamente pelo backend por político, se quiser
+  variar a curva de nível por pessoa).
+- O frontend (`IntensitySliderPriced` / `HateSliderPriced`) só multiplica
+  `basePrice × levels[nívelEscolhido].multiplier` pra mostrar o preço final
+  — nenhuma lógica de popularidade mora no cliente.
+
+## 5. Onde a lógica de popularidade deve morar no backend
+
+1. Cada politician/pessoa tem um contador de `totalFãs` e `totalHaters`
+   (incrementados a cada ação paga confirmada).
+2. Antes de renderizar a tela da pessoa, calcular
+   `popularidade = max(0, totalFãs - totalHaters)`.
+3. Aplicar a fórmula do preço-base com os parâmetros `precoMinimo`,
+   `escala` e `expoente` (idealmente configuráveis, não hardcoded, pra dar
+   pra ajustar sem deploy).
+4. Retornar `basePrice` já calculado pro frontend junto com `levels`.
+5. Repetir o cálculo a cada nova ação — o preço muda em tempo real
+   conforme a popularidade muda.
+
+## 6. Polarização (métrica separada, complementar)
+
+Popularidade líquida responde "essa pessoa é mais amada ou mais odiada?".
+Não responde "o quanto a opinião sobre ela está dividida?" — pra isso
+precisa de uma métrica diferente, calculada com os mesmos dados de
+fãs/haters.
+
+```
+polarização = 1 - ((fãs - haters) / (fãs + haters)) ^ 2
+```
+
+- Resultado de 0 a 1 (ou 0% a 100%).
+- `fãs + haters = 0` → indefinido (pessoa ainda sem interações).
+- Fãs e haters empatados → polarização = 100% (opinião dividida ao meio).
+- Um dos dois lados domina quase totalmente → polarização perto de 0%
+  (consenso, seja de amor ou de ódio).
+
+### Exemplos
+
+| Fãs | Haters | Popularidade líquida | Polarização |
+|---|---|---|---|
+| 1000 | 1000 | 0 | 100% |
+| 700 | 300 | 400 | 84% |
+| 900 | 100 | 800 | 36% |
+| 950 | 50 | 900 | 19% |
+| 1000 | 10 | 990 | 4% |
+
+A fórmula é sensível: uma minoria relativamente pequena de haters (10% do
+total) já empurra a polarização pra 36%, porque a discordância pesa de
+forma desproporcional (efeito do expoente 2 na fórmula).
+
+### Como as duas métricas se combinam
+
+São dois eixos independentes pra classificar qualquer pessoa:
+
+- **Direção** (popularidade líquida) — mais amada ou mais odiada.
+- **Intensidade da divisão** (polarização) — opinião de um lado só, ou
+  briga equilibrada dos dois lados.
+
+Alguém pode ter popularidade líquida alta e ainda ser razoavelmente
+polarizante, se os haters forem uma fatia relevante mesmo sendo minoria.
+Popularidade líquida perto de zero com volume total alto (fãs ≈ haters)
+é o caso de "ama e odeia" no mesmo grau — o pico de polarização.
+
+No treemap do PopPol, isso dá pra virar um segundo canal visual: tamanho
+da célula continua sendo popularidade, e a cor pode codificar
+polarização — dando pra destacar quem mais divide opinião no momento,
+separado de quem é simplesmente mais popular.
+
+## 7. Parâmetros pra ajustar depois
+
+Se o crescimento no topo estiver fraco ou forte demais em produção, os
+knobs pra mexer são, em ordem de impacto:
+
+- **`expoente`** — o mais forte pra "achatar" ou "acelerar" o topo sem
+  mexer muito no começo da curva.
+- **`escala` (k)** — desloca a partir de que popularidade o preço começa a
+  subir.
+- **`precoMinimo`** — só desloca o preço todo pra cima ou pra baixo,
+  proporcionalmente.
