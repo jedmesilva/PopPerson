@@ -676,7 +676,7 @@ export default function PopPersonCanvas() {
       payment === "success"
         ? {
             kind: "success",
-            message: "Pagamento confirmado. Sua ação será exibida assim que o webhook concluir a confirmação.",
+            message: "Pagamento aprovado. Estamos publicando sua ação — ela aparecerá no jogo em instantes.",
           }
         : {
             kind: "cancelled",
