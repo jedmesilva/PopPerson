@@ -46,6 +46,8 @@ const PLAYER_AUTO_FOCUS_DELAY_MS = 1500;
 const EMPTY_PLAYER_LOCATION = { city: "", region: "", country: "" };
 const PENDING_PLAYER_JOIN_STORAGE_KEY = "instapop:pending-player-join";
 const PENDING_PLAYER_JOIN_MAX_AGE_MS = 15 * 60 * 1000;
+const PENDING_PAYMENT_STORAGE_KEY = "instapop:pending-payment";
+const PENDING_PAYMENT_MAX_AGE_MS = 30 * 60 * 1000;
 
 function getSuggestedPlayerLocation(accessLocation) {
   if (accessLocation?.source !== "ip") return { ...EMPTY_PLAYER_LOCATION };
@@ -679,23 +681,45 @@ export default function PopPersonCanvas() {
   const autoJoinSubmittedRef = useRef(false);
 
   useEffect(() => {
-    const payment = new URLSearchParams(window.location.search).get("payment");
-    if (payment !== "success" && payment !== "cancelled") return;
+    const params = new URLSearchParams(window.location.search);
+    const payment = params.get("payment");
+    let sessionId = params.get("session_id");
+    if (!sessionId) {
+      try {
+        const pending = JSON.parse(window.sessionStorage.getItem(PENDING_PAYMENT_STORAGE_KEY) || "null");
+        if (
+          pending?.sessionId
+          && Number.isFinite(Number(pending.createdAt))
+          && Date.now() - Number(pending.createdAt) <= PENDING_PAYMENT_MAX_AGE_MS
+        ) {
+          sessionId = pending.sessionId;
+        }
+      } catch {
+        // The payment status endpoint remains the authority if storage is unavailable.
+      }
+    }
+    if (payment !== "success" && payment !== "cancelled" && !sessionId) return;
 
     setPaymentNotice(
-      payment === "success"
+      payment === "cancelled"
         ? {
-            kind: "success",
-            message: "Confirmando sua ação…",
-          }
-        : {
             kind: "cancelled",
             message: "Pagamento cancelado",
+          }
+        : {
+            kind: "success",
+            message: "Confirmando sua ação…",
           },
     );
-    if (payment === "success") {
-      setPaymentSessionId(new URLSearchParams(window.location.search).get("session_id"));
+    if (payment !== "cancelled" && sessionId) {
+      setPaymentSessionId(sessionId);
       setPaymentSyncActive(true);
+    } else {
+      try {
+        window.sessionStorage.removeItem(PENDING_PAYMENT_STORAGE_KEY);
+      } catch {
+        // Ignore storage restrictions.
+      }
     }
 
     const cleanUrl = `${window.location.pathname}${window.location.hash}`;
@@ -979,6 +1003,7 @@ export default function PopPersonCanvas() {
   const cellSelectionTimerRef = useRef(null);
   const animatedCirclesRef = useRef(new Map());
   const visualValuesRef = useRef(new Map());
+  const visualValueAnimationsRef = useRef(new Map());
   const serverDatasetRef = useRef([]);
   const serverClockRef = useRef({
     serverTime: Date.now(),
@@ -1012,7 +1037,9 @@ export default function PopPersonCanvas() {
   }, []);
   useEffect(() => {
     dataset.forEach((person) => {
-      if (Number.isFinite(Number(person.value))) {
+      const hasReplayTimeline = [...visualActionTimelinesRef.current.values()]
+        .some((timeline) => timeline.targetName === person.name && timeline.visualReplay);
+      if (Number.isFinite(Number(person.value)) && !hasReplayTimeline) {
         visualValuesRef.current.set(person.name, Number(person.value));
       }
     });
@@ -1111,6 +1138,10 @@ export default function PopPersonCanvas() {
       count,
       durationMs,
       staggerMs,
+      targetName,
+      visualReplay: Boolean(serverAction.visualReplay),
+      visualPreviousValue: Number(serverAction.visualPreviousValue),
+      visualFinalValue: Number(serverAction.visualFinalValue),
     });
     const startDelayMs = Number.isFinite(startedAt)
       ? Math.max(0, startedAt - serverNow)
@@ -1157,7 +1188,13 @@ export default function PopPersonCanvas() {
       serverDatasetRef.current = serverDatasetRef.current.map((person) => (
         person.name === targetName ? { ...person, value: hitValue } : person
       ));
-      visualValuesRef.current.set(targetName, hitValue);
+      const currentVisualValue = Number(visualValuesRef.current.get(targetName));
+      visualValueAnimationsRef.current.set(targetName, {
+        from: Number.isFinite(currentVisualValue) ? currentVisualValue : hitValue,
+        to: hitValue,
+        startedAt: performance.now(),
+        durationMs: 280,
+      });
       setDataset((prev) => prev.map((person) => (
         person.name === targetName ? { ...person, value: hitValue } : person
       )));
@@ -1288,7 +1325,7 @@ export default function PopPersonCanvas() {
     });
     realtimeDebug("action:removed", { actionId, preserveImpacts: Boolean(options.preserveImpacts) });
   }, []);
-  const replayPaidAction = useCallback((serverAction) => {
+  const replayPaidAction = useCallback((serverAction, replay) => {
     const actionId = String(serverAction?.id ?? "");
     if (!actionId || paymentReplayActionIdRef.current === actionId) return;
     paymentReplayActionIdRef.current = actionId;
@@ -1303,10 +1340,22 @@ export default function PopPersonCanvas() {
       completedAt: null,
       hitCount: 0,
       lastHitAt: null,
+      visualReplay: Boolean(replay),
+      visualPreviousValue: Number(replay?.previousValue),
+      visualFinalValue: Number(replay?.finalValue),
     };
 
     locallyCreatedActionIdsRef.current.add(actionId);
     latestServerActionsRef.current.set(actionId, replayAction);
+    if (replay?.targetName && Number.isFinite(Number(replay.previousValue))) {
+      const targetName = String(replay.targetName);
+      const previousValue = Number(replay.previousValue);
+      visualValueAnimationsRef.current.delete(targetName);
+      visualValuesRef.current.set(targetName, previousValue);
+      setDataset((previousDataset) => previousDataset.map((person) => (
+        person.name === targetName ? { ...person, value: previousValue } : person
+      )));
+    }
     spawnActionEmojis(replayAction);
     executeActionRef.current(replayAction);
 
@@ -1321,6 +1370,16 @@ export default function PopPersonCanvas() {
     if (previousTimer) window.clearTimeout(previousTimer);
     const cleanupTimer = window.setTimeout(() => {
       paymentReplayCleanupTimersRef.current.delete(actionId);
+      const targetName = String(replay?.targetName || serverAction.targetName || "");
+      const finalValue = Number(replay?.finalValue);
+      visualActionTimelinesRef.current.delete(actionId);
+      if (targetName && Number.isFinite(finalValue)) {
+        visualValueAnimationsRef.current.delete(targetName);
+        visualValuesRef.current.set(targetName, finalValue);
+        setDataset((previousDataset) => previousDataset.map((person) => (
+          person.name === targetName ? { ...person, value: finalValue } : person
+        )));
+      }
       removeRealtimeAction(actionId, { preserveImpacts: true });
     }, replayDurationMs);
     paymentReplayCleanupTimersRef.current.set(actionId, cleanupTimer);
@@ -1437,11 +1496,16 @@ export default function PopPersonCanvas() {
       kind: "success",
       message: "Ação confirmada",
     });
+    try {
+      window.sessionStorage.removeItem(PENDING_PAYMENT_STORAGE_KEY);
+    } catch {
+      // Ignore storage restrictions.
+    }
     if (paymentStatus.action?.status === "completed") {
       // The server may finish the action while the customer is on Stripe.
       // Recreate its visual timeline locally after the initial snapshot so
       // returning from Checkout never loses the paid action animation.
-      replayPaidAction(paymentStatus.action);
+      replayPaidAction(paymentStatus.action, paymentStatus.replay);
     } else if (paymentStatus.action?.status === "running") {
       spawnActionEmojis(paymentStatus.action);
       queueAction(paymentStatus.action);
@@ -1907,10 +1971,21 @@ export default function PopPersonCanvas() {
           submittingActionRef.current = false;
           idempotencyKeyRef.current = null;
           idempotencyPayloadRef.current = "";
-            if (!checkout?.checkoutUrl) {
-              return;
-            }
-            window.location.assign(checkout.checkoutUrl);
+          if (!checkout?.checkoutUrl) {
+            return;
+          }
+          try {
+            window.sessionStorage.setItem(
+              PENDING_PAYMENT_STORAGE_KEY,
+              JSON.stringify({
+                sessionId: checkout.checkoutSessionId,
+                createdAt: Date.now(),
+              }),
+            );
+          } catch {
+            // The return URL still carries the session id when storage is unavailable.
+          }
+          window.location.assign(checkout.checkoutUrl);
         },
         onError: (error) => {
           // Keep the same key for a retry of the same request. This protects
@@ -2058,6 +2133,52 @@ export default function PopPersonCanvas() {
 
   const seedMissingRects = useCallback(() => {
     const names = new Set();
+    const now = performance.now();
+    const serverNow = serverClockRef.current.serverTime
+      + (now - serverClockRef.current.clientPerfAt);
+    const activeVisualReplayTargets = new Set();
+    visualActionTimelinesRef.current.forEach((timeline) => {
+      if (
+        !timeline.visualReplay
+        || !timeline.targetName
+        || !Number.isFinite(timeline.visualPreviousValue)
+        || !Number.isFinite(timeline.visualFinalValue)
+      ) {
+        return;
+      }
+      activeVisualReplayTargets.add(timeline.targetName);
+      const elapsedAfterFirstHit = serverNow - (timeline.startAt + timeline.durationMs);
+      const progress = elapsedAfterFirstHit < 0
+        ? 0
+        : timeline.staggerMs > 0
+          ? Math.min(
+              1,
+              (1 + elapsedAfterFirstHit / timeline.staggerMs) / Math.max(1, timeline.count),
+            )
+          : 1;
+      visualValuesRef.current.set(
+        timeline.targetName,
+        timeline.visualPreviousValue
+          + (timeline.visualFinalValue - timeline.visualPreviousValue) * progress,
+      );
+      visualValueAnimationsRef.current.delete(timeline.targetName);
+    });
+    visualValueAnimationsRef.current.forEach((animation, targetName) => {
+      if (activeVisualReplayTargets.has(targetName)) return;
+      const progress = Math.min(
+        1,
+        Math.max(0, (now - animation.startedAt) / Math.max(1, animation.durationMs)),
+      );
+      const eased = easeOutQuad(progress);
+      visualValuesRef.current.set(
+        targetName,
+        animation.from + (animation.to - animation.from) * eased,
+      );
+      if (progress >= 1) {
+        visualValuesRef.current.set(targetName, animation.to);
+        visualValueAnimationsRef.current.delete(targetName);
+      }
+    });
     leavesRef.current.forEach((l) => {
       names.add(l.name);
       const visualValue = Number(visualValuesRef.current.get(l.name));
@@ -2076,8 +2197,10 @@ export default function PopPersonCanvas() {
         return;
       }
 
-      // Cell size follows the authoritative value immediately. Action feedback
-      // is rendered exclusively by the WebGL emoji layer.
+      // The server value remains authoritative, but a payment replay (or a
+      // confirmed live hit) owns the visual value until its short timeline
+      // finishes. This prevents a post-Checkout snapshot from skipping the
+      // paid action's growth animation.
       current.r = radius;
     });
     for (const key of animatedCirclesRef.current.keys()) if (!names.has(key)) animatedCirclesRef.current.delete(key);

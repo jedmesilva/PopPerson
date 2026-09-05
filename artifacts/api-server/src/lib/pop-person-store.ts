@@ -1008,11 +1008,54 @@ export async function getPopPersonPaymentStatus(
   const [action] = order.actionId
     ? await getActions(order.roomId, order.actionId)
     : [];
+  const [resolution] = order.actionId
+    ? await db
+        .select({ payload: actionEventsTable.payload })
+        .from(actionEventsTable)
+        .where(
+          and(
+            eq(actionEventsTable.actionId, order.actionId),
+            eq(actionEventsTable.eventType, "completed"),
+          ),
+        )
+        .orderBy(desc(actionEventsTable.sequence))
+        .limit(1)
+    : [];
+  const resolutionPayload = resolution?.payload && typeof resolution.payload === "object"
+    ? resolution.payload as Record<string, unknown>
+    : {};
+  const replayFinalValue = toNumber(resolutionPayload.finalValue, Number.NaN);
+  const replayDelta = toNumber(resolutionPayload.delta, Number.NaN);
+  const replayPreviousValue = toNumber(
+    resolutionPayload.previousValue,
+    Number.isFinite(replayFinalValue) && Number.isFinite(replayDelta)
+      ? replayFinalValue - replayDelta
+      : Number.NaN,
+  );
+  const replay = action?.status === "completed"
+    && Number.isFinite(replayPreviousValue)
+    && Number.isFinite(replayFinalValue)
+    ? {
+        targetName: action.targetName,
+        previousValue: replayPreviousValue,
+        finalValue: replayFinalValue,
+        delta: Number.isFinite(replayDelta)
+          ? replayDelta
+          : replayFinalValue - replayPreviousValue,
+        hitCount: Math.max(
+          1,
+          toNumber(resolutionPayload.hitCount, action.count),
+        ),
+        durationMs: Math.max(0, action.duration),
+        intervalMs: Math.max(0, action.staggerMs),
+      }
+    : null;
 
   return {
     status: order.status,
     actionId: order.actionId ?? null,
     action: action ?? null,
+    replay,
   };
 }
 

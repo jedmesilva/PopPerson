@@ -614,7 +614,7 @@ components:
           maxLength: 3
     PopPersonPaymentStatus:
       type: object
-      required: [status, actionId, action]
+      required: [status, actionId, action, replay]
       properties:
         status:
           type: string
@@ -624,6 +624,30 @@ components:
         action:
           oneOf:
             - $ref: "#/components/schemas/PopPersonAction"
+            - type: "null"
+        replay:
+          description: Visual replay data for a completed paid action.
+          oneOf:
+            - type: object
+              required: [targetName, previousValue, finalValue, delta, hitCount, durationMs, intervalMs]
+              properties:
+                targetName:
+                  type: string
+                previousValue:
+                  type: number
+                finalValue:
+                  type: number
+                delta:
+                  type: number
+                hitCount:
+                  type: number
+                  minimum: 1
+                durationMs:
+                  type: number
+                  minimum: 0
+                intervalMs:
+                  type: number
+                  minimum: 0
             - type: "null"
     PopPersonBootstrap:
       type: object

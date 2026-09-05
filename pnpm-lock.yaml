@@ -200,6 +200,12 @@ importers:
       pino-http:
         specifier: ^10.5.0
         version: 10.5.0
+      stripe:
+        specifier: ^22.6.1
+        version: 22.6.1(@types/node@25.9.5)
+      stripe-replit-sync:
+        specifier: ^1.0.0
+        version: 1.0.0(stripe@22.6.1(@types/node@25.9.5))
       ws:
         specifier: ^8.21.3
         version: 8.21.3

@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { PopPersonAction } from './popPersonAction';
+import type { PopPersonPaymentStatusReplay } from './popPersonPaymentStatusReplay';
 import type { PopPersonPaymentStatusStatus } from './popPersonPaymentStatusStatus';
 
 export interface PopPersonPaymentStatus {
@@ -13,4 +14,6 @@ export interface PopPersonPaymentStatus {
   /** @nullable */
   actionId: string | null;
   action: PopPersonAction | null;
+  /** Visual replay data for a completed paid action. */
+  replay: PopPersonPaymentStatusReplay;
 }

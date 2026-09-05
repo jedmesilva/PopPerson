@@ -493,6 +493,11 @@ export const getPopPersonPaymentStatusResponseActionOneDurationMin = 0;
 export const getPopPersonPaymentStatusResponseActionOnePriceMin = 0;
 
 
+export const getPopPersonPaymentStatusResponseReplayOneDurationMsMin = 0;
+
+export const getPopPersonPaymentStatusResponseReplayOneIntervalMsMin = 0;
+
+
 
 export const GetPopPersonPaymentStatusResponse = zod.object({
   "status": zod.enum(['pending', 'paid', 'failed', 'expired', 'cancelled']),
@@ -522,7 +527,16 @@ export const GetPopPersonPaymentStatusResponse = zod.object({
   "duration": zod.number().min(getPopPersonPaymentStatusResponseActionOneDurationMin),
   "price": zod.number().min(getPopPersonPaymentStatusResponseActionOnePriceMin),
   "shake": zod.boolean()
-}),zod.null()])
+}),zod.null()]),
+  "replay": zod.union([zod.object({
+  "targetName": zod.string(),
+  "previousValue": zod.number(),
+  "finalValue": zod.number(),
+  "delta": zod.number(),
+  "hitCount": zod.number().min(1),
+  "durationMs": zod.number().min(getPopPersonPaymentStatusResponseReplayOneDurationMsMin),
+  "intervalMs": zod.number().min(getPopPersonPaymentStatusResponseReplayOneIntervalMsMin)
+}),zod.null()]).describe('Visual replay data for a completed paid action.')
 })
 
 

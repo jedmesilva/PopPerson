@@ -313,11 +313,29 @@ export const PopPersonPaymentStatusStatus = {
   cancelled: 'cancelled',
 } as const;
 
+/**
+ * Visual replay data for a completed paid action.
+ */
+export type PopPersonPaymentStatusReplay = {
+  targetName: string;
+  previousValue: number;
+  finalValue: number;
+  delta: number;
+  /** @minimum 1 */
+  hitCount: number;
+  /** @minimum 0 */
+  durationMs: number;
+  /** @minimum 0 */
+  intervalMs: number;
+} | null;
+
 export interface PopPersonPaymentStatus {
   status: PopPersonPaymentStatusStatus;
   /** @nullable */
   actionId: string | null;
   action: PopPersonAction | null;
+  /** Visual replay data for a completed paid action. */
+  replay: PopPersonPaymentStatusReplay;
 }
 
 export interface AuthenticatedUser {
