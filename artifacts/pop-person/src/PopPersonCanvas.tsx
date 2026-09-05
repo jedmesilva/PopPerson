@@ -49,6 +49,66 @@ const PENDING_PLAYER_JOIN_MAX_AGE_MS = 15 * 60 * 1000;
 const PENDING_PAYMENT_STORAGE_KEY = "instapop:pending-payment";
 const PENDING_PAYMENT_MAX_AGE_MS = 30 * 60 * 1000;
 
+function getPaymentStorages() {
+  if (typeof window === "undefined") return [];
+  const storages = [];
+  for (const getStorage of [
+    () => window.localStorage,
+    () => window.sessionStorage,
+  ]) {
+    try {
+      const storage = getStorage();
+      if (!storages.includes(storage)) storages.push(storage);
+    } catch {
+      // A browser may deny one storage area while allowing the other.
+    }
+  }
+  return storages;
+}
+
+function readPendingPayment() {
+  for (const storage of getPaymentStorages()) {
+    try {
+      const raw = storage.getItem(PENDING_PAYMENT_STORAGE_KEY);
+      if (!raw) continue;
+      const pending = JSON.parse(raw);
+      if (
+        !pending?.sessionId
+        || !Number.isFinite(Number(pending.createdAt))
+        || Date.now() - Number(pending.createdAt) > PENDING_PAYMENT_MAX_AGE_MS
+      ) {
+        storage.removeItem(PENDING_PAYMENT_STORAGE_KEY);
+        continue;
+      }
+      return pending;
+    } catch {
+      // Continue with the other storage or the URL session id.
+    }
+  }
+  return null;
+}
+
+function writePendingPayment(pending) {
+  const serialized = JSON.stringify(pending);
+  for (const storage of getPaymentStorages()) {
+    try {
+      storage.setItem(PENDING_PAYMENT_STORAGE_KEY, serialized);
+    } catch {
+      // Storage may be unavailable in private browsing or embedded previews.
+    }
+  }
+}
+
+function clearPendingPayment() {
+  for (const storage of getPaymentStorages()) {
+    try {
+      storage.removeItem(PENDING_PAYMENT_STORAGE_KEY);
+    } catch {
+      // Ignore storage restrictions.
+    }
+  }
+}
+
 function getSuggestedPlayerLocation(accessLocation) {
   if (accessLocation?.source !== "ip") return { ...EMPTY_PLAYER_LOCATION };
   const cleanValue = (value) => value && value !== "—" ? value : "";
@@ -612,8 +672,13 @@ export default function PopPersonCanvas() {
     },
   });
   const createActionMutation = useCreatePopPersonAction();
-  const [paymentSessionId, setPaymentSessionId] = useState(null);
-  const [paymentSyncActive, setPaymentSyncActive] = useState(false);
+  const initialPendingPayment = readPendingPayment();
+  const [paymentSessionId, setPaymentSessionId] = useState(
+    () => initialPendingPayment?.sessionId ?? null,
+  );
+  const [paymentSyncActive, setPaymentSyncActive] = useState(
+    () => Boolean(initialPendingPayment?.sessionId),
+  );
   const paymentStatusQuery = useGetPopPersonPaymentStatus(paymentSessionId ?? "", {
     query: {
       enabled: paymentSyncActive && Boolean(paymentSessionId),
@@ -676,6 +741,7 @@ export default function PopPersonCanvas() {
   const submittingActionRef = useRef(false);
   const idempotencyKeyRef = useRef(null);
   const idempotencyPayloadRef = useRef("");
+  const pendingPaymentRef = useRef(initialPendingPayment);
   const playerLocationEditedRef = useRef(false);
   const pendingAutoJoinRef = useRef(false);
   const autoJoinSubmittedRef = useRef(false);
@@ -685,18 +751,7 @@ export default function PopPersonCanvas() {
     const payment = params.get("payment");
     let sessionId = params.get("session_id");
     if (!sessionId) {
-      try {
-        const pending = JSON.parse(window.sessionStorage.getItem(PENDING_PAYMENT_STORAGE_KEY) || "null");
-        if (
-          pending?.sessionId
-          && Number.isFinite(Number(pending.createdAt))
-          && Date.now() - Number(pending.createdAt) <= PENDING_PAYMENT_MAX_AGE_MS
-        ) {
-          sessionId = pending.sessionId;
-        }
-      } catch {
-        // The payment status endpoint remains the authority if storage is unavailable.
-      }
+      sessionId = pendingPaymentRef.current?.sessionId ?? null;
     }
     if (payment !== "success" && payment !== "cancelled" && !sessionId) return;
 
@@ -712,14 +767,15 @@ export default function PopPersonCanvas() {
           },
     );
     if (payment !== "cancelled" && sessionId) {
+      pendingPaymentRef.current = {
+        ...(pendingPaymentRef.current ?? {}),
+        sessionId,
+      };
       setPaymentSessionId(sessionId);
       setPaymentSyncActive(true);
     } else {
-      try {
-        window.sessionStorage.removeItem(PENDING_PAYMENT_STORAGE_KEY);
-      } catch {
-        // Ignore storage restrictions.
-      }
+      pendingPaymentRef.current = null;
+      clearPendingPayment();
     }
 
     const cleanUrl = `${window.location.pathname}${window.location.hash}`;
@@ -1018,6 +1074,15 @@ export default function PopPersonCanvas() {
   const activeActionIdsRef = useRef([]);
   const latestServerActionsRef = useRef(new Map());
   const visualActionTimelinesRef = useRef(new Map());
+  const paymentVisualHoldsRef = useRef(new Map(
+    initialPendingPayment?.targetName
+      && Number.isFinite(Number(initialPendingPayment.previousValue))
+      ? [[
+          String(initialPendingPayment.targetName),
+          Number(initialPendingPayment.previousValue),
+        ]]
+      : [],
+  ));
   const processedRealtimeEventIdsRef = useRef(new Set());
   const locallyCreatedActionIdsRef = useRef(new Set());
   const latestServerStateVersionRef = useRef(-1);
@@ -1039,7 +1104,11 @@ export default function PopPersonCanvas() {
     dataset.forEach((person) => {
       const hasReplayTimeline = [...visualActionTimelinesRef.current.values()]
         .some((timeline) => timeline.targetName === person.name && timeline.visualReplay);
-      if (Number.isFinite(Number(person.value)) && !hasReplayTimeline) {
+      if (
+        Number.isFinite(Number(person.value))
+        && !hasReplayTimeline
+        && !paymentVisualHoldsRef.current.has(person.name)
+      ) {
         visualValuesRef.current.set(person.name, Number(person.value));
       }
     });
@@ -1237,6 +1306,10 @@ export default function PopPersonCanvas() {
     spawnedEmojiActionIdsRef.current.delete(actionId);
     visualActionTimelinesRef.current.delete(actionId);
     lastHitSequenceByActionRef.current.delete(actionId);
+    if (pendingPaymentRef.current?.actionId === actionId) {
+      pendingPaymentRef.current = null;
+      clearPendingPayment();
+    }
     setQueue((prev) => prev.filter((action) => action.id !== actionId));
     setActiveActions((prev) => prev.filter((action) => action.id !== actionId));
     activeActionIdsRef.current = activeActionIdsRef.current.filter((id) => id !== actionId);
@@ -1350,6 +1423,14 @@ export default function PopPersonCanvas() {
     if (replay?.targetName && Number.isFinite(Number(replay.previousValue))) {
       const targetName = String(replay.targetName);
       const previousValue = Number(replay.previousValue);
+      paymentVisualHoldsRef.current.set(targetName, previousValue);
+      pendingPaymentRef.current = {
+        ...(pendingPaymentRef.current ?? {}),
+        actionId,
+        phase: "replaying",
+        replay,
+      };
+      writePendingPayment(pendingPaymentRef.current);
       visualValueAnimationsRef.current.delete(targetName);
       visualValuesRef.current.set(targetName, previousValue);
       setDataset((previousDataset) => previousDataset.map((person) => (
@@ -1376,9 +1457,17 @@ export default function PopPersonCanvas() {
       if (targetName && Number.isFinite(finalValue)) {
         visualValueAnimationsRef.current.delete(targetName);
         visualValuesRef.current.set(targetName, finalValue);
+        paymentVisualHoldsRef.current.delete(targetName);
         setDataset((previousDataset) => previousDataset.map((person) => (
           person.name === targetName ? { ...person, value: finalValue } : person
         )));
+      }
+      if (
+        pendingPaymentRef.current?.actionId === actionId
+        || !pendingPaymentRef.current?.actionId
+      ) {
+        pendingPaymentRef.current = null;
+        clearPendingPayment();
       }
       removeRealtimeAction(actionId, { preserveImpacts: true });
     }, replayDurationMs);
@@ -1452,7 +1541,13 @@ export default function PopPersonCanvas() {
         latestServerActionsRef.current.set(serverAction.id, serverAction);
         queueAction(serverAction);
       });
-      setDataset(serverState.dataset);
+      const displayedDataset = serverState.dataset.map((person) => {
+        const heldValue = paymentVisualHoldsRef.current.get(person.name);
+        return Number.isFinite(Number(heldValue))
+          ? { ...person, value: Number(heldValue) }
+          : person;
+      });
+      setDataset(displayedDataset);
     }
 
     if (serverStateHydratedRef.current && !resetVisuals) {
@@ -1496,20 +1591,35 @@ export default function PopPersonCanvas() {
       kind: "success",
       message: "Ação confirmada",
     });
-    try {
-      window.sessionStorage.removeItem(PENDING_PAYMENT_STORAGE_KEY);
-    } catch {
-      // Ignore storage restrictions.
-    }
     if (paymentStatus.action?.status === "completed") {
       // The server may finish the action while the customer is on Stripe.
       // Recreate its visual timeline locally after the initial snapshot so
       // returning from Checkout never loses the paid action animation.
-      replayPaidAction(paymentStatus.action, paymentStatus.replay);
+      if (paymentStatus.replay) {
+        replayPaidAction(paymentStatus.action, paymentStatus.replay);
+      } else {
+        // Keep the server result authoritative if an old completed action has
+        // no resolution payload to replay. Do not leave the cell held forever.
+        paymentVisualHoldsRef.current.delete(paymentStatus.action.targetName);
+        pendingPaymentRef.current = null;
+        clearPendingPayment();
+      }
     } else if (paymentStatus.action?.status === "running") {
+      pendingPaymentRef.current = {
+        ...(pendingPaymentRef.current ?? {}),
+        actionId: paymentStatus.action.id,
+        phase: "live",
+      };
+      writePendingPayment(pendingPaymentRef.current);
       spawnActionEmojis(paymentStatus.action);
       queueAction(paymentStatus.action);
     } else if (paymentStatus.action) {
+      pendingPaymentRef.current = {
+        ...(pendingPaymentRef.current ?? {}),
+        actionId: paymentStatus.action.id,
+        phase: "queued",
+      };
+      writePendingPayment(pendingPaymentRef.current);
       queueAction(paymentStatus.action);
     }
     void stateQuery.refetch();
@@ -1957,6 +2067,7 @@ export default function PopPersonCanvas() {
       idempotencyKeyRef.current = crypto.randomUUID();
     }
     submittingActionRef.current = true;
+    const targetSnapshot = leaves.find((leaf) => leaf.name === selectedCell);
     createActionMutation.mutate(
       {
         data: {
@@ -1974,17 +2085,12 @@ export default function PopPersonCanvas() {
           if (!checkout?.checkoutUrl) {
             return;
           }
-          try {
-            window.sessionStorage.setItem(
-              PENDING_PAYMENT_STORAGE_KEY,
-              JSON.stringify({
-                sessionId: checkout.checkoutSessionId,
-                createdAt: Date.now(),
-              }),
-            );
-          } catch {
-            // The return URL still carries the session id when storage is unavailable.
-          }
+          writePendingPayment({
+            sessionId: checkout.checkoutSessionId,
+            targetName: selectedCell,
+            previousValue: Number(targetSnapshot?.value),
+            createdAt: Date.now(),
+          });
           window.location.assign(checkout.checkoutUrl);
         },
         onError: (error) => {
@@ -1999,7 +2105,7 @@ export default function PopPersonCanvas() {
         },
       },
     );
-  }, [authenticatedUser, pendingMode, selectedActionType, selectedLevel, modalLevel, selectedCell, closeModal, createActionMutation, queueAction]);
+  }, [authenticatedUser, pendingMode, selectedActionType, selectedLevel, modalLevel, selectedCell, leaves, closeModal, createActionMutation, queueAction]);
   const selectedCellData = useMemo(() => leaves.find((l) => l.name === selectedCell) || null, [leaves, selectedCell]);
   const selectedActionPrice = useMemo(
     () => getActionTotalPrice(selectedCellData?.basePrice, selectedLevel),
