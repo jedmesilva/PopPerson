@@ -17,3 +17,4 @@
 - [HUD de ações](action-hud-rendering.md) — pill e fila devem compartilhar dados normalizados e atualização temporizada, sem emojis duplicados nem renderização contínua.
 - [Piso de cobrança Stripe](stripe-payment-floor.md) — Checkout BRL rejeita valores muito baixos após conversão; o preço-base precisa aplicar o piso técnico no servidor.
 - [Replay pós-Checkout](payment-replay-after-checkout.md) — ações pagas podem terminar enquanto o cliente está no Stripe; o retorno precisa reproduzir a animação localmente.
+- [Checkout customizado Stripe](stripe-custom-payment-element.md) — PaymentIntent + PaymentElement evita redirects e mudanças frequentes do Checkout Embedded.

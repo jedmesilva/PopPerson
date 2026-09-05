@@ -66,10 +66,13 @@ function getPaymentStorages() {
   return storages;
 }
 
-function EmbeddedCheckoutModal({ checkout, onClose, onComplete }) {
+function CustomPaymentModal({ checkout, onClose, onComplete }) {
   const mountRef = useRef(null);
-  const checkoutRef = useRef(null);
+  const stripeRef = useRef(null);
+  const elementsRef = useRef(null);
+  const paymentElementRef = useRef(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const onCompleteRef = useRef(onComplete);
 
@@ -82,20 +85,29 @@ function EmbeddedCheckoutModal({ checkout, onClose, onComplete }) {
     setIsLoading(true);
     setError(null);
 
-    async function mountCheckout() {
+    async function mountPaymentElement() {
       try {
         const stripe = await loadStripe(checkout.publishableKey);
         if (!stripe) throw new Error("Não foi possível carregar o checkout seguro.");
-        const embeddedCheckout = await (stripe as any).createEmbeddedCheckoutPage({
+        const elements = stripe.elements({
           clientSecret: checkout.clientSecret,
-          onComplete: () => onCompleteRef.current?.(),
+          appearance: {
+            theme: "stripe",
+            variables: {
+              colorPrimary: "#18181b",
+              borderRadius: "12px",
+              fontFamily: "Inter, system-ui, sans-serif",
+            },
+          },
         });
         if (cancelled || !mountRef.current) {
-          embeddedCheckout.destroy();
           return;
         }
-        checkoutRef.current = embeddedCheckout;
-        embeddedCheckout.mount(mountRef.current);
+        const paymentElement = elements.create("payment");
+        paymentElement.mount(mountRef.current);
+        stripeRef.current = stripe;
+        elementsRef.current = elements;
+        paymentElementRef.current = paymentElement;
         setIsLoading(false);
       } catch (mountError) {
         if (cancelled) return;
@@ -104,20 +116,57 @@ function EmbeddedCheckoutModal({ checkout, onClose, onComplete }) {
       }
     }
 
-    void mountCheckout();
+    void mountPaymentElement();
     return () => {
       cancelled = true;
-      checkoutRef.current?.destroy();
-      checkoutRef.current = null;
+      paymentElementRef.current?.destroy();
+      paymentElementRef.current = null;
+      elementsRef.current = null;
+      stripeRef.current = null;
     };
   }, [checkout.clientSecret, checkout.publishableKey]);
+
+  const submitPayment = async (event) => {
+    event.preventDefault();
+    if (!stripeRef.current || !elementsRef.current || isSubmitting) return;
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      const result = await stripeRef.current.confirmPayment({
+        elements: elementsRef.current,
+        redirect: "if_required",
+      });
+      if (result.error) {
+        setError(result.error.message || "Não foi possível confirmar o pagamento.");
+        setIsSubmitting(false);
+        return;
+      }
+      if (
+        result.paymentIntent?.status === "succeeded"
+        || result.paymentIntent?.status === "processing"
+      ) {
+        onCompleteRef.current?.();
+        return;
+      }
+      setError("O pagamento ainda não foi confirmado. Tente novamente.");
+      setIsSubmitting(false);
+    } catch (submitError) {
+      setError(submitError?.message || "Não foi possível confirmar o pagamento.");
+      setIsSubmitting(false);
+    }
+  };
+
+  const amountLabel = new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: String(checkout.currency || "BRL").toUpperCase(),
+  }).format(Number(checkout.amount) || 0);
 
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="checkout-modal-title"
-      data-testid="modal-stripe-checkout"
+      data-testid="modal-custom-checkout"
       style={{
         position: "fixed",
         inset: 0,
@@ -177,10 +226,14 @@ function EmbeddedCheckoutModal({ checkout, onClose, onComplete }) {
             <X size={16} aria-hidden="true" />
           </button>
         </div>
-        <div style={{ position: "relative", minHeight: "470px", overflowY: "auto" }}>
+        <form onSubmit={submitPayment} style={{ position: "relative", minHeight: "470px", overflowY: "auto", padding: "18px" }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "12px", marginBottom: "16px", color: "#27272a" }}>
+            <span style={{ fontSize: "12px", color: "#71717a" }}>Total da ação</span>
+            <strong style={{ fontSize: "18px" }}>{amountLabel}</strong>
+          </div>
           {isLoading && !error && (
             <div
-              data-testid="checkout-loading"
+              data-testid="payment-element-loading"
               style={{
                 position: "absolute",
                 inset: 0,
@@ -192,13 +245,13 @@ function EmbeddedCheckoutModal({ checkout, onClose, onComplete }) {
                 backgroundColor: "#f7f7f8",
               }}
             >
-              Abrindo checkout seguro…
+              Abrindo pagamento seguro…
             </div>
           )}
-          {error ? (
+          {error && (
             <div
               role="alert"
-              data-testid="checkout-error"
+              data-testid="payment-error"
               style={{
                 display: "flex",
                 flexDirection: "column",
@@ -209,29 +262,34 @@ function EmbeddedCheckoutModal({ checkout, onClose, onComplete }) {
                 textAlign: "center",
               }}
             >
-              <strong>Não foi possível abrir o pagamento</strong>
+              <strong>Não foi possível concluir o pagamento</strong>
               <span style={{ color: "#71717a", fontSize: "12px", lineHeight: 1.5 }}>{error}</span>
-              <button
-                type="button"
-                onClick={onClose}
-                style={{
-                  padding: "9px 16px",
-                  border: 0,
-                  borderRadius: "9999px",
-                  backgroundColor: "#18181b",
-                  color: "#fff",
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                Voltar
-              </button>
             </div>
-          ) : (
-            <div ref={mountRef} data-testid="stripe-embedded-checkout" />
           )}
-        </div>
+          <div ref={mountRef} data-testid="stripe-payment-element" />
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", marginTop: "20px" }}>
+            <span style={{ color: "#71717a", fontSize: "11px", lineHeight: 1.4 }}>Seus dados são processados diretamente pelo Stripe.</span>
+            <button
+              type="submit"
+              disabled={isLoading || isSubmitting}
+              data-testid="button-submit-payment"
+              style={{
+                flexShrink: 0,
+                padding: "11px 16px",
+                border: 0,
+                borderRadius: "9999px",
+                backgroundColor: "#18181b",
+                color: "#fff",
+                fontSize: "12px",
+                fontWeight: 800,
+                cursor: isLoading || isSubmitting ? "not-allowed" : "pointer",
+                opacity: isLoading || isSubmitting ? 0.55 : 1,
+              }}
+            >
+              {isSubmitting ? "Processando…" : `Pagar ${amountLabel}`}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -2744,7 +2802,7 @@ export default function PopPersonCanvas() {
         </button>
       </div>
        {activeCheckout && (
-         <EmbeddedCheckoutModal
+         <CustomPaymentModal
            checkout={activeCheckout}
            onClose={closeCheckout}
            onComplete={completeCheckout}

@@ -1,6 +1,9 @@
 import Stripe from "stripe";
 import { getStripeSync } from "./stripe-client";
-import { fulfillStripeCheckout } from "./pop-person-store";
+import {
+  fulfillStripeCheckout,
+  fulfillStripePaymentIntent,
+} from "./pop-person-store";
 
 export async function processStripeWebhook(payload: Buffer, signature: string): Promise<void> {
   if (!Buffer.isBuffer(payload)) {
@@ -21,5 +24,7 @@ export async function processStripeWebhook(payload: Buffer, signature: string): 
     await fulfillStripeCheckout(event.data.object as Stripe.Checkout.Session);
   } else if (event.type === "checkout.session.async_payment_succeeded") {
     await fulfillStripeCheckout(event.data.object as Stripe.Checkout.Session);
+  } else if (event.type === "payment_intent.succeeded") {
+    await fulfillStripePaymentIntent(event.data.object as Stripe.PaymentIntent);
   }
 }

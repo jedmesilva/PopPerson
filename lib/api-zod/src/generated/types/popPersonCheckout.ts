@@ -8,7 +8,7 @@
 
 export interface PopPersonCheckout {
   paymentOrderId: string;
-  checkoutSessionId: string;
+  paymentIntentId: string;
   clientSecret: string;
   publishableKey: string;
   /** @minimum 0 */

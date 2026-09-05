@@ -257,7 +257,7 @@ paths:
     post:
       operationId: createPopPersonAction
       tags: [pop-person]
-      summary: Create a Stripe Checkout for an attack or defense action
+      summary: Create a Stripe payment intent for an attack or defense action
       requestBody:
         required: true
         content:
@@ -597,11 +597,11 @@ components:
             $ref: "#/components/schemas/PopPersonAction"
     PopPersonCheckout:
       type: object
-      required: [paymentOrderId, checkoutSessionId, clientSecret, publishableKey, amount, currency]
+      required: [paymentOrderId, paymentIntentId, clientSecret, publishableKey, amount, currency]
       properties:
         paymentOrderId:
           type: string
-        checkoutSessionId:
+        paymentIntentId:
           type: string
         clientSecret:
           type: string

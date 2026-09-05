@@ -980,7 +980,7 @@ type StripeCheckoutUser = {
 
 export type PopPersonCheckout = {
   paymentOrderId: string;
-  checkoutSessionId: string;
+  paymentIntentId: string;
   clientSecret: string;
   publishableKey: string;
   amount: number;
@@ -1192,17 +1192,18 @@ export async function createPopPersonCheckout(
     return created;
   });
 
-  if (order.stripeCheckoutSessionId && order.status === "pending") {
+  if (order.stripePaymentIntentId && order.status === "pending") {
     const { getStripePublishableKey } = await import("./stripe-client");
-    const { stripe } = await getStripeActionProduct();
-    const existingSession = await stripe.checkout.sessions.retrieve(
-      order.stripeCheckoutSessionId,
+    const { getUncachableStripeClient } = await import("./stripe-client");
+    const stripe = await getUncachableStripeClient();
+    const existingPaymentIntent = await stripe.paymentIntents.retrieve(
+      order.stripePaymentIntentId,
     );
-    if (existingSession.client_secret) {
+    if (existingPaymentIntent.client_secret) {
       return {
         paymentOrderId: order.id,
-        checkoutSessionId: existingSession.id,
-        clientSecret: existingSession.client_secret,
+        paymentIntentId: existingPaymentIntent.id,
+        clientSecret: existingPaymentIntent.client_secret,
         publishableKey: await getStripePublishableKey(),
         amount: order.amountMinor / 100,
         currency: order.currency,
@@ -1213,53 +1214,42 @@ export async function createPopPersonCheckout(
     throw new Error("Esta ação já foi paga e enviada.");
   }
 
-  const { stripe, product } = await getStripeActionProduct();
+  const { getUncachableStripeClient } = await import("./stripe-client");
   const { getStripePublishableKey } = await import("./stripe-client");
-  const price = await stripe.prices.create({
-    product: product.id,
+  const stripe = await getUncachableStripeClient();
+  const paymentIntent = await stripe.paymentIntents.create({
     currency: order.currency,
-    unit_amount: order.amountMinor,
-    metadata: {
-      payment_order_id: order.id,
-      instapop_kind: "action",
+    amount: order.amountMinor,
+    automatic_payment_methods: {
+      enabled: true,
+      allow_redirects: "never",
     },
-  });
-  const safeOrigin = /^https?:\/\//i.test(returnOrigin)
-    ? returnOrigin.replace(/\/+$/, "")
-    : `https://${process.env.REPLIT_DOMAINS?.split(",")[0]}`;
-  const checkoutSession = await stripe.checkout.sessions.create({
-    mode: "payment",
-    ui_mode: "embedded_page",
-    line_items: [{ price: price.id, quantity: 1 }],
-    customer_email: user.email?.trim() || undefined,
-    client_reference_id: order.id,
+    receipt_email: user.email?.trim() || undefined,
     metadata: {
       payment_order_id: order.id,
       user_id: user.id,
       target_name: order.targetName,
     },
-    redirect_on_completion: "never",
-    return_url: `${safeOrigin}/?payment=success&session_id={CHECKOUT_SESSION_ID}`,
-    expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
+    description: `InstaPop: ${order.actionType} ${order.actionLevel} em ${order.targetName}`,
+  }, {
+    idempotencyKey: `instapop-payment:${order.id}`,
   });
-  if (!checkoutSession.client_secret) {
-    throw new Error("O Stripe não retornou o segredo do checkout embutido.");
+  if (!paymentIntent.client_secret) {
+    throw new Error("O Stripe não retornou o segredo do pagamento.");
   }
 
   await db
     .update(paymentOrdersTable)
     .set({
-      stripeProductId: product.id,
-      stripePriceId: price.id,
-      stripeCheckoutSessionId: checkoutSession.id,
+      stripePaymentIntentId: paymentIntent.id,
       updatedAt: new Date(),
     })
     .where(eq(paymentOrdersTable.id, order.id));
 
   return {
     paymentOrderId: order.id,
-    checkoutSessionId: checkoutSession.id,
-    clientSecret: checkoutSession.client_secret,
+    paymentIntentId: paymentIntent.id,
+    clientSecret: paymentIntent.client_secret,
     publishableKey: await getStripePublishableKey(),
     amount: order.amountMinor / 100,
     currency: order.currency,
@@ -1473,13 +1463,12 @@ export async function createPopPersonAction(
   return response;
 }
 
-export async function fulfillStripeCheckout(
-  checkoutSession: Stripe.Checkout.Session,
+async function fulfillPaidStripeOrder(
+  paymentOrderId: string,
+  paymentIntentId: string | null,
 ): Promise<void> {
-  const paymentOrderId =
-    checkoutSession.metadata?.payment_order_id ?? checkoutSession.client_reference_id;
   if (!paymentOrderId) {
-    throw new Error("Stripe Checkout session is missing payment_order_id.");
+    throw new Error("Stripe payment is missing payment_order_id.");
   }
 
   const [order] = await db
@@ -1507,10 +1496,7 @@ export async function fulfillStripeCheckout(
     .set({
       status: "paid",
       actionId: action.id,
-      stripePaymentIntentId:
-        typeof checkoutSession.payment_intent === "string"
-          ? checkoutSession.payment_intent
-          : checkoutSession.payment_intent?.id ?? null,
+      stripePaymentIntentId: paymentIntentId,
       paidAt: new Date(),
       updatedAt: new Date(),
     })
@@ -1520,6 +1506,27 @@ export async function fulfillStripeCheckout(
         isNull(paymentOrdersTable.actionId),
       ),
     );
+}
+
+export async function fulfillStripeCheckout(
+  checkoutSession: Stripe.Checkout.Session,
+): Promise<void> {
+  const paymentOrderId =
+    checkoutSession.metadata?.payment_order_id ?? checkoutSession.client_reference_id;
+  const paymentIntentId =
+    typeof checkoutSession.payment_intent === "string"
+      ? checkoutSession.payment_intent
+      : checkoutSession.payment_intent?.id ?? null;
+  await fulfillPaidStripeOrder(paymentOrderId ?? "", paymentIntentId);
+}
+
+export async function fulfillStripePaymentIntent(
+  paymentIntent: Stripe.PaymentIntent,
+): Promise<void> {
+  await fulfillPaidStripeOrder(
+    paymentIntent.metadata?.payment_order_id ?? "",
+    paymentIntent.id,
+  );
 }
 
 async function nextActionEventSequence(
