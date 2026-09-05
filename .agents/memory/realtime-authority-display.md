@@ -14,3 +14,9 @@ Após um POST de ação confirmado, o cliente pode iniciar um fallback visual lo
 **Why:** uma desconexão curta do WebSocket pode perder o único evento de resolução, fazendo uma ação persistida parecer desaparecer apesar de o banco ter sido atualizado.
 
 **How to apply:** use uma chave local diferente da chave do evento realtime e ignore o fallback quando a ação já estiver ativa, preservando a resolução recebida do servidor.
+
+Quando um snapshot de reconexão trouxer uma ação `running` sem o `action:started` correspondente, restaure a timeline visual uma única vez antes de continuar aceitando os hits confirmados pelo servidor.
+
+**Why:** o snapshot recupera a autoridade e o HUD, mas não repete efeitos visuais perdidos; sem materializar a timeline, a ação pode continuar alterando o valor sem projéteis ou impactos na tela.
+
+**How to apply:** o caminho comum que enfileira ações `running` deve chamar o mesmo materializador visual de `action:started`, protegido por `actionId` para não duplicar bursts.

@@ -1368,6 +1368,12 @@ export default function PopPersonCanvas() {
 
     if (serverAction.status === "running") {
       setQueue((prev) => prev.filter((action) => action.id !== serverAction.id));
+      // A reconnect snapshot can be the first notification this tab sees.
+      // Restore the visual timeline once, just as action:started does; the
+      // server remains authoritative for confirmed hit events and values.
+      if (!visualActionTimelinesRef.current.has(serverAction.id)) {
+        spawnActionEmojis(serverAction);
+      }
       executeActionRef.current(serverAction);
       return;
     }
@@ -1383,7 +1389,7 @@ export default function PopPersonCanvas() {
       actionId: serverAction.id,
       executeAt: serverAction.executeAt,
     });
-  }, []);
+  }, [spawnActionEmojis]);
   const removeRealtimeAction = useCallback((actionId, options = {}) => {
     if (!actionId) return;
     latestServerActionsRef.current.delete(actionId);
