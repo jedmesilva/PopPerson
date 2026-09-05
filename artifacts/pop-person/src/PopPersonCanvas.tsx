@@ -709,6 +709,10 @@ export default function PopPersonCanvas() {
     }, 60_000);
     return () => window.clearTimeout(timeout);
   }, [paymentSyncActive]);
+  useEffect(() => () => {
+    paymentReplayCleanupTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    paymentReplayCleanupTimersRef.current.clear();
+  }, []);
   const config = bootstrapQuery.data?.config;
   const authenticatedUser = bootstrapQuery.data?.user ?? null;
   const canJoinAsPlayer = Boolean(
@@ -989,6 +993,8 @@ export default function PopPersonCanvas() {
   const latestServerStateVersionRef = useRef(-1);
   const serverStateHydratedRef = useRef(false);
   const lastHitSequenceByActionRef = useRef(new Map());
+  const paymentReplayActionIdRef = useRef(null);
+  const paymentReplayCleanupTimersRef = useRef(new Map());
   const transformRef = useRef({ x: 0, y: 0, scale: 1 });
   const fitTransformRef = useRef({ x: 0, y: 0, scale: 1 });
   const recenterAnimRef = useRef(null);
@@ -1277,6 +1283,49 @@ export default function PopPersonCanvas() {
     });
     realtimeDebug("action:removed", { actionId, preserveImpacts: Boolean(options.preserveImpacts) });
   }, []);
+  const replayPaidAction = useCallback((serverAction) => {
+    const actionId = String(serverAction?.id ?? "");
+    if (!actionId || paymentReplayActionIdRef.current === actionId) return;
+    paymentReplayActionIdRef.current = actionId;
+
+    const serverNow = serverClockRef.current.serverTime
+      + (performance.now() - serverClockRef.current.clientPerfAt);
+    const replayAction = {
+      ...serverAction,
+      status: "running",
+      executeAt: serverNow,
+      startedAt: serverNow,
+      completedAt: null,
+      hitCount: 0,
+      lastHitAt: null,
+    };
+
+    locallyCreatedActionIdsRef.current.add(actionId);
+    latestServerActionsRef.current.set(actionId, replayAction);
+    spawnActionEmojis(replayAction);
+    executeActionRef.current(replayAction);
+
+    const count = Math.max(1, Number(replayAction.count) || 1);
+    const durationMs = Math.max(240, Number(replayAction.duration) || 1500);
+    const staggerMs = Math.max(4, Number(replayAction.staggerMs) || 4);
+    const replayDurationMs = Math.min(
+      20_000,
+      durationMs + Math.min(12_000, Math.max(0, count - 1) * staggerMs) + 750,
+    );
+    const previousTimer = paymentReplayCleanupTimersRef.current.get(actionId);
+    if (previousTimer) window.clearTimeout(previousTimer);
+    const cleanupTimer = window.setTimeout(() => {
+      paymentReplayCleanupTimersRef.current.delete(actionId);
+      removeRealtimeAction(actionId, { preserveImpacts: true });
+    }, replayDurationMs);
+    paymentReplayCleanupTimersRef.current.set(actionId, cleanupTimer);
+
+    realtimeDebug("payment:action-replayed", {
+      actionId,
+      originalStatus: serverAction.status,
+      replayDurationMs,
+    });
+  }, [removeRealtimeAction, spawnActionEmojis]);
   const reconcileServerState = useCallback((serverState, options = {}) => {
     const incomingStateVersion = Number(serverState?.stateVersion);
     if (!Number.isFinite(incomingStateVersion)) return;
@@ -1376,22 +1425,31 @@ export default function PopPersonCanvas() {
 
   useEffect(() => {
     const paymentStatus = paymentStatusQuery.data;
-    if (paymentStatus?.status !== "paid") return;
+    if (paymentStatus?.status !== "paid" || !bootstrapQuery.data?.state) return;
 
     setPaymentSyncActive(false);
     setPaymentNotice({
       kind: "success",
       message: "Sua ação foi confirmada e será exibida no jogo agora.",
     });
-    if (paymentStatus.action) {
+    if (paymentStatus.action?.status === "completed") {
+      // The server may finish the action while the customer is on Stripe.
+      // Recreate its visual timeline locally after the initial snapshot so
+      // returning from Checkout never loses the paid action animation.
+      replayPaidAction(paymentStatus.action);
+    } else if (paymentStatus.action?.status === "running") {
+      spawnActionEmojis(paymentStatus.action);
+      queueAction(paymentStatus.action);
+    } else if (paymentStatus.action) {
       queueAction(paymentStatus.action);
     }
-    void bootstrapQuery.refetch();
     void stateQuery.refetch();
   }, [
     paymentStatusQuery.data,
+    bootstrapQuery.data,
+    replayPaidAction,
+    spawnActionEmojis,
     queueAction,
-    bootstrapQuery.refetch,
     stateQuery.refetch,
   ]);
 

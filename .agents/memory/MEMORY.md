@@ -16,3 +16,4 @@
 - [Configuração de níveis Hater/Fã](hater-fan-level-configuration.md) — tipos, preços e os 20 níveis oficiais vêm do banco; itens antigos só permanecem para histórico.
 - [HUD de ações](action-hud-rendering.md) — pill e fila devem compartilhar dados normalizados e atualização temporizada, sem emojis duplicados nem renderização contínua.
 - [Piso de cobrança Stripe](stripe-payment-floor.md) — Checkout BRL rejeita valores muito baixos após conversão; o preço-base precisa aplicar o piso técnico no servidor.
+- [Replay pós-Checkout](payment-replay-after-checkout.md) — ações pagas podem terminar enquanto o cliente está no Stripe; o retorno precisa reproduzir a animação localmente.
