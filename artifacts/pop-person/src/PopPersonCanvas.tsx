@@ -8,6 +8,7 @@ import {
   useCreatePopPersonAction,
   useGetAccessLocation,
   useGetPopPerson,
+  useGetPopPersonPaymentStatus,
   useGetPopPersonState,
   useLogoutAuthenticatedUser,
   searchCountries,
@@ -609,6 +610,15 @@ export default function PopPersonCanvas() {
     },
   });
   const createActionMutation = useCreatePopPersonAction();
+  const [paymentSessionId, setPaymentSessionId] = useState(null);
+  const [paymentSyncActive, setPaymentSyncActive] = useState(false);
+  const paymentStatusQuery = useGetPopPersonPaymentStatus(paymentSessionId ?? "", {
+    query: {
+      enabled: paymentSyncActive && Boolean(paymentSessionId),
+      refetchInterval: paymentSyncActive ? 1000 : false,
+      retry: false,
+    },
+  });
   const canvasRef = useRef(null);
   const boardWrapRef = useRef(null);
   const [dataset, setDataset] = useState([]);
@@ -676,26 +686,29 @@ export default function PopPersonCanvas() {
       payment === "success"
         ? {
             kind: "success",
-            message: "Pagamento aprovado. Estamos publicando sua ação — ela aparecerá no jogo em instantes.",
+            message: "Pagamento recebido. Estamos confirmando sua ação — ela aparecerá no jogo assim que estiver pronta.",
           }
         : {
             kind: "cancelled",
             message: "Pagamento cancelado. Nenhuma ação foi enviada.",
           },
     );
+    if (payment === "success") {
+      setPaymentSessionId(new URLSearchParams(window.location.search).get("session_id"));
+      setPaymentSyncActive(true);
+    }
 
     const cleanUrl = `${window.location.pathname}${window.location.hash}`;
     window.history.replaceState({}, document.title, cleanUrl);
   }, []);
 
   useEffect(() => {
-    if (paymentNotice?.kind !== "success") return;
-    const refreshTimer = window.setTimeout(() => {
-      void bootstrapQuery.refetch();
-      void stateQuery.refetch();
-    }, 1200);
-    return () => window.clearTimeout(refreshTimer);
-  }, [paymentNotice?.kind, bootstrapQuery.refetch, stateQuery.refetch]);
+    if (!paymentSyncActive) return;
+    const timeout = window.setTimeout(() => {
+      setPaymentSyncActive(false);
+    }, 60_000);
+    return () => window.clearTimeout(timeout);
+  }, [paymentSyncActive]);
   const config = bootstrapQuery.data?.config;
   const authenticatedUser = bootstrapQuery.data?.user ?? null;
   const canJoinAsPlayer = Boolean(
@@ -1360,6 +1373,27 @@ export default function PopPersonCanvas() {
       reconcileServerState(stateQuery.data);
     }
   }, [stateQuery.data, reconcileServerState]);
+
+  useEffect(() => {
+    const paymentStatus = paymentStatusQuery.data;
+    if (paymentStatus?.status !== "paid") return;
+
+    setPaymentSyncActive(false);
+    setPaymentNotice({
+      kind: "success",
+      message: "Sua ação foi confirmada e será exibida no jogo agora.",
+    });
+    if (paymentStatus.action) {
+      queueAction(paymentStatus.action);
+    }
+    void bootstrapQuery.refetch();
+    void stateQuery.refetch();
+  }, [
+    paymentStatusQuery.data,
+    queueAction,
+    bootstrapQuery.refetch,
+    stateQuery.refetch,
+  ]);
 
   useEffect(() => {
     if (!config) return undefined;

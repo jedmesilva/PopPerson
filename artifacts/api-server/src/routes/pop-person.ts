@@ -3,6 +3,7 @@ import {
   CreatePopPersonActionBody,
   GetPlayerRegistrationResponse,
   GetPopPersonResponse,
+  GetPopPersonPaymentStatusResponse,
   GetPopPersonStateResponse,
   JoinPopPersonAsPlayerBody,
   JoinPopPersonAsPlayerResponse,
@@ -14,6 +15,7 @@ import {
   getPopPersonState,
   joinPopPersonAsPlayer,
 } from "../lib/pop-person";
+import { getPopPersonPaymentStatus } from "../lib/pop-person-store";
 import { actionRateLimit } from "../middlewares/rate-limit";
 import { resolveAccessLocation } from "./access-location";
 
@@ -34,6 +36,27 @@ router.get("/pop-person/state", async (req, res): Promise<void> => {
   // clients cannot reconcile action progress from it after a reload.
   res.set("Cache-Control", "no-store");
   res.json(GetPopPersonStateResponse.parse(data));
+});
+
+router.get("/pop-person/payments/:checkoutSessionId", async (req, res): Promise<void> => {
+  const user = res.locals.authenticatedUser;
+  if (!user) {
+    res.status(401).json({ error: "Conecte sua conta do X para acompanhar o pagamento." });
+    return;
+  }
+
+  try {
+    const data = await getPopPersonPaymentStatus(
+      req.params.checkoutSessionId,
+      user.id,
+    );
+    res.set("Cache-Control", "no-store");
+    res.json(GetPopPersonPaymentStatusResponse.parse(data));
+  } catch (error) {
+    res.status(404).json({
+      error: error instanceof Error ? error.message : "Pedido de pagamento não encontrado.",
+    });
+  }
 });
 
 router.get("/pop-person/player/registration", async (req, res): Promise<void> => {

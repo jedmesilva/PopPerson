@@ -986,6 +986,36 @@ export type PopPersonCheckout = {
   currency: string;
 };
 
+export async function getPopPersonPaymentStatus(
+  checkoutSessionId: string,
+  userId: string,
+) {
+  const [order] = await db
+    .select()
+    .from(paymentOrdersTable)
+    .where(
+      and(
+        eq(paymentOrdersTable.stripeCheckoutSessionId, checkoutSessionId),
+        eq(paymentOrdersTable.userId, userId),
+      ),
+    )
+    .limit(1);
+
+  if (!order) {
+    throw new Error("Pedido de pagamento não encontrado.");
+  }
+
+  const [action] = order.actionId
+    ? await getActions(order.roomId, order.actionId)
+    : [];
+
+  return {
+    status: order.status,
+    actionId: order.actionId ?? null,
+    action: action ?? null,
+  };
+}
+
 async function getStripeActionProduct() {
   const { getUncachableStripeClient } = await import("./stripe-client");
   const stripe = await getUncachableStripeClient();

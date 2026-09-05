@@ -464,6 +464,69 @@ export const GetPopPersonStateResponse = zod.object({
 
 
 /**
+ * @summary Get the status of a PopPerson payment and its action
+ */
+export const GetPopPersonPaymentStatusParams = zod.object({
+  "checkoutSessionId": zod.coerce.string()
+})
+
+
+export const getPopPersonPaymentStatusResponseActionOneStartDelayMsMin = 0;
+
+export const getPopPersonPaymentStatusResponseActionOneExecuteAtMin = 0;
+
+export const getPopPersonPaymentStatusResponseActionOneCompletesAtMin = 0;
+
+export const getPopPersonPaymentStatusResponseActionOneStartedAtMin = 0;
+
+export const getPopPersonPaymentStatusResponseActionOneCompletedAtMin = 0;
+
+export const getPopPersonPaymentStatusResponseActionOneHitCountMin = 0;
+
+export const getPopPersonPaymentStatusResponseActionOneLastHitAtMin = 0;
+
+
+export const getPopPersonPaymentStatusResponseActionOneStaggerMsMin = 0;
+
+export const getPopPersonPaymentStatusResponseActionOneDurationMin = 0;
+
+export const getPopPersonPaymentStatusResponseActionOnePriceMin = 0;
+
+
+
+export const GetPopPersonPaymentStatusResponse = zod.object({
+  "status": zod.enum(['pending', 'paid', 'failed', 'expired', 'cancelled']),
+  "actionId": zod.string().nullable(),
+  "action": zod.union([zod.object({
+  "id": zod.string(),
+  "mode": zod.enum(['atacar', 'defender']),
+  "actionType": zod.enum(['hate', 'fan']),
+  "level": zod.string(),
+  "levelName": zod.string(),
+  "levelEmoji": zod.string(),
+  "multiplier": zod.number().min(1),
+  "startDelayMs": zod.number().min(getPopPersonPaymentStatusResponseActionOneStartDelayMsMin),
+  "targetName": zod.string(),
+  "sourceName": zod.string().nullable(),
+  "status": zod.enum(['queued', 'running', 'completed']),
+  "executeAt": zod.number().min(getPopPersonPaymentStatusResponseActionOneExecuteAtMin),
+  "completesAt": zod.number().min(getPopPersonPaymentStatusResponseActionOneCompletesAtMin),
+  "startedAt": zod.number().min(getPopPersonPaymentStatusResponseActionOneStartedAtMin).nullable(),
+  "completedAt": zod.number().min(getPopPersonPaymentStatusResponseActionOneCompletedAtMin).nullable(),
+  "hitCount": zod.number().min(getPopPersonPaymentStatusResponseActionOneHitCountMin),
+  "lastHitAt": zod.number().min(getPopPersonPaymentStatusResponseActionOneLastHitAtMin).nullable(),
+  "count": zod.number().min(1),
+  "growthPerHit": zod.number(),
+  "impactMultiplier": zod.number(),
+  "staggerMs": zod.number().min(getPopPersonPaymentStatusResponseActionOneStaggerMsMin),
+  "duration": zod.number().min(getPopPersonPaymentStatusResponseActionOneDurationMin),
+  "price": zod.number().min(getPopPersonPaymentStatusResponseActionOnePriceMin),
+  "shake": zod.boolean()
+}),zod.null()])
+})
+
+
+/**
  * @summary Create a Stripe Checkout for an attack or defense action
  */
 

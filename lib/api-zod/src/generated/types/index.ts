@@ -40,6 +40,8 @@ export * from './popPersonElement';
 export * from './popPersonElementGender';
 export * from './popPersonLevel';
 export * from './popPersonLevelActionType';
+export * from './popPersonPaymentStatus';
+export * from './popPersonPaymentStatusStatus';
 export * from './popPersonState';
 export * from './popPersonStatus';
 export * from './searchCitiesParams';

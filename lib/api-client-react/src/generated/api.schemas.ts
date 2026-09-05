@@ -302,6 +302,24 @@ export interface PopPersonCheckout {
   currency: string;
 }
 
+export type PopPersonPaymentStatusStatus = typeof PopPersonPaymentStatusStatus[keyof typeof PopPersonPaymentStatusStatus];
+
+
+export const PopPersonPaymentStatusStatus = {
+  pending: 'pending',
+  paid: 'paid',
+  failed: 'failed',
+  expired: 'expired',
+  cancelled: 'cancelled',
+} as const;
+
+export interface PopPersonPaymentStatus {
+  status: PopPersonPaymentStatusStatus;
+  /** @nullable */
+  actionId: string | null;
+  action: PopPersonAction | null;
+}
+
 export interface AuthenticatedUser {
   xUserId: string;
   username: string;

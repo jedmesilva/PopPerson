@@ -32,6 +32,7 @@ import type {
   PopPersonActionInput,
   PopPersonBootstrap,
   PopPersonCheckout,
+  PopPersonPaymentStatus,
   PopPersonState,
   SearchCitiesParams,
   SearchCountriesParams,
@@ -990,6 +991,83 @@ export function useGetPopPersonState<TData = Awaited<ReturnType<typeof getPopPer
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetPopPersonStateQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetPopPersonPaymentStatusUrl = (checkoutSessionId: string,) => {
+
+
+
+
+  return `/api/pop-person/payments/${checkoutSessionId}`
+}
+
+/**
+ * @summary Get the status of a PopPerson payment and its action
+ */
+export const getPopPersonPaymentStatus = async (checkoutSessionId: string, options?: Parameters<typeof customFetch>[1]): Promise<PopPersonPaymentStatus> => {
+
+  return customFetch<PopPersonPaymentStatus>(getGetPopPersonPaymentStatusUrl(checkoutSessionId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPopPersonPaymentStatusQueryKey = (checkoutSessionId: string,) => {
+    return [
+    `/api/pop-person/payments/${checkoutSessionId}`
+    ] as const;
+    }
+
+
+export const getGetPopPersonPaymentStatusQueryOptions = <TData = Awaited<ReturnType<typeof getPopPersonPaymentStatus>>, TError = ErrorType<ErrorResponse>>(checkoutSessionId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPopPersonPaymentStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPopPersonPaymentStatusQueryKey(checkoutSessionId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPopPersonPaymentStatus>>> = ({ signal }) => getPopPersonPaymentStatus(checkoutSessionId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: checkoutSessionId !== null && checkoutSessionId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPopPersonPaymentStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPopPersonPaymentStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getPopPersonPaymentStatus>>>
+export type GetPopPersonPaymentStatusQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get the status of a PopPerson payment and its action
+ */
+
+export function useGetPopPersonPaymentStatus<TData = Awaited<ReturnType<typeof getPopPersonPaymentStatus>>, TError = ErrorType<ErrorResponse>>(
+ checkoutSessionId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPopPersonPaymentStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPopPersonPaymentStatusQueryOptions(checkoutSessionId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

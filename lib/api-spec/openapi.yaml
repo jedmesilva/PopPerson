@@ -223,6 +223,36 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PopPersonState"
+  /pop-person/payments/{checkoutSessionId}:
+    get:
+      operationId: getPopPersonPaymentStatus
+      tags: [pop-person]
+      summary: Get the status of a PopPerson payment and its action
+      parameters:
+        - name: checkoutSessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Payment status and created action, when available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PopPersonPaymentStatus"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Payment order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /pop-person/actions:
     post:
       operationId: createPopPersonAction
@@ -582,6 +612,19 @@ components:
           type: string
           minLength: 3
           maxLength: 3
+    PopPersonPaymentStatus:
+      type: object
+      required: [status, actionId, action]
+      properties:
+        status:
+          type: string
+          enum: [pending, paid, failed, expired, cancelled]
+        actionId:
+          type: ["string", "null"]
+        action:
+          oneOf:
+            - $ref: "#/components/schemas/PopPersonAction"
+            - type: "null"
     PopPersonBootstrap:
       type: object
       required: [config, state, user, player]
