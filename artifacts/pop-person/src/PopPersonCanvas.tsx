@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { SlidersHorizontal, ArrowLeftRight, ArrowRight, X, ChevronDown, ChevronRight, Locate, Search, ScanFace, Plus, CircleUserRound, Pencil, CalendarDays, LogOut, Mail, MapPin } from "lucide-react";
+import { SlidersHorizontal, ArrowLeftRight, ArrowRight, X, Check, ChevronDown, ChevronRight, Locate, Search, ScanFace, Plus, CircleUserRound, Pencil, CalendarDays, LogOut, Mail, MapPin } from "lucide-react";
 import { FaXTwitter } from "react-icons/fa6";
 import FanHaterLevelPicker from "./components/fan-hater-level-picker";
 import EmojiEffectsWebGL from "./components/emoji-effects-webgl";
@@ -686,11 +686,11 @@ export default function PopPersonCanvas() {
       payment === "success"
         ? {
             kind: "success",
-            message: "Pagamento recebido. Estamos confirmando sua ação — ela aparecerá no jogo assim que estiver pronta.",
+            message: "Confirmando sua ação…",
           }
         : {
             kind: "cancelled",
-            message: "Pagamento cancelado. Nenhuma ação foi enviada.",
+            message: "Pagamento cancelado",
           },
     );
     if (payment === "success") {
@@ -713,6 +713,11 @@ export default function PopPersonCanvas() {
     paymentReplayCleanupTimersRef.current.forEach((timer) => window.clearTimeout(timer));
     paymentReplayCleanupTimersRef.current.clear();
   }, []);
+  useEffect(() => {
+    if (!paymentNotice) return undefined;
+    const timeout = window.setTimeout(() => setPaymentNotice(null), 5_000);
+    return () => window.clearTimeout(timeout);
+  }, [paymentNotice?.kind, paymentNotice?.message]);
   const config = bootstrapQuery.data?.config;
   const authenticatedUser = bootstrapQuery.data?.user ?? null;
   const canJoinAsPlayer = Boolean(
@@ -1430,7 +1435,7 @@ export default function PopPersonCanvas() {
     setPaymentSyncActive(false);
     setPaymentNotice({
       kind: "success",
-      message: "Sua ação foi confirmada e será exibida no jogo agora.",
+      message: "Ação confirmada",
     });
     if (paymentStatus.action?.status === "completed") {
       // The server may finish the action while the customer is on Stripe.
@@ -2409,8 +2414,8 @@ export default function PopPersonCanvas() {
             <Plus size={18} strokeWidth={2.4} aria-hidden="true" />
           </button>
         )}
-        <div className="action-pill-container" style={{ flex: "1 1 auto", minWidth: 0, display: "flex", justifyContent: "center", containerType: "inline-size" }}>
-          {liveActionEntries.length > 0 && (() => {
+         <div className="action-pill-container" style={{ flex: "1 1 auto", minWidth: 0, display: "flex", justifyContent: "center", containerType: "inline-size" }}>
+           {liveActionEntries.length > 0 && (() => {
             const primaryEntry = liveActionEntries[0];
             const additionalEntryCount = Math.max(0, liveActionEntries.length - 1);
             const actionColor = primaryEntry.mode === "defender" ? "#22c55e" : "#ef4444";
@@ -2434,7 +2439,7 @@ export default function PopPersonCanvas() {
                 )}
               </button>
             );
-          })()}
+           })()}
         </div>
         <button data-testid="button-open-filters" onClick={openFilters} style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: "5px", padding: "7px 12px", borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.55)", backdropFilter: "blur(6px)", border: activeFilterCount > 0 ? "1px solid rgba(99, 102, 241, 0.6)" : "1px solid rgba(255, 255, 255, 0.08)", color: "#f5f5f5", fontSize: "12px", fontWeight: 600, cursor: "pointer" }}>
           <SlidersHorizontal size={13} /> Filtros
@@ -2443,38 +2448,90 @@ export default function PopPersonCanvas() {
       </div>
        {paymentNotice && (
          <div
-           role="status"
            style={{
              position: "fixed",
-             top: "84px",
              left: "50%",
-             zIndex: 70,
-             width: "min(92vw, 520px)",
+             bottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)",
+             zIndex: 55,
+             maxWidth: "calc(100vw - 24px)",
              transform: "translateX(-50%)",
-             display: "flex",
-             alignItems: "center",
-             gap: "10px",
-             padding: "12px 14px",
-             borderRadius: "14px",
-             backgroundColor: paymentNotice.kind === "success" ? "rgba(20, 83, 45, 0.96)" : "rgba(69, 26, 26, 0.96)",
-             border: `1px solid ${paymentNotice.kind === "success" ? "#22c55e66" : "#f8717166"}`,
-             color: "#f5f5f5",
-             boxShadow: "0 12px 30px rgba(0,0,0,0.32)",
-             boxSizing: "border-box",
+             pointerEvents: "none",
            }}
          >
-           <span style={{ flex: 1, fontSize: "12px", lineHeight: 1.4 }}>{paymentNotice.message}</span>
-           <button
-             type="button"
-             aria-label="Fechar aviso de pagamento"
-             onClick={() => setPaymentNotice(null)}
-             style={{ width: "24px", height: "24px", flexShrink: 0, border: 0, borderRadius: "9999px", backgroundColor: "rgba(255,255,255,0.12)", color: "#fff", cursor: "pointer", display: "grid", placeItems: "center" }}
+           <div
+             className="payment-notice-toast"
+             role="status"
+             aria-live="polite"
+             data-testid="payment-notice"
+             style={{
+               display: "flex",
+               alignItems: "center",
+               gap: "7px",
+               width: "max-content",
+               maxWidth: "min(360px, calc(100vw - 24px))",
+               padding: "8px 9px",
+               borderRadius: "9999px",
+               backgroundColor: "rgba(10, 10, 10, 0.82)",
+               backdropFilter: "blur(8px)",
+               border: `1px solid ${paymentNotice.kind === "success" ? "rgba(34, 197, 94, 0.48)" : "rgba(248, 113, 113, 0.48)"}`,
+               boxShadow: "0 8px 22px rgba(0,0,0,0.28)",
+               boxSizing: "border-box",
+               pointerEvents: "auto",
+             }}
            >
-             <X size={14} aria-hidden="true" />
-           </button>
+             <span
+               aria-hidden="true"
+               style={{
+                 width: "19px",
+                 height: "19px",
+                 flexShrink: 0,
+                 display: "grid",
+                 placeItems: "center",
+                 borderRadius: "9999px",
+                 backgroundColor: paymentNotice.kind === "success" ? "rgba(34, 197, 94, 0.16)" : "rgba(248, 113, 113, 0.16)",
+                 color: paymentNotice.kind === "success" ? "#86efac" : "#fca5a5",
+               }}
+             >
+               {paymentNotice.kind === "success" ? <Check size={12} strokeWidth={3} /> : <X size={12} strokeWidth={2.5} />}
+             </span>
+             <span
+               className="payment-notice-label"
+               style={{
+                 minWidth: 0,
+                 overflow: "hidden",
+                 color: "#f5f5f5",
+                 fontSize: "11px",
+                 fontWeight: 750,
+                 lineHeight: 1.2,
+                 whiteSpace: "nowrap",
+                 textOverflow: "ellipsis",
+               }}
+             >
+               {paymentNotice.message}
+             </span>
+             <button
+               type="button"
+               aria-label="Fechar aviso de pagamento"
+               onClick={() => setPaymentNotice(null)}
+               style={{
+                 width: "19px",
+                 height: "19px",
+                 flexShrink: 0,
+                 display: "grid",
+                 placeItems: "center",
+                 padding: 0,
+                 border: 0,
+                 borderRadius: "9999px",
+                 backgroundColor: "rgba(255,255,255,0.08)",
+                 color: "#a3a3a3",
+                 cursor: "pointer",
+               }}
+             >
+               <X size={11} aria-hidden="true" />
+             </button>
+           </div>
          </div>
        )}
-
       <div ref={boardWrapRef} style={{ position: "fixed", top: 0, bottom: 0, left: 0, right: 0, zIndex: 1, overflow: "hidden" }}>
         <canvas data-testid="canvas-people" ref={canvasRef} style={{ display: "block", width: "100%", height: "100%", touchAction: "none", cursor: "grab" }} />
         <EmojiEffectsWebGL

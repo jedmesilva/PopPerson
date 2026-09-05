@@ -97,4 +97,6 @@
 @media (max-width: 520px) {
   .action-pill-container { justify-content: flex-start !important; }
   .action-pill-target { max-width: 34vw; }
+  .payment-notice-toast { max-width: min(82vw, 320px) !important; }
+  .payment-notice-label { max-width: 56vw; }
 }
