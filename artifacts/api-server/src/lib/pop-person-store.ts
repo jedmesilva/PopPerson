@@ -1229,7 +1229,7 @@ export async function createPopPersonCheckout(
     : `https://${process.env.REPLIT_DOMAINS?.split(",")[0]}`;
   const checkoutSession = await stripe.checkout.sessions.create({
     mode: "payment",
-    ui_mode: "embedded",
+    ui_mode: "embedded_page",
     line_items: [{ price: price.id, quantity: 1 }],
     customer_email: user.email?.trim() || undefined,
     client_reference_id: order.id,
