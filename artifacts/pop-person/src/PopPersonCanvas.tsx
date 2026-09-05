@@ -104,11 +104,20 @@ function CustomPaymentModal({ checkout, onClose, onComplete }) {
           return;
         }
         const paymentElement = elements.create("payment");
+        const handleReady = () => {
+          if (!cancelled) setIsLoading(false);
+        };
+        const handleLoadError = (loadError) => {
+          if (cancelled) return;
+          setError(loadError?.error?.message || "Não foi possível carregar o formulário de pagamento.");
+          setIsLoading(false);
+        };
+        paymentElement.on("ready", handleReady);
+        paymentElement.on("loaderror", handleLoadError);
         paymentElement.mount(mountRef.current);
         stripeRef.current = stripe;
         elementsRef.current = elements;
         paymentElementRef.current = paymentElement;
-        setIsLoading(false);
       } catch (mountError) {
         if (cancelled) return;
         setError(mountError?.message || "Não foi possível abrir o checkout.");
@@ -119,6 +128,8 @@ function CustomPaymentModal({ checkout, onClose, onComplete }) {
     void mountPaymentElement();
     return () => {
       cancelled = true;
+      paymentElementRef.current?.off("ready");
+      paymentElementRef.current?.off("loaderror");
       paymentElementRef.current?.destroy();
       paymentElementRef.current = null;
       elementsRef.current = null;
@@ -167,128 +178,66 @@ function CustomPaymentModal({ checkout, onClose, onComplete }) {
       aria-modal="true"
       aria-labelledby="checkout-modal-title"
       data-testid="modal-custom-checkout"
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 120,
-        display: "grid",
-        placeItems: "center",
-        padding: "16px",
-        backgroundColor: "rgba(0, 0, 0, 0.72)",
-        backdropFilter: "blur(8px)",
-      }}
+      className="payment-dialog-backdrop"
     >
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          width: "min(100%, 520px)",
-          maxHeight: "min(760px, calc(100vh - 32px))",
-          overflow: "hidden",
-          borderRadius: "24px",
-          backgroundColor: "#f7f7f8",
-          boxShadow: "0 22px 70px rgba(0,0,0,0.5)",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: "12px",
-            padding: "14px 16px",
-            backgroundColor: "#17181b",
-            color: "#f5f5f5",
-          }}
-        >
-          <div style={{ display: "flex", flexDirection: "column", gap: "3px", minWidth: 0 }}>
-            <strong id="checkout-modal-title" style={{ fontSize: "14px" }}>Finalizar ação</strong>
-            <span style={{ color: "#a1a1aa", fontSize: "11px" }}>Pagamento seguro pelo Stripe</span>
+      <div className="payment-dialog">
+        <header className="payment-dialog-header">
+          <div className="payment-dialog-heading">
+            <span className="payment-dialog-kicker">AÇÃO</span>
+            <h2 id="checkout-modal-title">Confirmar pagamento</h2>
           </div>
           <button
             type="button"
             data-testid="button-close-checkout"
             aria-label="Fechar checkout"
             onClick={onClose}
-            style={{
-              width: "32px",
-              height: "32px",
-              flexShrink: 0,
-              display: "grid",
-              placeItems: "center",
-              border: "1px solid rgba(255,255,255,0.14)",
-              borderRadius: "9999px",
-              backgroundColor: "rgba(255,255,255,0.08)",
-              color: "#f5f5f5",
-              cursor: "pointer",
-            }}
+            className="payment-dialog-close"
           >
-            <X size={16} aria-hidden="true" />
+            <X size={18} aria-hidden="true" />
           </button>
-        </div>
-        <form onSubmit={submitPayment} style={{ position: "relative", minHeight: "470px", overflowY: "auto", padding: "18px" }}>
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "12px", marginBottom: "16px", color: "#27272a" }}>
-            <span style={{ fontSize: "12px", color: "#71717a" }}>Total da ação</span>
-            <strong style={{ fontSize: "18px" }}>{amountLabel}</strong>
+        </header>
+
+        <form onSubmit={submitPayment} className="payment-dialog-form">
+          <div className="payment-dialog-content">
+            <div className="payment-dialog-total">
+              <span>Total</span>
+              <strong>{amountLabel}</strong>
+            </div>
+
+            {error && (
+              <div role="alert" data-testid="payment-error" className="payment-dialog-error">
+                <strong>Não foi possível concluir</strong>
+                <span>{error}</span>
+              </div>
+            )}
+
+            <div className={`payment-element-shell${isLoading ? " is-loading" : ""}`}>
+              {isLoading && (
+                <div data-testid="payment-element-loading" className="payment-element-skeleton" aria-hidden="true">
+                  <div className="skeleton-line skeleton-line-wide" />
+                  <div className="skeleton-line" />
+                  <div className="skeleton-line skeleton-line-short" />
+                  <div className="skeleton-row">
+                    <div className="skeleton-line" />
+                    <div className="skeleton-line" />
+                  </div>
+                  <div className="skeleton-line skeleton-line-wide" />
+                </div>
+              )}
+              <div ref={mountRef} data-testid="stripe-payment-element" className="stripe-payment-element" />
+            </div>
           </div>
-          {isLoading && !error && (
-            <div
-              data-testid="payment-element-loading"
-              style={{
-                position: "absolute",
-                inset: 0,
-                zIndex: 1,
-                display: "grid",
-                placeItems: "center",
-                color: "#52525b",
-                fontSize: "13px",
-                backgroundColor: "#f7f7f8",
-              }}
-            >
-              Abrindo pagamento seguro…
-            </div>
-          )}
-          {error && (
-            <div
-              role="alert"
-              data-testid="payment-error"
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: "12px",
-                padding: "72px 24px",
-                color: "#3f3f46",
-                textAlign: "center",
-              }}
-            >
-              <strong>Não foi possível concluir o pagamento</strong>
-              <span style={{ color: "#71717a", fontSize: "12px", lineHeight: 1.5 }}>{error}</span>
-            </div>
-          )}
-          <div ref={mountRef} data-testid="stripe-payment-element" />
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", marginTop: "20px" }}>
-            <span style={{ color: "#71717a", fontSize: "11px", lineHeight: 1.4 }}>Seus dados são processados diretamente pelo Stripe.</span>
+
+          <footer className="payment-dialog-footer">
             <button
               type="submit"
               disabled={isLoading || isSubmitting}
               data-testid="button-submit-payment"
-              style={{
-                flexShrink: 0,
-                padding: "11px 16px",
-                border: 0,
-                borderRadius: "9999px",
-                backgroundColor: "#18181b",
-                color: "#fff",
-                fontSize: "12px",
-                fontWeight: 800,
-                cursor: isLoading || isSubmitting ? "not-allowed" : "pointer",
-                opacity: isLoading || isSubmitting ? 0.55 : 1,
-              }}
+              className="payment-dialog-submit"
             >
               {isSubmitting ? "Processando…" : `Pagar ${amountLabel}`}
             </button>
-          </div>
+          </footer>
         </form>
       </div>
     </div>
