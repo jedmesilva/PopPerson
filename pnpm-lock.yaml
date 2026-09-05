@@ -425,6 +425,10 @@ importers:
         version: 3.25.76
 
   artifacts/pop-person:
+    dependencies:
+      '@stripe/stripe-js':
+        specifier: ^9.15.0
+        version: 9.15.0
     devDependencies:
       '@hookform/resolvers':
         specifier: ^3.10.0

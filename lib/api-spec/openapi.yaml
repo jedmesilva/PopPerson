@@ -597,13 +597,15 @@ components:
             $ref: "#/components/schemas/PopPersonAction"
     PopPersonCheckout:
       type: object
-      required: [paymentOrderId, checkoutSessionId, checkoutUrl, amount, currency]
+      required: [paymentOrderId, checkoutSessionId, clientSecret, publishableKey, amount, currency]
       properties:
         paymentOrderId:
           type: string
         checkoutSessionId:
           type: string
-        checkoutUrl:
+        clientSecret:
+          type: string
+        publishableKey:
           type: string
         amount:
           type: number

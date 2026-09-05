@@ -4,6 +4,7 @@ import { ReplitConnectors } from "@replit/connectors-sdk";
 
 type StripeCredentials = {
   secretKey: string;
+  publishableKey?: string;
 };
 
 function getConfiguredStripeSecret(): string | undefined {
@@ -11,10 +12,20 @@ function getConfiguredStripeSecret(): string | undefined {
   return secretKey || undefined;
 }
 
+function getConfiguredStripePublishableKey(): string | undefined {
+  const publishableKey =
+    process.env.STRIPE_PUBLISHABLE_KEY?.trim()
+    ?? process.env.STRIPE_PUBLIC_KEY?.trim();
+  return publishableKey || undefined;
+}
+
 async function getStripeCredentials(): Promise<StripeCredentials> {
   const configuredSecret = getConfiguredStripeSecret();
   if (configuredSecret) {
-    return { secretKey: configuredSecret };
+    return {
+      secretKey: configuredSecret,
+      publishableKey: getConfiguredStripePublishableKey(),
+    };
   }
 
   const connectors = new ReplitConnectors();
@@ -34,17 +45,24 @@ async function getStripeCredentials(): Promise<StripeCredentials> {
   }
 
   const data = await response.json() as {
-    items?: Array<{ settings?: { secret?: string; secret_key?: string } }>;
+    items?: Array<{ settings?: Record<string, unknown> }>;
   };
   const settings = data.items?.[0]?.settings;
-  const secretKey = settings?.secret_key ?? settings?.secret;
+  const secretKey = String(settings?.secret_key ?? settings?.secret ?? "").trim();
   if (!secretKey) {
     throw new Error(
       "Stripe is not connected or has no secret key. Set STRIPE_SECRET_KEY outside Replit.",
     );
   }
 
-  return { secretKey };
+  const publishableKey = String(
+    settings?.publishable_key
+    ?? settings?.publishableKey
+    ?? settings?.publishable
+    ?? "",
+  ).trim() || undefined;
+
+  return { secretKey, publishableKey };
 }
 
 function getConfiguredWebhookBaseUrl(): string {
@@ -69,6 +87,16 @@ function getConfiguredWebhookBaseUrl(): string {
 export async function getUncachableStripeClient(): Promise<Stripe> {
   const { secretKey } = await getStripeCredentials();
   return new Stripe(secretKey);
+}
+
+export async function getStripePublishableKey(): Promise<string> {
+  const { publishableKey } = await getStripeCredentials();
+  if (!publishableKey) {
+    throw new Error(
+      "Stripe has no publishable key. Set STRIPE_PUBLISHABLE_KEY outside Replit.",
+    );
+  }
+  return publishableKey;
 }
 
 export async function getStripeSync(): Promise<StripeSync> {

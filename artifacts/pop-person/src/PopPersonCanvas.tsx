@@ -2,13 +2,13 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { SlidersHorizontal, ArrowLeftRight, ArrowRight, X, Check, ChevronDown, ChevronRight, Locate, Search, ScanFace, Plus, CircleUserRound, Pencil, CalendarDays, LogOut, Mail, MapPin } from "lucide-react";
 import { FaXTwitter } from "react-icons/fa6";
+import { loadStripe } from "@stripe/stripe-js";
 import FanHaterLevelPicker from "./components/fan-hater-level-picker";
 import EmojiEffectsWebGL from "./components/emoji-effects-webgl";
 import {
   useCreatePopPersonAction,
   useGetAccessLocation,
   useGetPopPerson,
-  useGetPopPersonPaymentStatus,
   useGetPopPersonState,
   useLogoutAuthenticatedUser,
   searchCountries,
@@ -64,6 +64,177 @@ function getPaymentStorages() {
     }
   }
   return storages;
+}
+
+function EmbeddedCheckoutModal({ checkout, onClose, onComplete }) {
+  const mountRef = useRef(null);
+  const checkoutRef = useRef(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const onCompleteRef = useRef(onComplete);
+
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setIsLoading(true);
+    setError(null);
+
+    async function mountCheckout() {
+      try {
+        const stripe = await loadStripe(checkout.publishableKey);
+        if (!stripe) throw new Error("Não foi possível carregar o checkout seguro.");
+        const embeddedCheckout = await stripe.initEmbeddedCheckout({
+          clientSecret: checkout.clientSecret,
+          onComplete: () => onCompleteRef.current?.(),
+        });
+        if (cancelled || !mountRef.current) {
+          embeddedCheckout.destroy();
+          return;
+        }
+        checkoutRef.current = embeddedCheckout;
+        embeddedCheckout.mount(mountRef.current);
+        setIsLoading(false);
+      } catch (mountError) {
+        if (cancelled) return;
+        setError(mountError?.message || "Não foi possível abrir o checkout.");
+        setIsLoading(false);
+      }
+    }
+
+    void mountCheckout();
+    return () => {
+      cancelled = true;
+      checkoutRef.current?.destroy();
+      checkoutRef.current = null;
+    };
+  }, [checkout.clientSecret, checkout.publishableKey]);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="checkout-modal-title"
+      data-testid="modal-stripe-checkout"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 120,
+        display: "grid",
+        placeItems: "center",
+        padding: "16px",
+        backgroundColor: "rgba(0, 0, 0, 0.72)",
+        backdropFilter: "blur(8px)",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          width: "min(100%, 520px)",
+          maxHeight: "min(760px, calc(100vh - 32px))",
+          overflow: "hidden",
+          borderRadius: "24px",
+          backgroundColor: "#f7f7f8",
+          boxShadow: "0 22px 70px rgba(0,0,0,0.5)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "12px",
+            padding: "14px 16px",
+            backgroundColor: "#17181b",
+            color: "#f5f5f5",
+          }}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: "3px", minWidth: 0 }}>
+            <strong id="checkout-modal-title" style={{ fontSize: "14px" }}>Finalizar ação</strong>
+            <span style={{ color: "#a1a1aa", fontSize: "11px" }}>Pagamento seguro pelo Stripe</span>
+          </div>
+          <button
+            type="button"
+            data-testid="button-close-checkout"
+            aria-label="Fechar checkout"
+            onClick={onClose}
+            style={{
+              width: "32px",
+              height: "32px",
+              flexShrink: 0,
+              display: "grid",
+              placeItems: "center",
+              border: "1px solid rgba(255,255,255,0.14)",
+              borderRadius: "9999px",
+              backgroundColor: "rgba(255,255,255,0.08)",
+              color: "#f5f5f5",
+              cursor: "pointer",
+            }}
+          >
+            <X size={16} aria-hidden="true" />
+          </button>
+        </div>
+        <div style={{ position: "relative", minHeight: "470px", overflowY: "auto" }}>
+          {isLoading && !error && (
+            <div
+              data-testid="checkout-loading"
+              style={{
+                position: "absolute",
+                inset: 0,
+                zIndex: 1,
+                display: "grid",
+                placeItems: "center",
+                color: "#52525b",
+                fontSize: "13px",
+                backgroundColor: "#f7f7f8",
+              }}
+            >
+              Abrindo checkout seguro…
+            </div>
+          )}
+          {error ? (
+            <div
+              role="alert"
+              data-testid="checkout-error"
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: "12px",
+                padding: "72px 24px",
+                color: "#3f3f46",
+                textAlign: "center",
+              }}
+            >
+              <strong>Não foi possível abrir o pagamento</strong>
+              <span style={{ color: "#71717a", fontSize: "12px", lineHeight: 1.5 }}>{error}</span>
+              <button
+                type="button"
+                onClick={onClose}
+                style={{
+                  padding: "9px 16px",
+                  border: 0,
+                  borderRadius: "9999px",
+                  backgroundColor: "#18181b",
+                  color: "#fff",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Voltar
+              </button>
+            </div>
+          ) : (
+            <div ref={mountRef} data-testid="stripe-embedded-checkout" />
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function readPendingPayment() {
@@ -672,20 +843,7 @@ export default function PopPersonCanvas() {
     },
   });
   const createActionMutation = useCreatePopPersonAction();
-  const initialPendingPayment = readPendingPayment();
-  const [paymentSessionId, setPaymentSessionId] = useState(
-    () => initialPendingPayment?.sessionId ?? null,
-  );
-  const [paymentSyncActive, setPaymentSyncActive] = useState(
-    () => Boolean(initialPendingPayment?.sessionId),
-  );
-  const paymentStatusQuery = useGetPopPersonPaymentStatus(paymentSessionId ?? "", {
-    query: {
-      enabled: paymentSyncActive && Boolean(paymentSessionId),
-      refetchInterval: paymentSyncActive ? 1000 : false,
-      retry: false,
-    },
-  });
+  const [activeCheckout, setActiveCheckout] = useState(null);
   const canvasRef = useRef(null);
   const boardWrapRef = useRef(null);
   const [dataset, setDataset] = useState([]);
@@ -741,58 +899,11 @@ export default function PopPersonCanvas() {
   const submittingActionRef = useRef(false);
   const idempotencyKeyRef = useRef(null);
   const idempotencyPayloadRef = useRef("");
-  const pendingPaymentRef = useRef(initialPendingPayment);
+  const pendingPaymentRef = useRef(null);
   const playerLocationEditedRef = useRef(false);
   const pendingAutoJoinRef = useRef(false);
   const autoJoinSubmittedRef = useRef(false);
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const payment = params.get("payment");
-    let sessionId = params.get("session_id");
-    if (!sessionId) {
-      sessionId = pendingPaymentRef.current?.sessionId ?? null;
-    }
-    if (payment !== "success" && payment !== "cancelled" && !sessionId) return;
-
-    setPaymentNotice(
-      payment === "cancelled"
-        ? {
-            kind: "cancelled",
-            message: "Pagamento cancelado",
-          }
-        : {
-            kind: "success",
-            message: "Confirmando sua ação…",
-          },
-    );
-    if (payment !== "cancelled" && sessionId) {
-      pendingPaymentRef.current = {
-        ...(pendingPaymentRef.current ?? {}),
-        sessionId,
-      };
-      setPaymentSessionId(sessionId);
-      setPaymentSyncActive(true);
-    } else {
-      pendingPaymentRef.current = null;
-      clearPendingPayment();
-    }
-
-    const cleanUrl = `${window.location.pathname}${window.location.hash}`;
-    window.history.replaceState({}, document.title, cleanUrl);
-  }, []);
-
-  useEffect(() => {
-    if (!paymentSyncActive) return;
-    const timeout = window.setTimeout(() => {
-      setPaymentSyncActive(false);
-    }, 60_000);
-    return () => window.clearTimeout(timeout);
-  }, [paymentSyncActive]);
-  useEffect(() => () => {
-    paymentReplayCleanupTimersRef.current.forEach((timer) => window.clearTimeout(timer));
-    paymentReplayCleanupTimersRef.current.clear();
-  }, []);
   useEffect(() => {
     if (!paymentNotice) return undefined;
     const timeout = window.setTimeout(() => setPaymentNotice(null), 5_000);
@@ -1074,15 +1185,7 @@ export default function PopPersonCanvas() {
   const activeActionIdsRef = useRef([]);
   const latestServerActionsRef = useRef(new Map());
   const visualActionTimelinesRef = useRef(new Map());
-  const paymentVisualHoldsRef = useRef(new Map(
-    initialPendingPayment?.targetName
-      && Number.isFinite(Number(initialPendingPayment.previousValue))
-      ? [[
-          String(initialPendingPayment.targetName),
-          Number(initialPendingPayment.previousValue),
-        ]]
-      : [],
-  ));
+  const paymentVisualHoldsRef = useRef(new Map());
   const processedRealtimeEventIdsRef = useRef(new Set());
   const locallyCreatedActionIdsRef = useRef(new Set());
   const latestServerStateVersionRef = useRef(-1);
@@ -1589,56 +1692,6 @@ export default function PopPersonCanvas() {
   }, [stateQuery.data, reconcileServerState]);
 
   useEffect(() => {
-    const paymentStatus = paymentStatusQuery.data;
-    if (paymentStatus?.status !== "paid" || !bootstrapQuery.data?.state) return;
-
-    setPaymentSyncActive(false);
-    setPaymentNotice({
-      kind: "success",
-      message: "Ação confirmada",
-    });
-    if (paymentStatus.action?.status === "completed") {
-      // The server may finish the action while the customer is on Stripe.
-      // Recreate its visual timeline locally after the initial snapshot so
-      // returning from Checkout never loses the paid action animation.
-      if (paymentStatus.replay) {
-        replayPaidAction(paymentStatus.action, paymentStatus.replay);
-      } else {
-        // Keep the server result authoritative if an old completed action has
-        // no resolution payload to replay. Do not leave the cell held forever.
-        paymentVisualHoldsRef.current.delete(paymentStatus.action.targetName);
-        pendingPaymentRef.current = null;
-        clearPendingPayment();
-      }
-    } else if (paymentStatus.action?.status === "running") {
-      pendingPaymentRef.current = {
-        ...(pendingPaymentRef.current ?? {}),
-        actionId: paymentStatus.action.id,
-        phase: "live",
-      };
-      writePendingPayment(pendingPaymentRef.current);
-      spawnActionEmojis(paymentStatus.action);
-      queueAction(paymentStatus.action);
-    } else if (paymentStatus.action) {
-      pendingPaymentRef.current = {
-        ...(pendingPaymentRef.current ?? {}),
-        actionId: paymentStatus.action.id,
-        phase: "queued",
-      };
-      writePendingPayment(pendingPaymentRef.current);
-      queueAction(paymentStatus.action);
-    }
-    void stateQuery.refetch();
-  }, [
-    paymentStatusQuery.data,
-    bootstrapQuery.data,
-    replayPaidAction,
-    spawnActionEmojis,
-    queueAction,
-    stateQuery.refetch,
-  ]);
-
-  useEffect(() => {
     if (!config) return undefined;
 
     let socket;
@@ -2073,7 +2126,6 @@ export default function PopPersonCanvas() {
       idempotencyKeyRef.current = crypto.randomUUID();
     }
     submittingActionRef.current = true;
-    const targetSnapshot = leaves.find((leaf) => leaf.name === selectedCell);
     createActionMutation.mutate(
       {
         data: {
@@ -2088,16 +2140,16 @@ export default function PopPersonCanvas() {
           submittingActionRef.current = false;
           idempotencyKeyRef.current = null;
           idempotencyPayloadRef.current = "";
-          if (!checkout?.checkoutUrl) {
+          if (!checkout?.clientSecret || !checkout?.publishableKey) {
+            createActionMutation.reset();
+            setPaymentNotice({
+              kind: "cancelled",
+              message: "Não foi possível abrir o checkout seguro.",
+            });
             return;
           }
-          writePendingPayment({
-            sessionId: checkout.checkoutSessionId,
-            targetName: selectedCell,
-            previousValue: Number(targetSnapshot?.value),
-            createdAt: Date.now(),
-          });
-          window.location.assign(checkout.checkoutUrl);
+          closeModal();
+          setActiveCheckout(checkout);
         },
         onError: (error) => {
           // Keep the same key for a retry of the same request. This protects
@@ -2111,12 +2163,22 @@ export default function PopPersonCanvas() {
         },
       },
     );
-  }, [authenticatedUser, pendingMode, selectedActionType, selectedLevel, modalLevel, selectedCell, leaves, closeModal, createActionMutation, queueAction]);
+  }, [authenticatedUser, pendingMode, selectedActionType, selectedLevel, modalLevel, selectedCell, closeModal, createActionMutation]);
   const selectedCellData = useMemo(() => leaves.find((l) => l.name === selectedCell) || null, [leaves, selectedCell]);
   const selectedActionPrice = useMemo(
     () => getActionTotalPrice(selectedCellData?.basePrice, selectedLevel),
     [selectedCellData?.basePrice, selectedLevel],
   );
+  const closeCheckout = useCallback(() => {
+    setActiveCheckout(null);
+  }, []);
+  const completeCheckout = useCallback(() => {
+    setActiveCheckout(null);
+    setPaymentNotice({
+      kind: "success",
+      message: "Pagamento recebido. Aguardando a ação no realtime…",
+    });
+  }, []);
   const actionPriceStatus = !selectedCellData
     ? "Carregando dados…"
     : selectedCellData.basePrice == null
@@ -2681,6 +2743,13 @@ export default function PopPersonCanvas() {
           {activeFilterCount > 0 && <span data-testid="text-filter-count" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "16px", height: "16px", borderRadius: "9999px", backgroundColor: "#6366f1", color: "#fff", fontSize: "10px", fontWeight: 700, padding: "0 4px" }}>{activeFilterCount}</span>}
         </button>
       </div>
+       {activeCheckout && (
+         <EmbeddedCheckoutModal
+           checkout={activeCheckout}
+           onClose={closeCheckout}
+           onComplete={completeCheckout}
+         />
+       )}
        {paymentNotice && (
          <div
            style={{

@@ -292,7 +292,8 @@ export interface PopPersonState {
 export interface PopPersonCheckout {
   paymentOrderId: string;
   checkoutSessionId: string;
-  checkoutUrl: string;
+  clientSecret: string;
+  publishableKey: string;
   /** @minimum 0 */
   amount: number;
   /**

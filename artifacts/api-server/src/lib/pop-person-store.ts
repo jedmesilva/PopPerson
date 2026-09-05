@@ -981,7 +981,8 @@ type StripeCheckoutUser = {
 export type PopPersonCheckout = {
   paymentOrderId: string;
   checkoutSessionId: string;
-  checkoutUrl: string;
+  clientSecret: string;
+  publishableKey: string;
   amount: number;
   currency: string;
 };
@@ -1192,24 +1193,28 @@ export async function createPopPersonCheckout(
   });
 
   if (order.stripeCheckoutSessionId && order.status === "pending") {
+    const { getStripePublishableKey } = await import("./stripe-client");
     const { stripe } = await getStripeActionProduct();
     const existingSession = await stripe.checkout.sessions.retrieve(
       order.stripeCheckoutSessionId,
     );
-    if (!existingSession.url) throw new Error("O checkout existente não possui URL.");
-    return {
-      paymentOrderId: order.id,
-      checkoutSessionId: existingSession.id,
-      checkoutUrl: existingSession.url,
-      amount: order.amountMinor / 100,
-      currency: order.currency,
-    };
+    if (existingSession.client_secret) {
+      return {
+        paymentOrderId: order.id,
+        checkoutSessionId: existingSession.id,
+        clientSecret: existingSession.client_secret,
+        publishableKey: await getStripePublishableKey(),
+        amount: order.amountMinor / 100,
+        currency: order.currency,
+      };
+    }
   }
   if (order.status === "paid" && order.actionId) {
     throw new Error("Esta ação já foi paga e enviada.");
   }
 
   const { stripe, product } = await getStripeActionProduct();
+  const { getStripePublishableKey } = await import("./stripe-client");
   const price = await stripe.prices.create({
     product: product.id,
     currency: order.currency,
@@ -1224,6 +1229,7 @@ export async function createPopPersonCheckout(
     : `https://${process.env.REPLIT_DOMAINS?.split(",")[0]}`;
   const checkoutSession = await stripe.checkout.sessions.create({
     mode: "payment",
+    ui_mode: "embedded",
     line_items: [{ price: price.id, quantity: 1 }],
     customer_email: user.email?.trim() || undefined,
     client_reference_id: order.id,
@@ -1232,11 +1238,12 @@ export async function createPopPersonCheckout(
       user_id: user.id,
       target_name: order.targetName,
     },
-    success_url: `${safeOrigin}/?payment=success&session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${safeOrigin}/?payment=cancelled`,
+    return_url: `${safeOrigin}/?payment=success&session_id={CHECKOUT_SESSION_ID}`,
     expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
   });
-  if (!checkoutSession.url) throw new Error("O Stripe não retornou a URL de checkout.");
+  if (!checkoutSession.client_secret) {
+    throw new Error("O Stripe não retornou o segredo do checkout embutido.");
+  }
 
   await db
     .update(paymentOrdersTable)
@@ -1251,7 +1258,8 @@ export async function createPopPersonCheckout(
   return {
     paymentOrderId: order.id,
     checkoutSessionId: checkoutSession.id,
-    checkoutUrl: checkoutSession.url,
+    clientSecret: checkoutSession.client_secret,
+    publishableKey: await getStripePublishableKey(),
     amount: order.amountMinor / 100,
     currency: order.currency,
   };

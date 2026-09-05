@@ -565,7 +565,8 @@ export const createPopPersonActionResponseCurrencyMax = 3;
 export const CreatePopPersonActionResponse = zod.object({
   "paymentOrderId": zod.string(),
   "checkoutSessionId": zod.string(),
-  "checkoutUrl": zod.string(),
+  "clientSecret": zod.string(),
+  "publishableKey": zod.string(),
   "amount": zod.number().min(createPopPersonActionResponseAmountMin),
   "currency": zod.string().min(createPopPersonActionResponseCurrencyMin).max(createPopPersonActionResponseCurrencyMax)
 })
