@@ -51,7 +51,14 @@ server.on("error", (err) => {
 
 await initializePopPersonStore();
 await initializeCountryCatalog();
-await initializeStripe();
+try {
+  await initializeStripe();
+} catch (error) {
+  logger.error(
+    { err: error },
+    "Stripe initialization failed; API will start with payments unavailable",
+  );
+}
 await registerPopPersonRealtime(webSocketServer);
 server.listen(port, () => {
   logger.info({ port }, "Server listening");
