@@ -1238,6 +1238,7 @@ export async function createPopPersonCheckout(
       user_id: user.id,
       target_name: order.targetName,
     },
+    redirect_on_completion: "never",
     return_url: `${safeOrigin}/?payment=success&session_id={CHECKOUT_SESSION_ID}`,
     expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
   });
