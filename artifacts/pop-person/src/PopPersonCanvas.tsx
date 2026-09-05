@@ -86,7 +86,7 @@ function EmbeddedCheckoutModal({ checkout, onClose, onComplete }) {
       try {
         const stripe = await loadStripe(checkout.publishableKey);
         if (!stripe) throw new Error("Não foi possível carregar o checkout seguro.");
-        const embeddedCheckout = await stripe.initEmbeddedCheckout({
+        const embeddedCheckout = await (stripe as any).createEmbeddedCheckoutPage({
           clientSecret: checkout.clientSecret,
           onComplete: () => onCompleteRef.current?.(),
         });
