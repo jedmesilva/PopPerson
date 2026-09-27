@@ -18,7 +18,6 @@ import {
   actionTypesTable,
   actionsTable,
   cellsTable,
-  categoriesTable,
   locationsTable,
   paymentOrdersTable,
   peopleTable,
@@ -33,10 +32,8 @@ import type {
   PopPersonAction,
   PopPersonActionInput,
   PopPersonBootstrap,
-  PopPersonCategory,
   PopPersonConfig,
   PopPersonState,
-  PlayerRegistration,
 } from "@workspace/api-zod";
 import {
   dueHitCountAt,
@@ -270,19 +267,15 @@ async function ensureRoomMembership(roomId: string, sessionId: string | undefine
 }
 
 async function getDataset(roomId: string): Promise<PopPerson[]> {
-  const [rows, categories, actionCounts] = await Promise.all([
+  const [rows, actionCounts] = await Promise.all([
     db
       .select({
         personId: peopleTable.id,
         name: peopleTable.name,
-        categoryId: peopleTable.categoryId,
-        categoryName: categoriesTable.name,
-        categorySlug: categoriesTable.slug,
-        categoryParentId: categoriesTable.parentId,
-         gender: peopleTable.gender,
+        gender: peopleTable.gender,
         status: peopleTable.status,
-         imageUrl: peopleTable.imageUrl,
-         xUsername: usersTable.username,
+        imageUrl: peopleTable.imageUrl,
+        xUsername: usersTable.username,
         cidade: locationsTable.city,
         estado: locationsTable.state,
         estadoCodigo: locationsTable.stateCode,
@@ -293,7 +286,6 @@ async function getDataset(roomId: string): Promise<PopPerson[]> {
       })
       .from(cellsTable)
       .innerJoin(peopleTable, eq(cellsTable.personId, peopleTable.id))
-      .innerJoin(categoriesTable, eq(peopleTable.categoryId, categoriesTable.id))
       .leftJoin(locationsTable, eq(peopleTable.locationId, locationsTable.id))
       .leftJoin(usersTable, eq(peopleTable.playerUserId, usersTable.id))
       .where(
@@ -301,19 +293,9 @@ async function getDataset(roomId: string): Promise<PopPerson[]> {
           eq(cellsTable.roomId, roomId),
           eq(cellsTable.active, true),
           eq(peopleTable.active, true),
-          eq(categoriesTable.active, true),
         ),
       )
       .orderBy(asc(cellsTable.createdAt)),
-    db
-      .select({
-        id: categoriesTable.id,
-        name: categoriesTable.name,
-        slug: categoriesTable.slug,
-        parentId: categoriesTable.parentId,
-      })
-      .from(categoriesTable)
-      .where(eq(categoriesTable.active, true)),
     db
       .select({
         personId: cellsTable.personId,
@@ -331,7 +313,6 @@ async function getDataset(roomId: string): Promise<PopPerson[]> {
       .groupBy(cellsTable.personId, actionsTable.mode),
   ]);
 
-  const categoryById = new Map(categories.map((category) => [category.id, category]));
   const actionCountsByPersonId = new Map<string, { totalFans: number; totalHaters: number }>();
   for (const row of actionCounts) {
     const counts = actionCountsByPersonId.get(row.personId) ?? { totalFans: 0, totalHaters: 0 };
@@ -342,37 +323,6 @@ async function getDataset(roomId: string): Promise<PopPerson[]> {
     }
     actionCountsByPersonId.set(row.personId, counts);
   }
-  const pathCache = new Map<string, PopPersonCategory[]>();
-  const getCategoryPath = (
-    categoryId: string,
-    visiting = new Set<string>(),
-  ): PopPersonCategory[] => {
-    const cached = pathCache.get(categoryId);
-    if (cached) return cached;
-    if (visiting.has(categoryId)) {
-      throw new Error("Hierarquia de categorias inválida: ciclo detectado.");
-    }
-    const category = categoryById.get(categoryId);
-    if (!category) {
-      throw new Error(`Categoria "${categoryId}" não encontrada.`);
-    }
-    const nextVisiting = new Set(visiting).add(categoryId);
-    const parentPath = category.parentId
-      ? getCategoryPath(category.parentId, nextVisiting)
-      : [];
-    const path = [
-      ...parentPath,
-      {
-        id: category.id,
-        name: category.name,
-        slug: category.slug,
-        parentId: category.parentId,
-      },
-    ];
-    pathCache.set(categoryId, path);
-    return path;
-  };
-
   return rows.map((person) => {
     if (person.status !== "titular" && person.status !== "candidato") {
       throw new Error(`Status inválido para "${person.name}": "${person.status}".`);
@@ -389,14 +339,7 @@ async function getDataset(roomId: string): Promise<PopPerson[]> {
 
     return {
       name: person.name,
-      category: {
-        id: person.categoryId,
-        name: person.categoryName,
-        slug: person.categorySlug,
-        parentId: person.categoryParentId,
-      },
-      categoryPath: getCategoryPath(person.categoryId),
-       gender: person.gender,
+      gender: person.gender,
       cidade: person.cidade ?? "",
       estado: person.estado ?? "",
       estadoCodigo: person.estadoCodigo ?? "",
@@ -409,11 +352,11 @@ async function getDataset(roomId: string): Promise<PopPerson[]> {
       totalFans,
       totalHaters,
       polarization,
-       imageUrl: person.imageUrl ?? null,
-       xUsername: person.xUsername ?? null,
-       xProfileUrl: person.xUsername
-         ? `https://x.com/${encodeURIComponent(person.xUsername)}`
-         : null,
+      imageUrl: person.imageUrl ?? null,
+      xUsername: person.xUsername ?? null,
+      xProfileUrl: person.xUsername
+        ? `https://x.com/${encodeURIComponent(person.xUsername)}`
+        : null,
     };
   });
 }
@@ -705,35 +648,6 @@ export async function getPopPersonState(
   return currentState(roomId);
 }
 
-export async function getPlayerRegistration(
-  user: AuthenticatedPopPersonUser,
-): Promise<PlayerRegistration> {
-  const categories = await db
-    .select({
-      id: categoriesTable.id,
-      name: categoriesTable.name,
-      slug: categoriesTable.slug,
-      parentId: categoriesTable.parentId,
-    })
-    .from(categoriesTable)
-    .where(eq(categoriesTable.active, true))
-    .orderBy(asc(categoriesTable.name));
-  return {
-    user: {
-      xUserId: user.xUserId,
-      username: user.username,
-      name: user.name,
-      avatarUrl: user.avatarUrl,
-      email: user.email,
-    },
-    categories,
-    defaultCategoryId:
-      categories.find((category) => category.slug === "players")?.id ??
-      categories[0]?.id ??
-      null,
-  };
-}
-
 async function getPlayerMembership(
   roomId: string,
   userId?: string,
@@ -799,8 +713,8 @@ export async function joinPopPersonAsPlayer(
   const now = new Date();
   const displayName = playerDisplayName(user);
   const slug = `player-${user.xUserId}`;
-  if (!input?.categoryId || !input.location) {
-    throw new Error("Categoria e localização são obrigatórias.");
+  if (!input?.location) {
+    throw new Error("Localização é obrigatória.");
   }
   if (!input.termsAccepted) {
     throw new Error("É necessário aceitar os Termos e Condições do InstaPop.");
@@ -818,18 +732,6 @@ export async function joinPopPersonAsPlayer(
   }
 
   await db.transaction(async (tx) => {
-    const [category] = await tx
-      .select({ id: categoriesTable.id })
-      .from(categoriesTable)
-      .where(
-        and(
-          eq(categoriesTable.id, input.categoryId),
-          eq(categoriesTable.active, true),
-        ),
-      )
-      .limit(1);
-    if (!category) throw new Error("Não foi possível definir sua categoria.");
-
     const [savedLocation] = await tx
       .insert(locationsTable)
       .values({
@@ -866,7 +768,6 @@ export async function joinPopPersonAsPlayer(
         .set({
           name: displayName,
           slug,
-          categoryId: category.id,
           gender: null,
           color: playerColor(user.xUserId),
           status: "candidato",
@@ -882,7 +783,6 @@ export async function joinPopPersonAsPlayer(
         .values({
           name: displayName,
           slug,
-          categoryId: category.id,
           gender: null,
           color: playerColor(user.xUserId),
           status: "candidato",

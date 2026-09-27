@@ -61,18 +61,8 @@ export const PopPersonStatus = {
   candidato: 'candidato',
 } as const;
 
-export interface PopPersonCategory {
-  id: string;
-  name: string;
-  slug: string;
-  /** @nullable */
-  parentId: string | null;
-}
-
 export interface PopPerson {
   name: string;
-  category: PopPersonCategory;
-  categoryPath: PopPersonCategory[];
   /**
      * Gender recorded for the person, when known.
      * @nullable
@@ -379,28 +369,9 @@ export interface PlayerRegistrationLocation {
 }
 
 export interface JoinPopPersonBody {
-  /** @minLength 1 */
-  categoryId: string;
   location: PlayerRegistrationLocation;
   /** Whether the user accepted the InstaPop Terms and Conditions. */
   termsAccepted: boolean;
-}
-
-export interface PlayerRegistrationUser {
-  xUserId: string;
-  username: string;
-  name: string;
-  /** @nullable */
-  avatarUrl: string | null;
-  /** @nullable */
-  email: string | null;
-}
-
-export interface PlayerRegistration {
-  user: PlayerRegistrationUser;
-  categories: PopPersonCategory[];
-  /** @nullable */
-  defaultCategoryId: string | null;
 }
 
 export type PopPersonActionInputActionType = typeof PopPersonActionInputActionType[keyof typeof PopPersonActionInputActionType];

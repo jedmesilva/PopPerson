@@ -28,7 +28,6 @@ import type {
   HealthStatus,
   JoinPopPersonBody,
   JoinPopPersonResponse,
-  PlayerRegistration,
   PopPersonActionInput,
   PopPersonBootstrap,
   PopPersonCheckout,
@@ -540,83 +539,6 @@ export const useJoinPopPersonAsPlayer = <TError = ErrorType<ErrorResponse>,
       return useMutation(getJoinPopPersonAsPlayerMutationOptions(options));
     }
 
-export const getGetPlayerRegistrationUrl = () => {
-
-
-
-
-  return `/api/pop-person/player/registration`
-}
-
-/**
- * @summary Get authenticated player registration defaults
- */
-export const getPlayerRegistration = async ( options?: Parameters<typeof customFetch>[1]): Promise<PlayerRegistration> => {
-
-  return customFetch<PlayerRegistration>(getGetPlayerRegistrationUrl(),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-
-
-export const getGetPlayerRegistrationQueryKey = () => {
-    return [
-    `/api/pop-person/player/registration`
-    ] as const;
-    }
-
-
-export const getGetPlayerRegistrationQueryOptions = <TData = Awaited<ReturnType<typeof getPlayerRegistration>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPlayerRegistration>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-) => {
-
-const {query: queryOptions, request: requestOptions} = options ?? {};
-
-  const queryKey =  queryOptions?.queryKey ?? getGetPlayerRegistrationQueryKey();
-
-
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPlayerRegistration>>> = ({ signal }) => getPlayerRegistration({ signal, ...requestOptions });
-
-
-
-
-
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPlayerRegistration>>, TError, TData> & { queryKey: QueryKey }
-}
-
-export type GetPlayerRegistrationQueryResult = NonNullable<Awaited<ReturnType<typeof getPlayerRegistration>>>
-export type GetPlayerRegistrationQueryError = ErrorType<ErrorResponse>
-
-
-/**
- * @summary Get authenticated player registration defaults
- */
-
-export function useGetPlayerRegistration<TData = Awaited<ReturnType<typeof getPlayerRegistration>>, TError = ErrorType<ErrorResponse>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPlayerRegistration>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-
-  const queryOptions = getGetPlayerRegistrationQueryOptions(options)
-
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
-
-  return withQueryKey(query, queryOptions.queryKey);
-}
-
-
-
-
-
-
-
 export const getStartXAuthenticationUrl = (params?: StartXAuthenticationParams,) => {
   const normalizedParams = new URLSearchParams();
 
@@ -1089,7 +1011,7 @@ export const getCreatePopPersonActionUrl = () => {
 }
 
 /**
- * @summary Create a Stripe Checkout for an attack or defense action
+ * @summary Create a Stripe payment intent for an attack or defense action
  */
 export const createPopPersonAction = async (popPersonActionInput: PopPersonActionInput, options?: Parameters<typeof customFetch>[1]): Promise<PopPersonCheckout> => {
 
@@ -1138,7 +1060,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type CreatePopPersonActionMutationError = ErrorType<ErrorResponse>
 
     /**
- * @summary Create a Stripe Checkout for an attack or defense action
+ * @summary Create a Stripe payment intent for an attack or defense action
  */
 export const useCreatePopPersonAction = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPopPersonAction>>, TError,{data: BodyType<PopPersonActionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}

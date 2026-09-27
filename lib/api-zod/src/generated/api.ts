@@ -167,18 +167,6 @@ export const GetPopPersonResponse = zod.object({
   "stateVersion": zod.number().min(getPopPersonResponseStateStateVersionMin).describe('Monotonic room version used to reject stale realtime snapshots.'),
   "dataset": zod.array(zod.object({
   "name": zod.string(),
-  "category": zod.object({
-  "id": zod.string(),
-  "name": zod.string(),
-  "slug": zod.string(),
-  "parentId": zod.string().nullable()
-}),
-  "categoryPath": zod.array(zod.object({
-  "id": zod.string(),
-  "name": zod.string(),
-  "slug": zod.string(),
-  "parentId": zod.string().nullable()
-})),
   "gender": zod.string().nullable().describe('Gender recorded for the person, when known.'),
   "cidade": zod.string(),
   "estado": zod.string(),
@@ -247,9 +235,7 @@ export const GetPopPersonResponse = zod.object({
 
 
 
-
 export const JoinPopPersonAsPlayerBody = zod.object({
-  "categoryId": zod.string().min(1),
   "location": zod.object({
   "city": zod.string().min(1),
   "region": zod.string().min(1),
@@ -272,18 +258,6 @@ export const joinPopPersonAsPlayerResponsePlayerPolarizationMax = 1;
 export const JoinPopPersonAsPlayerResponse = zod.object({
   "player": zod.object({
   "name": zod.string(),
-  "category": zod.object({
-  "id": zod.string(),
-  "name": zod.string(),
-  "slug": zod.string(),
-  "parentId": zod.string().nullable()
-}),
-  "categoryPath": zod.array(zod.object({
-  "id": zod.string(),
-  "name": zod.string(),
-  "slug": zod.string(),
-  "parentId": zod.string().nullable()
-})),
   "gender": zod.string().nullable().describe('Gender recorded for the person, when known.'),
   "cidade": zod.string(),
   "estado": zod.string(),
@@ -301,27 +275,6 @@ export const JoinPopPersonAsPlayerResponse = zod.object({
   "xUsername": zod.string().nullable().describe('X username for a player-linked profile, without the @ prefix.'),
   "xProfileUrl": zod.string().nullable().describe('Public X profile URL for a player-linked profile.')
 })
-})
-
-
-/**
- * @summary Get authenticated player registration defaults
- */
-export const GetPlayerRegistrationResponse = zod.object({
-  "user": zod.object({
-  "xUserId": zod.string(),
-  "username": zod.string(),
-  "name": zod.string(),
-  "avatarUrl": zod.string().nullable(),
-  "email": zod.string().nullable()
-}),
-  "categories": zod.array(zod.object({
-  "id": zod.string(),
-  "name": zod.string(),
-  "slug": zod.string(),
-  "parentId": zod.string().nullable()
-})),
-  "defaultCategoryId": zod.string().nullable()
 })
 
 
@@ -405,18 +358,6 @@ export const GetPopPersonStateResponse = zod.object({
   "stateVersion": zod.number().min(getPopPersonStateResponseStateVersionMin).describe('Monotonic room version used to reject stale realtime snapshots.'),
   "dataset": zod.array(zod.object({
   "name": zod.string(),
-  "category": zod.object({
-  "id": zod.string(),
-  "name": zod.string(),
-  "slug": zod.string(),
-  "parentId": zod.string().nullable()
-}),
-  "categoryPath": zod.array(zod.object({
-  "id": zod.string(),
-  "name": zod.string(),
-  "slug": zod.string(),
-  "parentId": zod.string().nullable()
-})),
   "gender": zod.string().nullable().describe('Gender recorded for the person, when known.'),
   "cidade": zod.string(),
   "estado": zod.string(),
@@ -541,7 +482,7 @@ export const GetPopPersonPaymentStatusResponse = zod.object({
 
 
 /**
- * @summary Create a Stripe Checkout for an attack or defense action
+ * @summary Create a Stripe payment intent for an attack or defense action
  */
 
 export const createPopPersonActionBodyIdempotencyKeyMax = 160;

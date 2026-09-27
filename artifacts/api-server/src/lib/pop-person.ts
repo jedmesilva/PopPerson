@@ -5,7 +5,6 @@ export {
   getPopPersonAction,
   getPopPersonBootstrap,
   getPopPersonState,
-  getPlayerRegistration,
   initializePopPersonStore,
   joinPopPersonAsPlayer,
 } from "./pop-person-store";

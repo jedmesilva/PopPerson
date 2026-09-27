@@ -18,3 +18,4 @@
 - [Piso de cobrança Stripe](stripe-payment-floor.md) — Checkout BRL rejeita valores muito baixos após conversão; o preço-base precisa aplicar o piso técnico no servidor.
 - [Replay pós-Checkout](payment-replay-after-checkout.md) — ações pagas podem terminar enquanto o cliente está no Stripe; o retorno precisa reproduzir a animação localmente.
 - [Checkout customizado Stripe](stripe-custom-payment-element.md) — PaymentIntent + PaymentElement evita redirects e mudanças frequentes do Checkout Embedded.
+- [Categorias legadas do InstaPop](legacy-pop-person-categories.md) — a coluna antiga permanece nullable para preservar histórico, mas categorias não fazem parte de contratos nem fluxos ativos.

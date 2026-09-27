@@ -6,7 +6,6 @@ export * from "./actions";
 export * from "./payment-orders";
 export * from "./auth-sessions";
 export * from "./cells";
-export * from "./categories";
 export * from "./countries";
 export * from "./locations";
 export * from "./people";

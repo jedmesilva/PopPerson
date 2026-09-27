@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { SlidersHorizontal, ArrowLeftRight, ArrowRight, X, Check, ChevronDown, ChevronRight, Locate, Search, ScanFace, Plus, CircleUserRound, Pencil, CalendarDays, LogOut, Mail, MapPin } from "lucide-react";
+import { ArrowLeftRight, ArrowRight, X, Check, ChevronDown, ChevronRight, Locate, Search, ScanFace, Plus, CircleUserRound, Pencil, CalendarDays, LogOut, Mail, MapPin } from "lucide-react";
 import { FaXTwitter } from "react-icons/fa6";
 import { loadStripe } from "@stripe/stripe-js";
 import FanHaterLevelPicker from "./components/fan-hater-level-picker";
@@ -11,7 +11,6 @@ import {
   useGetPopPerson,
   useGetPopPersonState,
   useLogoutAuthenticatedUser,
-  searchCountries,
   searchCities,
 } from "@workspace/api-client-react";
 
@@ -487,107 +486,6 @@ function keepCirclesSeparated(circles) {
   }
 }
 
-function FilterSearchPicker({
-  label,
-  selectedLabel,
-  options,
-  selected,
-  onSelect,
-  disabled = false,
-  open,
-  onToggle,
-  search,
-  onSearch,
-  inputTestId,
-  buttonTestId,
-  allOptionTestId,
-  listboxLabel,
-  placeholder,
-  allLabel,
-  loading = false,
-  emptyMessage = "Nenhum resultado encontrado.",
-  showDivider = true,
-  clientFilter = true,
-}) {
-  const query = normalizeLocationValue(search);
-  const visibleOptions = options.filter((option) =>
-    option.value !== "Todos" &&
-    (!clientFilter || !query || normalizeLocationValue(option.label).includes(query)),
-  );
-
-  return (
-    <div style={{ borderBottom: showDivider ? "1px solid #2d2d2d" : "none" }}>
-      <button
-        data-testid={buttonTestId}
-        type="button"
-        onClick={() => onToggle()}
-        disabled={disabled}
-        aria-label={selected === "Todos" ? `Buscar ${label.toLocaleLowerCase("pt-BR")}` : `Editar ${label.toLocaleLowerCase("pt-BR")}`}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        style={{ width: "100%", minHeight: "54px", padding: "8px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", border: "none", backgroundColor: "transparent", color: "#f5f5f5", textAlign: "left", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.58 : 1 }}
-      >
-        <span style={{ display: "flex", flexDirection: "column", gap: "3px", minWidth: 0 }}>
-          <span style={{ color: disabled ? "#737373" : "#d4d4d4", fontSize: "11px", fontWeight: 700, letterSpacing: "0.04em", lineHeight: 1.2, textTransform: "uppercase" }}>{label}</span>
-          <span style={{ color: selected !== "Todos" ? "#c7d2fe" : "#a3a3a3", fontSize: "12px", fontWeight: 700, lineHeight: 1.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedLabel}</span>
-        </span>
-        {open ? <ChevronDown size={16} aria-hidden="true" style={{ flexShrink: 0, color: "#c7d2fe" }} /> : <ChevronRight size={16} aria-hidden="true" style={{ flexShrink: 0, color: disabled ? "#525252" : "#737373" }} />}
-      </button>
-
-      {open && !disabled && (
-        <div role="listbox" aria-label={listboxLabel} style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "10px 12px 12px", backgroundColor: "#202020", borderTop: "1px solid #2d2d2d" }}>
-          <div style={{ position: "relative" }}>
-            <Search size={14} aria-hidden="true" style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#737373", pointerEvents: "none" }} />
-            <input
-              data-testid={inputTestId}
-              type="search"
-              value={search}
-              onChange={(event) => onSearch(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") onToggle(false);
-              }}
-              placeholder={placeholder}
-              aria-label={`Buscar ${label.toLocaleLowerCase("pt-BR")}`}
-              autoFocus
-              style={{ width: "100%", boxSizing: "border-box", padding: "9px 10px 9px 30px", borderRadius: "8px", backgroundColor: "#2a2a2a", color: "#f5f5f5", border: "1px solid #454545", fontSize: "12px", outline: "none" }}
-            />
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "2px", maxHeight: "190px", overflowY: "auto" }}>
-            <button
-              data-testid={allOptionTestId}
-              type="button"
-              role="option"
-              aria-selected={selected === "Todos"}
-              onClick={() => onSelect("Todos")}
-              style={{ width: "100%", padding: "9px 10px", border: "none", borderRadius: "7px", backgroundColor: selected === "Todos" ? "#363636" : "transparent", color: "#f5f5f5", fontSize: "12px", fontWeight: 700, textAlign: "left", cursor: "pointer" }}
-            >
-              {allLabel}
-            </button>
-            {loading ? (
-              <span style={{ padding: "12px 10px", color: "#737373", fontSize: "12px", textAlign: "center" }}>Buscando...</span>
-            ) : visibleOptions.length === 0 ? (
-              <span style={{ padding: "12px 10px", color: "#737373", fontSize: "12px", textAlign: "center" }}>{emptyMessage}</span>
-            ) : (
-              visibleOptions.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  role="option"
-                  aria-selected={option.value === selected}
-                  onClick={() => onSelect(option.value)}
-                  style={{ width: "100%", padding: "9px 10px", border: "none", borderRadius: "7px", backgroundColor: option.value === selected ? "#363636" : "transparent", color: option.value === selected ? "#fff" : "#d4d4d4", fontSize: "12px", fontWeight: option.value === selected ? 700 : 600, textAlign: "left", cursor: "pointer" }}
-                >
-                  {option.label}
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function ItemVisual({ element, size = 22 }) {
   if (element?.imageUrl) {
     return <img src={element.imageUrl} alt="" style={{ width: `${size}px`, height: `${size}px`, objectFit: "contain", flexShrink: 0 }} />;
@@ -854,25 +752,10 @@ export default function PopPersonCanvas() {
   const canvasRef = useRef(null);
   const boardWrapRef = useRef(null);
   const [dataset, setDataset] = useState([]);
-  const [filters, setFilters] = useState({ pais: "Todos", estado: "Todos", cidade: "Todos", categoria: "Todos" });
-  const [draftFilters, setDraftFilters] = useState({ pais: "Todos", estado: "Todos", cidade: "Todos", categoria: "Todos" });
-  const [showFiltersModal, setShowFiltersModal] = useState(false);
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [showConnectModal, setShowConnectModal] = useState(false);
   const [connectPurpose, setConnectPurpose] = useState("player");
   const [paymentNotice, setPaymentNotice] = useState(null);
-  const [isFilterCountryPickerOpen, setIsFilterCountryPickerOpen] = useState(false);
-  const [filterCountrySearch, setFilterCountrySearch] = useState("");
-  const [isFilterStatePickerOpen, setIsFilterStatePickerOpen] = useState(false);
-  const [filterStateSearch, setFilterStateSearch] = useState("");
-  const [isFilterCityPickerOpen, setIsFilterCityPickerOpen] = useState(false);
-  const [filterCitySearch, setFilterCitySearch] = useState("");
-  const [filterLocationSearchResults, setFilterLocationSearchResults] = useState([]);
-  const [isSearchingFilterLocation, setIsSearchingFilterLocation] = useState(false);
-  const [filterLocationSearchError, setFilterLocationSearchError] = useState(null);
-  const [isFilterCategoryPickerOpen, setIsFilterCategoryPickerOpen] = useState(false);
-  const [filterCategorySearch, setFilterCategorySearch] = useState("");
-  const [expandedFilterCategoryIds, setExpandedFilterCategoryIds] = useState(new Set());
   const [selectedCell, setSelectedCell] = useState(null);
   const [pendingMode, setPendingMode] = useState(null);
   const [modalLevel, setModalLevel] = useState("");
@@ -883,13 +766,7 @@ export default function PopPersonCanvas() {
   const [isJoiningPlayer, setIsJoiningPlayer] = useState(false);
   const [joinPlayerError, setJoinPlayerError] = useState(null);
   const [showPlayerSignup, setShowPlayerSignup] = useState(false);
-  const [playerRegistration, setPlayerRegistration] = useState(null);
-  const [isLoadingPlayerRegistration, setIsLoadingPlayerRegistration] = useState(false);
   const [hasAcceptedPlayerTerms, setHasAcceptedPlayerTerms] = useState(false);
-  const [playerCategoryId, setPlayerCategoryId] = useState("");
-  const [isPlayerCategoryPickerOpen, setIsPlayerCategoryPickerOpen] = useState(false);
-  const [playerCategorySearch, setPlayerCategorySearch] = useState("");
-  const [expandedPlayerCategoryIds, setExpandedPlayerCategoryIds] = useState(new Set());
   const [playerLocation, setPlayerLocation] = useState(EMPTY_PLAYER_LOCATION);
   const [isEditingPlayerLocation, setIsEditingPlayerLocation] = useState(false);
   const [isPlayerLocationPickerOpen, setIsPlayerLocationPickerOpen] = useState(false);
@@ -935,209 +812,8 @@ export default function PopPersonCanvas() {
     }),
     [levels],
   );
-  const playerCategoryOptions = useMemo(() => {
-    const categories = playerRegistration?.categories ?? [];
-    const categoryById = new Map(categories.map((category) => [category.id, category]));
-    const childrenByParent = new Map();
-
-    categories.forEach((category) => {
-      if (!category.parentId) return;
-      const children = childrenByParent.get(category.parentId) ?? [];
-      children.push(category);
-      childrenByParent.set(category.parentId, children);
-    });
-
-    const ordered = [];
-    const visited = new Set();
-    const visit = (category, depth, parentPath) => {
-      if (!category || visited.has(category.id)) return;
-      visited.add(category.id);
-      const path = [...parentPath, category.name];
-      ordered.push({
-        ...category,
-        depth,
-        hasChildren: (childrenByParent.get(category.id)?.length ?? 0) > 0,
-        pathLabel: path.join(" / "),
-      });
-      (childrenByParent.get(category.id) ?? [])
-        .slice()
-        .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
-        .forEach((child) => visit(child, depth + 1, path));
-    };
-
-    categories
-      .filter((category) => !category.parentId || !categoryById.has(category.parentId))
-      .slice()
-      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
-      .forEach((category) => visit(category, 0, []));
-    categories.forEach((category) => visit(category, 0, []));
-    return ordered;
-  }, [playerRegistration?.categories]);
-  const filteredPlayerCategoryOptions = useMemo(() => {
-    const query = normalizeLocationValue(playerCategorySearch);
-    if (!query) return playerCategoryOptions;
-    return playerCategoryOptions.filter((category) =>
-      normalizeLocationValue(`${category.name} ${category.pathLabel}`).includes(query),
-    );
-  }, [playerCategoryOptions, playerCategorySearch]);
-  const visiblePlayerCategoryOptions = useMemo(() => {
-    if (normalizeLocationValue(playerCategorySearch)) return filteredPlayerCategoryOptions;
-    return filteredPlayerCategoryOptions.filter((category) => {
-      if (category.depth === 0) return true;
-      let parentId = category.parentId;
-      while (parentId) {
-        if (!expandedPlayerCategoryIds.has(parentId)) return false;
-        const parent = playerCategoryOptions.find((option) => option.id === parentId);
-        parentId = parent?.parentId;
-      }
-      return true;
-    });
-  }, [expandedPlayerCategoryIds, filteredPlayerCategoryOptions, playerCategoryOptions, playerCategorySearch]);
-  const selectedPlayerCategory = useMemo(
-    () => playerCategoryOptions.find((category) => category.id === playerCategoryId),
-    [playerCategoryId, playerCategoryOptions],
-  );
   const selectedActionType = pendingMode ? actionTypes[actionTypeByMode[pendingMode]] : null;
   const selectedLevel = levelByKey[modalLevel] ?? null;
-  const activeFilterLocationSearch = useMemo(() => {
-    if (isFilterCountryPickerOpen) return { level: "pais", query: filterCountrySearch };
-    if (isFilterStatePickerOpen) return { level: "estado", query: filterStateSearch };
-    if (isFilterCityPickerOpen) return { level: "cidade", query: filterCitySearch };
-    return null;
-  }, [
-    filterCitySearch,
-    filterCountrySearch,
-    filterStateSearch,
-    isFilterCityPickerOpen,
-    isFilterCountryPickerOpen,
-    isFilterStatePickerOpen,
-  ]);
-
-  const remoteFilterLocationOptions = useMemo(() => {
-    if (!activeFilterLocationSearch) return [];
-    const options = new Map();
-    filterLocationSearchResults.forEach((result) => {
-      if (activeFilterLocationSearch.level === "pais") {
-        if (result.country) options.set(result.country, { value: result.country, label: result.country });
-        return;
-      }
-      if (activeFilterLocationSearch.level === "estado") {
-        if (result.region && result.region !== result.country) {
-          options.set(result.region, { value: result.region, label: result.region });
-        }
-        return;
-      }
-      if (result.city) {
-        const label = result.region && result.region !== result.country
-          ? `${result.city} (${result.region})`
-          : result.city;
-        options.set(result.city, { value: result.city, label });
-      }
-    });
-    return Array.from(options.values()).sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
-  }, [activeFilterLocationSearch, filterLocationSearchResults]);
-  const filterLocationEmptyMessage = activeFilterLocationSearch?.query.trim().length < 2
-    ? "Digite pelo menos 2 caracteres."
-    : filterLocationSearchError || "Nenhum resultado encontrado.";
-  const filterCategoryOptions = useMemo(() => {
-    const categories = new Map();
-    dataset.forEach((person) => {
-      (person.categoryPath ?? []).forEach((category, index, path) => {
-        if (!categories.has(category.id)) {
-          categories.set(category.id, {
-            ...category,
-            depth: index,
-            pathLabel: path.slice(0, index + 1).map((item) => item.name).join(" / "),
-          });
-        }
-      });
-    });
-    const categoryIdsWithChildren = new Set(
-      Array.from(categories.values())
-        .map((category) => category.parentId)
-        .filter(Boolean),
-    );
-    return Array.from(categories.values())
-      .map((category) => ({ ...category, hasChildren: categoryIdsWithChildren.has(category.id) }))
-      .sort((a, b) => a.pathLabel.localeCompare(b.pathLabel, "pt-BR"));
-  }, [dataset]);
-  const filteredFilterCategoryOptions = useMemo(() => {
-    const query = normalizeLocationValue(filterCategorySearch);
-    if (!query) return filterCategoryOptions;
-    return filterCategoryOptions.filter((category) =>
-      normalizeLocationValue(`${category.name} ${category.pathLabel}`).includes(query),
-    );
-  }, [filterCategoryOptions, filterCategorySearch]);
-  const visibleFilterCategoryOptions = useMemo(() => {
-    if (normalizeLocationValue(filterCategorySearch)) return filteredFilterCategoryOptions;
-    return filteredFilterCategoryOptions.filter((category) => {
-      if (category.depth === 0) return true;
-      let parentId = category.parentId;
-      while (parentId) {
-        if (!expandedFilterCategoryIds.has(parentId)) return false;
-        const parent = filterCategoryOptions.find((option) => option.id === parentId);
-        parentId = parent?.parentId;
-      }
-      return true;
-    });
-  }, [expandedFilterCategoryIds, filteredFilterCategoryOptions, filterCategoryOptions, filterCategorySearch]);
-  const selectedFilterCategory = useMemo(
-    () => filterCategoryOptions.find((category) => category.id === draftFilters.categoria),
-    [draftFilters.categoria, filterCategoryOptions],
-  );
-  const setFilterLevel = useCallback((level, value) => {
-    setDraftFilters((prev) => level === "pais"
-      ? { pais: value, estado: "Todos", cidade: "Todos", categoria: prev.categoria }
-      : level === "estado"
-        ? { ...prev, estado: value, cidade: "Todos" }
-        : level === "cidade"
-          ? { ...prev, cidade: value }
-          : { ...prev, categoria: value });
-  }, []);
-  const selectFilterLevel = useCallback((level, value) => {
-    setFilterLevel(level, value);
-    setFilterCountrySearch("");
-    setFilterStateSearch("");
-    setFilterCitySearch("");
-    setFilterCategorySearch("");
-    setIsFilterCountryPickerOpen(false);
-    setIsFilterStatePickerOpen(false);
-    setIsFilterCityPickerOpen(false);
-    setIsFilterCategoryPickerOpen(false);
-  }, [setFilterLevel]);
-  const resetFilterPickerState = useCallback(() => {
-    setFilterCountrySearch("");
-    setFilterStateSearch("");
-    setFilterCitySearch("");
-    setFilterCategorySearch("");
-    setIsFilterCountryPickerOpen(false);
-    setIsFilterStatePickerOpen(false);
-    setIsFilterCityPickerOpen(false);
-    setIsFilterCategoryPickerOpen(false);
-  }, []);
-  const openFilters = useCallback(() => {
-    setDraftFilters(filters);
-    resetFilterPickerState();
-    setShowFiltersModal(true);
-  }, [filters, resetFilterPickerState]);
-  const applyFilters = useCallback(() => {
-    setFilters(draftFilters);
-    resetFilterPickerState();
-    setShowFiltersModal(false);
-  }, [draftFilters, resetFilterPickerState]);
-  const clearFilters = useCallback(() => {
-    const emptyFilters = { pais: "Todos", estado: "Todos", cidade: "Todos", categoria: "Todos" };
-    setFilters(emptyFilters);
-    setDraftFilters(emptyFilters);
-    resetFilterPickerState();
-  }, [resetFilterPickerState]);
-  const clearDraftFilters = useCallback(() => {
-    setDraftFilters({ pais: "Todos", estado: "Todos", cidade: "Todos", categoria: "Todos" });
-    resetFilterPickerState();
-  }, [resetFilterPickerState]);
-  const activeFilterCount = (filters.pais !== "Todos" ? 1 : 0) + (filters.estado !== "Todos" ? 1 : 0) + (filters.cidade !== "Todos" ? 1 : 0) + (filters.categoria !== "Todos" ? 1 : 0);
-  const draftFilterCount = (draftFilters.pais !== "Todos" ? 1 : 0) + (draftFilters.estado !== "Todos" ? 1 : 0) + (draftFilters.cidade !== "Todos" ? 1 : 0) + (draftFilters.categoria !== "Todos" ? 1 : 0);
-  const filteredDataset = useMemo(() => dataset.filter((d) => (filters.pais === "Todos" || d.pais === filters.pais) && (filters.estado === "Todos" || d.estado === filters.estado) && (filters.cidade === "Todos" || d.cidade === filters.cidade) && (filters.categoria === "Todos" || d.categoryPath.some((category) => category.id === filters.categoria))), [dataset, filters]);
   useEffect(() => {
     const activeModal = showAccountModal ? "account" : showConnectModal ? "connect" : null;
     if (!activeModal) return undefined;
@@ -1159,9 +835,9 @@ export default function PopPersonCanvas() {
   }, [showAccountModal, showConnectModal]);
 
   const leaves = useMemo(() => {
-    if (!canJoinAsPlayer) return computeLeaves(filteredDataset);
+    if (!canJoinAsPlayer) return computeLeaves(dataset);
     return computeLeaves([
-      ...filteredDataset,
+      ...dataset,
       {
         name: ADD_PLAYER_CELL_NAME,
         value: 16,
@@ -1170,7 +846,7 @@ export default function PopPersonCanvas() {
         isAddCell: true,
       },
     ]);
-  }, [filteredDataset, canJoinAsPlayer]);
+  }, [dataset, canJoinAsPlayer]);
 
   const leavesRef = useRef([]);
   const selectedCellRef = useRef(null);
@@ -1866,36 +1542,15 @@ export default function PopPersonCanvas() {
       .map((action) => ({ kind: "queued", ...action })),
   ], [activeActions, getRemainingUnits, queue]);
 
-  const openPlayerSignup = useCallback(async ({ autoJoin = false } = {}) => {
-    if (!canJoinAsPlayer || isJoiningPlayer || isLoadingPlayerRegistration) return;
+  const openPlayerSignup = useCallback(({ autoJoin = false } = {}) => {
+    if (!canJoinAsPlayer || isJoiningPlayer) return;
     setShowPlayerSignup(true);
-    setIsLoadingPlayerRegistration(true);
     setJoinPlayerError(null);
     setHasAcceptedPlayerTerms(autoJoin);
-    setIsPlayerCategoryPickerOpen(false);
-    setPlayerCategorySearch("");
-    setExpandedPlayerCategoryIds(new Set());
-    try {
-      const response = await fetch(getApiEndpoint("/api/pop-person/player/registration"), {
-        credentials: "include",
-      });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        throw new Error(payload?.error || "Não foi possível carregar seu cadastro.");
-      }
-      const data = await response.json();
-      setPlayerRegistration(data);
-      setPlayerCategoryId(data.defaultCategoryId || data.categories?.[0]?.id || "");
-      playerLocationEditedRef.current = false;
-      setPlayerLocation(getSuggestedPlayerLocation(accessLocationQuery.data));
-      setIsEditingPlayerLocation(false);
-    } catch (error) {
-      setShowPlayerSignup(false);
-      setJoinPlayerError(error instanceof Error ? error.message : "Não foi possível carregar seu cadastro.");
-    } finally {
-      setIsLoadingPlayerRegistration(false);
-    }
-  }, [accessLocationQuery.data, canJoinAsPlayer, isJoiningPlayer, isLoadingPlayerRegistration]);
+    playerLocationEditedRef.current = false;
+    setPlayerLocation(getSuggestedPlayerLocation(accessLocationQuery.data));
+    setIsEditingPlayerLocation(false);
+  }, [accessLocationQuery.data, canJoinAsPlayer, isJoiningPlayer]);
   const playerLocationComplete = Boolean(
     playerLocation.city.trim() &&
     playerLocation.region.trim() &&
@@ -1933,68 +1588,6 @@ export default function PopPersonCanvas() {
     };
   }, [isEditingPlayerLocation, isPlayerLocationPickerOpen, playerLocationSearch]);
   useEffect(() => {
-    if (!activeFilterLocationSearch) {
-      setFilterLocationSearchResults([]);
-      setIsSearchingFilterLocation(false);
-      setFilterLocationSearchError(null);
-      return undefined;
-    }
-
-    const query = activeFilterLocationSearch.query.trim();
-    if (query.length < 2) {
-      setFilterLocationSearchResults([]);
-      setIsSearchingFilterLocation(false);
-      setFilterLocationSearchError(null);
-      return undefined;
-    }
-
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(async () => {
-      setIsSearchingFilterLocation(true);
-      setFilterLocationSearchError(null);
-      try {
-        if (activeFilterLocationSearch.level === "pais") {
-          const data = await searchCountries({ q: query }, { signal: controller.signal });
-          setFilterLocationSearchResults((data.results ?? []).map((result) => ({
-            id: result.code2,
-            city: result.name,
-            region: result.name,
-            country: result.name,
-            countryCode: result.code2,
-            latitude: 0,
-            longitude: 0,
-          })));
-          return;
-        }
-
-        const data = await searchCities({ q: query }, { signal: controller.signal });
-        const results = (data.results ?? []).filter((result) => {
-          if (draftFilters.pais !== "Todos" && result.country !== draftFilters.pais) return false;
-          if (activeFilterLocationSearch.level === "estado") {
-            return result.region && result.region !== result.country;
-          }
-          return draftFilters.estado === "Todos" || result.region === draftFilters.estado;
-        });
-        setFilterLocationSearchResults(results);
-      } catch (error) {
-        if (controller.signal.aborted) return;
-        setFilterLocationSearchResults([]);
-        setFilterLocationSearchError("Não foi possível buscar locais agora.");
-      } finally {
-        if (!controller.signal.aborted) setIsSearchingFilterLocation(false);
-      }
-    }, 280);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-      controller.abort();
-    };
-  }, [
-    activeFilterLocationSearch,
-    draftFilters.estado,
-    draftFilters.pais,
-  ]);
-  useEffect(() => {
     if (!showPlayerSignup || playerLocationEditedRef.current) return;
     const suggestedLocation = getSuggestedPlayerLocation(accessLocationQuery.data);
     if (suggestedLocation.city && suggestedLocation.region && suggestedLocation.country) {
@@ -2002,7 +1595,7 @@ export default function PopPersonCanvas() {
     }
   }, [accessLocationQuery.data, showPlayerSignup]);
   const joinPlayer = useCallback(async () => {
-    if (!canJoinAsPlayer || isJoiningPlayer || !playerCategoryId || !playerLocationComplete || !hasAcceptedPlayerTerms) return;
+    if (!canJoinAsPlayer || isJoiningPlayer || !playerLocationComplete || !hasAcceptedPlayerTerms) return;
     setIsJoiningPlayer(true);
     setJoinPlayerError(null);
     pendingPlayerFocusRef.current = true;
@@ -2012,7 +1605,6 @@ export default function PopPersonCanvas() {
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          categoryId: playerCategoryId,
           termsAccepted: hasAcceptedPlayerTerms,
           location: {
             city: playerLocation.city,
@@ -2034,7 +1626,7 @@ export default function PopPersonCanvas() {
     } finally {
       setIsJoiningPlayer(false);
     }
-  }, [bootstrapQuery.refetch, canJoinAsPlayer, hasAcceptedPlayerTerms, isJoiningPlayer, playerCategoryId, playerLocation, playerLocationComplete, stateQuery.refetch]);
+  }, [bootstrapQuery.refetch, canJoinAsPlayer, hasAcceptedPlayerTerms, isJoiningPlayer, playerLocation, playerLocationComplete, stateQuery.refetch]);
   useEffect(() => {
     if (!authenticatedUser || pendingAutoJoinRef.current) return;
     if (!canJoinAsPlayer) {
@@ -2073,9 +1665,6 @@ export default function PopPersonCanvas() {
       !pendingAutoJoinRef.current
       || autoJoinSubmittedRef.current
       || !showPlayerSignup
-      || isLoadingPlayerRegistration
-      || !playerRegistration
-      || !playerCategoryId
       || !playerLocationComplete
       || !hasAcceptedPlayerTerms
       || isJoiningPlayer
@@ -2086,11 +1675,8 @@ export default function PopPersonCanvas() {
   }, [
     hasAcceptedPlayerTerms,
     isJoiningPlayer,
-    isLoadingPlayerRegistration,
     joinPlayer,
-    playerCategoryId,
     playerLocationComplete,
-    playerRegistration,
     showPlayerSignup,
   ]);
   const openModal = useCallback((mode) => {
@@ -2250,15 +1836,7 @@ export default function PopPersonCanvas() {
     if (!playerName || !boardWrapRef.current) return false;
 
     const player = leavesRef.current.find((leaf) => leaf.name === playerName);
-    if (!player) {
-      // A location/category filter can hide the player. Clearing it makes
-      // "Eu" reliable instead of silently doing nothing.
-      if (activeFilterCount > 0) {
-        pendingPlayerFocusRef.current = true;
-        clearFilters();
-      }
-      return false;
-    }
+    if (!player) return false;
 
     const circle = animatedCirclesRef.current.get(playerName);
     const centerX = circle?.x ?? player.x;
@@ -2281,18 +1859,12 @@ export default function PopPersonCanvas() {
       duration: 480,
     };
     return true;
-  }, [activeFilterCount, clearFilters, playerName]);
+  }, [playerName]);
 
   useEffect(() => {
     if (!pendingPlayerFocusRef.current || !playerName) return;
     const player = leavesRef.current.find((leaf) => leaf.name === playerName);
-    if (!player) {
-      if (activeFilterCount > 0) {
-        pendingPlayerFocusRef.current = true;
-        clearFilters();
-      }
-      return;
-    }
+    if (!player) return;
     if (playerFocusTimeoutRef.current !== null) return;
 
     playerFocusTimeoutRef.current = window.setTimeout(() => {
@@ -2745,10 +2317,6 @@ export default function PopPersonCanvas() {
             );
            })()}
         </div>
-        <button data-testid="button-open-filters" onClick={openFilters} style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: "5px", padding: "7px 12px", borderRadius: "9999px", backgroundColor: "rgba(23, 23, 23, 0.55)", backdropFilter: "blur(6px)", border: activeFilterCount > 0 ? "1px solid rgba(99, 102, 241, 0.6)" : "1px solid rgba(255, 255, 255, 0.08)", color: "#f5f5f5", fontSize: "12px", fontWeight: 600, cursor: "pointer" }}>
-          <SlidersHorizontal size={13} /> Filtros
-          {activeFilterCount > 0 && <span data-testid="text-filter-count" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: "16px", height: "16px", borderRadius: "9999px", backgroundColor: "#6366f1", color: "#fff", fontSize: "10px", fontWeight: 700, padding: "0 4px" }}>{activeFilterCount}</span>}
-        </button>
       </div>
        {activeCheckout && (
          <CustomPaymentModal
@@ -2861,8 +2429,7 @@ export default function PopPersonCanvas() {
           <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "10px", padding: "24px", textAlign: "center" }}>
             <Search size={28} strokeWidth={1.8} aria-hidden="true" style={{ color: "#737373" }} />
             <span data-testid="text-empty-state" style={{ color: "#f5f5f5", fontSize: "14px", fontWeight: 700 }}>Nenhuma pessoa encontrada</span>
-            <span style={{ color: "#737373", fontSize: "12px" }}>Tente ajustar ou limpar os filtros aplicados</span>
-            <button data-testid="button-adjust-filters" onClick={openFilters} style={{ marginTop: "6px", padding: "8px 16px", borderRadius: "9999px", backgroundColor: "#262626", color: "#f5f5f5", fontSize: "12px", fontWeight: 700, border: "1px solid #333", cursor: "pointer" }}>Ajustar filtros</button>
+             <span style={{ color: "#737373", fontSize: "12px" }}>Ainda não há pessoas para exibir.</span>
           </div>
         )}
       </div>
@@ -2933,207 +2500,6 @@ export default function PopPersonCanvas() {
         </div>
       )}
 
-      {showFiltersModal && (
-        <div onClick={() => setShowFiltersModal(false)} style={{ position: "fixed", inset: 0, zIndex: 100, backgroundColor: "rgba(0,0,0,0.72)", display: "flex", alignItems: "center", justifyContent: "center", padding: "16px", backdropFilter: "blur(2px)" }}>
-          <div role="dialog" aria-modal="true" aria-labelledby="filters-title" onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: "360px", maxHeight: "88vh", backgroundColor: "#171717", border: "1px solid #292929", borderRadius: "14px", padding: "18px", display: "flex", flexDirection: "column", gap: "16px", overflowY: "auto", boxShadow: "0 8px 28px rgba(0,0,0,0.42)" }}>
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
-              <div style={{ minWidth: 0 }}>
-                <span id="filters-title" style={{ display: "block", color: "#fff", fontWeight: 800, fontSize: "18px", lineHeight: 1.2, letterSpacing: "-0.02em" }}>Filtros</span>
-                <span style={{ display: "block", marginTop: "4px", color: "#a3a3a3", fontSize: "12px", lineHeight: 1.4 }}>Refine a visualização de popularidade.</span>
-              </div>
-              <button data-testid="button-close-filters" type="button" onClick={() => setShowFiltersModal(false)} aria-label="Fechar" title="Fechar" style={{ ...closeButtonStyle, flexShrink: 0 }}><X size={13} aria-hidden="true" /></button>
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: "7px" }}>
-                <span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>Localidade</span>
-                <div style={{ overflow: "hidden", borderRadius: "12px", backgroundColor: "#202020", border: "1px solid #2d2d2d" }}>
-                  <FilterSearchPicker
-                    label="País"
-                    selectedLabel={draftFilters.pais === "Todos" ? "Todos os países" : draftFilters.pais}
-                    options={activeFilterLocationSearch?.level === "pais" ? remoteFilterLocationOptions : []}
-                    selected={draftFilters.pais}
-                    onSelect={(value) => selectFilterLevel("pais", value)}
-                    open={isFilterCountryPickerOpen}
-                    onToggle={(next) => {
-                      setIsFilterCountryPickerOpen((isOpen) => typeof next === "boolean" ? next : !isOpen);
-                      setFilterCountrySearch("");
-                      setIsFilterStatePickerOpen(false);
-                      setIsFilterCityPickerOpen(false);
-                      setIsFilterCategoryPickerOpen(false);
-                    }}
-                    search={filterCountrySearch}
-                    onSearch={setFilterCountrySearch}
-                    loading={isSearchingFilterLocation && activeFilterLocationSearch?.level === "pais"}
-                    emptyMessage={filterLocationEmptyMessage}
-                    clientFilter={false}
-                    inputTestId="input-search-filter-country"
-                    buttonTestId="button-open-filter-country"
-                    allOptionTestId="option-filter-country-all"
-                    listboxLabel="Resultados de países"
-                    placeholder="Digite o nome do país"
-                    allLabel="Todos os países"
-                  />
-                  <FilterSearchPicker
-                    label="Estado / região"
-                    selectedLabel={draftFilters.estado === "Todos" ? "Todos os estados / regiões" : draftFilters.estado}
-                    options={activeFilterLocationSearch?.level === "estado" ? remoteFilterLocationOptions : []}
-                    selected={draftFilters.estado}
-                    onSelect={(value) => selectFilterLevel("estado", value)}
-                    disabled={draftFilters.pais === "Todos"}
-                    open={isFilterStatePickerOpen}
-                    onToggle={(next) => {
-                      setIsFilterStatePickerOpen((isOpen) => typeof next === "boolean" ? next : !isOpen);
-                      setFilterStateSearch("");
-                      setIsFilterCountryPickerOpen(false);
-                      setIsFilterCityPickerOpen(false);
-                      setIsFilterCategoryPickerOpen(false);
-                    }}
-                    search={filterStateSearch}
-                    onSearch={setFilterStateSearch}
-                    loading={isSearchingFilterLocation && activeFilterLocationSearch?.level === "estado"}
-                    emptyMessage={filterLocationEmptyMessage}
-                    inputTestId="input-search-filter-state"
-                    buttonTestId="button-open-filter-state"
-                    allOptionTestId="option-filter-state-all"
-                    listboxLabel="Resultados de estados e regiões"
-                    placeholder="Digite o nome do estado ou região"
-                    allLabel="Todos os estados / regiões"
-                  />
-                  <FilterSearchPicker
-                    label="Cidade"
-                    selectedLabel={draftFilters.cidade === "Todos" ? "Todas as cidades" : draftFilters.cidade}
-                    options={activeFilterLocationSearch?.level === "cidade" ? remoteFilterLocationOptions : []}
-                    selected={draftFilters.cidade}
-                    onSelect={(value) => selectFilterLevel("cidade", value)}
-                    open={isFilterCityPickerOpen}
-                    onToggle={(next) => {
-                      setIsFilterCityPickerOpen((isOpen) => typeof next === "boolean" ? next : !isOpen);
-                      setFilterCitySearch("");
-                      setIsFilterCountryPickerOpen(false);
-                      setIsFilterStatePickerOpen(false);
-                      setIsFilterCategoryPickerOpen(false);
-                    }}
-                    search={filterCitySearch}
-                    onSearch={setFilterCitySearch}
-                    loading={isSearchingFilterLocation && activeFilterLocationSearch?.level === "cidade"}
-                    emptyMessage={filterLocationEmptyMessage}
-                    inputTestId="input-search-filter-city"
-                    buttonTestId="button-open-filter-city"
-                    allOptionTestId="option-filter-city-all"
-                    listboxLabel="Resultados de cidades"
-                    placeholder="Digite o nome da cidade"
-                    allLabel="Todas as cidades"
-                    showDivider={false}
-                  />
-                </div>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "7px" }}>
-                <span style={{ color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>Categoria</span>
-                <div style={{ overflow: "hidden", borderRadius: "12px", backgroundColor: "#202020", border: "1px solid #2d2d2d" }}>
-                  <button
-                    data-testid="button-open-filter-category"
-                    type="button"
-                    onClick={() => {
-                      setIsFilterCategoryPickerOpen((isOpen) => !isOpen);
-                      setFilterCategorySearch("");
-                      setIsFilterCountryPickerOpen(false);
-                      setIsFilterStatePickerOpen(false);
-                      setIsFilterCityPickerOpen(false);
-                    }}
-                    aria-label={draftFilters.categoria === "Todos" ? "Buscar categoria" : "Editar categoria"}
-                    aria-haspopup="listbox"
-                    aria-expanded={isFilterCategoryPickerOpen}
-                    style={{ width: "100%", minHeight: "54px", padding: "8px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", border: "none", backgroundColor: "transparent", color: "#f5f5f5", textAlign: "left", cursor: "pointer" }}
-                  >
-                    <span data-testid="text-filter-category" style={{ minWidth: 0, color: draftFilters.categoria !== "Todos" ? "#c7d2fe" : "#a3a3a3", fontSize: "13px", fontWeight: 700, lineHeight: 1.3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {selectedFilterCategory?.pathLabel ?? "Todas as categorias"}
-                    </span>
-                    {isFilterCategoryPickerOpen ? <ChevronDown size={16} aria-hidden="true" style={{ flexShrink: 0, color: "#c7d2fe" }} /> : <ChevronRight size={16} aria-hidden="true" style={{ flexShrink: 0, color: "#737373" }} />}
-                  </button>
-
-                  {isFilterCategoryPickerOpen && (
-                     <div role="listbox" aria-label="Categorias de popularidade" style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "10px 12px 12px", backgroundColor: "#202020", borderTop: "1px solid #2d2d2d" }}>
-                      <div style={{ position: "relative" }}>
-                        <Search size={14} aria-hidden="true" style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#737373", pointerEvents: "none" }} />
-                        <input
-                          data-testid="input-search-filter-category"
-                          type="search"
-                          value={filterCategorySearch}
-                          onChange={(event) => setFilterCategorySearch(event.target.value)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Escape") {
-                              setIsFilterCategoryPickerOpen(false);
-                              setFilterCategorySearch("");
-                            }
-                          }}
-                          placeholder="Buscar categoria"
-                          aria-label="Buscar categoria"
-                          autoFocus
-                          style={{ width: "100%", boxSizing: "border-box", padding: "9px 10px 9px 30px", borderRadius: "8px", backgroundColor: "#2a2a2a", color: "#f5f5f5", border: "1px solid #454545", fontSize: "12px", outline: "none" }}
-                        />
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "2px", maxHeight: "190px", overflowY: "auto" }}>
-                        <button
-                          data-testid="option-filter-category-all"
-                          type="button"
-                          role="option"
-                          aria-selected={draftFilters.categoria === "Todos"}
-                          onClick={() => selectFilterLevel("categoria", "Todos")}
-                          style={{ width: "100%", padding: "9px 10px", border: "none", borderRadius: "7px", backgroundColor: draftFilters.categoria === "Todos" ? "#363636" : "transparent", color: "#f5f5f5", fontSize: "12px", fontWeight: 700, textAlign: "left", cursor: "pointer" }}
-                        >
-                          Todas as categorias
-                        </button>
-                        {visibleFilterCategoryOptions.length === 0 ? (
-                          <span style={{ padding: "12px 10px", color: "#737373", fontSize: "12px", textAlign: "center" }}>Nenhuma categoria encontrada.</span>
-                        ) : (
-                          visibleFilterCategoryOptions.map((category) => (
-                            <div key={category.id} style={{ display: "flex", alignItems: "stretch", gap: "2px", paddingLeft: `${category.depth * 18}px` }}>
-                              {category.hasChildren ? (
-                                <button
-                                  type="button"
-                                  aria-label={`${expandedFilterCategoryIds.has(category.id) ? "Recolher" : "Expandir"} ${category.name}`}
-                                  aria-expanded={expandedFilterCategoryIds.has(category.id)}
-                                  onClick={() => setExpandedFilterCategoryIds((expanded) => {
-                                    const next = new Set(expanded);
-                                    if (next.has(category.id)) next.delete(category.id);
-                                    else next.add(category.id);
-                                    return next;
-                                  })}
-                                  style={{ width: "26px", flexShrink: 0, display: "grid", placeItems: "center", padding: 0, border: "none", borderRadius: "7px", backgroundColor: "transparent", color: "#737373", cursor: "pointer" }}
-                                >
-                                  {expandedFilterCategoryIds.has(category.id) ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
-                                </button>
-                              ) : (
-                                <span aria-hidden="true" style={{ width: "26px", flexShrink: 0 }} />
-                              )}
-                              <button
-                                type="button"
-                                role="option"
-                                aria-selected={category.id === draftFilters.categoria}
-                                onClick={() => selectFilterLevel("categoria", category.id)}
-                                style={{ flex: 1, minWidth: 0, padding: "9px 10px", display: "block", border: "none", borderRadius: "7px", backgroundColor: category.id === draftFilters.categoria ? "#363636" : "transparent", color: category.id === draftFilters.categoria ? "#fff" : category.depth === 0 ? "#f5f5f5" : "#d4d4d4", fontSize: "12px", fontWeight: category.depth === 0 ? 700 : 600, textAlign: "left", cursor: "pointer" }}
-                              >
-                                <span style={{ display: "block", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{category.name}</span>
-                              </button>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", borderTop: "1px solid #292929", paddingTop: "16px" }}>
-              <button data-testid="button-clear-filters" type="button" onClick={clearDraftFilters} disabled={draftFilterCount === 0} style={{ padding: "10px 8px", borderRadius: "8px", backgroundColor: "transparent", color: draftFilterCount === 0 ? "#525252" : "#a3a3a3", fontWeight: 700, fontSize: "12px", border: "none", cursor: draftFilterCount === 0 ? "default" : "pointer", opacity: draftFilterCount === 0 ? 0.7 : 1 }}>Limpar filtros</button>
-              <button data-testid="button-apply-filters" type="button" onClick={applyFilters} style={{ minWidth: "108px", padding: "11px 16px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", fontWeight: 700, fontSize: "13px", border: "none", cursor: "pointer" }}>Aplicar filtros</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {showQueueModal && (
         <div onClick={() => setShowQueueModal(false)} style={{ position: "fixed", inset: 0, zIndex: 100, backgroundColor: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: "max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left))", boxSizing: "border-box" }}>
           <div role="dialog" aria-modal="true" aria-labelledby="queue-modal-title" onClick={(e) => e.stopPropagation()} style={{ width: "min(94vw, 420px)", maxWidth: "100%", maxHeight: "min(78dvh, 620px)", minHeight: 0, backgroundColor: "#171717", border: "1px solid #333", borderRadius: "16px", padding: "16px", display: "flex", flexDirection: "column", gap: "12px", boxSizing: "border-box", overflow: "hidden" }}>
@@ -3178,20 +2544,18 @@ export default function PopPersonCanvas() {
               <button data-testid="button-close-player-signup" type="button" onClick={() => setShowPlayerSignup(false)} disabled={isJoiningPlayer} aria-label="Fechar" style={{ ...closeButtonStyle, width: "26px", height: "26px", flexShrink: 0, opacity: isJoiningPlayer ? 0.45 : 1 }}><X size={13} /></button>
             </div>
 
-            {isLoadingPlayerRegistration ? (
-              <div style={{ padding: "28px 8px", textAlign: "center", color: "#a3a3a3", fontSize: "13px" }}>Carregando sua inscrição…</div>
-            ) : playerRegistration ? (
+            {authenticatedUser ? (
               <>
                 <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "11px 12px", borderRadius: "12px", backgroundColor: "#202020", border: "1px solid #2d2d2d" }}>
-                  {playerRegistration.user.avatarUrl ? (
-                    <img src={playerRegistration.user.avatarUrl} alt="" style={{ width: "40px", height: "40px", borderRadius: "9999px", objectFit: "cover", flexShrink: 0 }} />
+                  {authenticatedUser.avatarUrl ? (
+                    <img src={authenticatedUser.avatarUrl} alt="" style={{ width: "40px", height: "40px", borderRadius: "9999px", objectFit: "cover", flexShrink: 0 }} />
                   ) : (
-                     <div style={{ width: "40px", height: "40px", borderRadius: "9999px", backgroundColor: "#333", color: "#f5f5f5", display: "grid", placeItems: "center", flexShrink: 0, fontSize: "15px", fontWeight: 800 }}>{playerRegistration.user.name.trim().charAt(0).toUpperCase()}</div>
+                     <div style={{ width: "40px", height: "40px", borderRadius: "9999px", backgroundColor: "#333", color: "#f5f5f5", display: "grid", placeItems: "center", flexShrink: 0, fontSize: "15px", fontWeight: 800 }}>{authenticatedUser.name.trim().charAt(0).toUpperCase()}</div>
                   )}
                   <div style={{ minWidth: 0 }}>
                     <span style={{ display: "block", marginBottom: "3px", color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.05em", lineHeight: 1.2, textTransform: "uppercase" }}>Você está entrando como</span>
-                    <span style={{ display: "block", color: "#fff", fontSize: "14px", fontWeight: 800, lineHeight: 1.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerRegistration.user.name}</span>
-                    <span style={{ display: "block", marginTop: "3px", color: "#a3a3a3", fontSize: "11px", lineHeight: 1.2 }}>@{playerRegistration.user.username}</span>
+                    <span style={{ display: "block", color: "#fff", fontSize: "14px", fontWeight: 800, lineHeight: 1.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{authenticatedUser.name}</span>
+                    <span style={{ display: "block", marginTop: "3px", color: "#a3a3a3", fontSize: "11px", lineHeight: 1.2 }}>@{authenticatedUser.username}</span>
                   </div>
                 </div>
 
@@ -3299,100 +2663,6 @@ export default function PopPersonCanvas() {
                   )}
                 </div>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: "7px", borderTop: "1px solid #292929", paddingTop: "16px" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
-                    <div style={{ minWidth: 0 }}>
-                      <span style={{ display: "block", color: "#737373", fontSize: "10px", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>Categoria de popularidade</span>
-                      <span data-testid="text-player-category" style={{ display: "block", marginTop: "6px", color: selectedPlayerCategory ? "#f5f5f5" : "#a3a3a3", fontSize: "13px", fontWeight: 700, lineHeight: 1.4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {selectedPlayerCategory?.pathLabel ?? "Informe sua categoria para continuar"}
-                      </span>
-                    </div>
-                    <button
-                      data-testid="select-player-category"
-                      type="button"
-                      onClick={() => {
-                        if (isJoiningPlayer) return;
-                        setIsPlayerCategoryPickerOpen((isOpen) => !isOpen);
-                        setPlayerCategorySearch("");
-                      }}
-                      disabled={isJoiningPlayer}
-                      aria-label={selectedPlayerCategory ? "Editar categoria" : "Informar categoria"}
-                      title={selectedPlayerCategory ? "Editar categoria" : "Informar categoria"}
-                      aria-haspopup="listbox"
-                      aria-expanded={isPlayerCategoryPickerOpen}
-                      style={{ width: "28px", height: "28px", padding: 0, flexShrink: 0, display: "grid", placeItems: "center", borderRadius: "8px", backgroundColor: "transparent", border: "1px solid #3b3b3b", color: "#a3a3a3", cursor: isJoiningPlayer ? "default" : "pointer", opacity: isJoiningPlayer ? 0.5 : 1 }}
-                    >
-                      <Pencil size={14} aria-hidden="true" />
-                    </button>
-                  </div>
-
-                  {isPlayerCategoryPickerOpen && (
-                    <div role="listbox" aria-label="Categorias de popularidade" style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "3px", padding: "8px", borderRadius: "10px", backgroundColor: "#202020", border: "1px solid #3a3a3a", boxShadow: "0 8px 22px rgba(0,0,0,0.28)" }}>
-                      <div style={{ position: "relative" }}>
-                        <Search size={14} aria-hidden="true" style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#737373", pointerEvents: "none" }} />
-                        <input
-                          data-testid="input-search-player-category"
-                          type="search"
-                          value={playerCategorySearch}
-                          onChange={(event) => setPlayerCategorySearch(event.target.value)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Escape") {
-                              setIsPlayerCategoryPickerOpen(false);
-                              setPlayerCategorySearch("");
-                            }
-                          }}
-                          placeholder="Buscar categoria"
-                          aria-label="Buscar categoria"
-                          autoFocus
-                          style={{ width: "100%", boxSizing: "border-box", padding: "9px 10px 9px 30px", borderRadius: "8px", backgroundColor: "#2a2a2a", color: "#f5f5f5", border: "1px solid #454545", fontSize: "12px", outline: "none" }}
-                        />
-                      </div>
-
-                      <div style={{ display: "flex", flexDirection: "column", gap: "2px", maxHeight: "190px", overflowY: "auto" }}>
-                        {visiblePlayerCategoryOptions.length === 0 ? (
-                          <span style={{ padding: "12px 10px", color: "#737373", fontSize: "12px", textAlign: "center" }}>Nenhuma categoria encontrada.</span>
-                        ) : (
-                          visiblePlayerCategoryOptions.map((category) => (
-                            <div key={category.id} style={{ display: "flex", alignItems: "stretch", gap: "2px", paddingLeft: `${category.depth * 18}px` }}>
-                              {category.hasChildren ? (
-                                <button
-                                  type="button"
-                                  aria-label={`${expandedPlayerCategoryIds.has(category.id) ? "Recolher" : "Expandir"} ${category.name}`}
-                                  aria-expanded={expandedPlayerCategoryIds.has(category.id)}
-                                  onClick={() => setExpandedPlayerCategoryIds((expanded) => {
-                                    const next = new Set(expanded);
-                                    if (next.has(category.id)) next.delete(category.id);
-                                    else next.add(category.id);
-                                    return next;
-                                  })}
-                                  style={{ width: "26px", flexShrink: 0, display: "grid", placeItems: "center", padding: 0, border: "none", borderRadius: "7px", backgroundColor: "transparent", color: "#737373", cursor: "pointer" }}
-                                >
-                                  {expandedPlayerCategoryIds.has(category.id) ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
-                                </button>
-                              ) : (
-                                <span aria-hidden="true" style={{ width: "26px", flexShrink: 0 }} />
-                              )}
-                              <button
-                                type="button"
-                                role="option"
-                                aria-selected={category.id === playerCategoryId}
-                                onClick={() => {
-                                  setPlayerCategoryId(category.id);
-                                  setIsPlayerCategoryPickerOpen(false);
-                                  setPlayerCategorySearch("");
-                                }}
-                                style={{ flex: 1, minWidth: 0, padding: "9px 10px", display: "block", border: "none", borderRadius: "7px", backgroundColor: category.id === playerCategoryId ? "#363636" : "transparent", color: category.id === playerCategoryId ? "#fff" : category.depth === 0 ? "#f5f5f5" : "#d4d4d4", fontSize: "12px", fontWeight: category.depth === 0 ? 700 : 600, textAlign: "left", cursor: "pointer" }}
-                              >
-                                <span style={{ display: "block", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{category.name}</span>
-                              </button>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
                  <div style={{ display: "flex", flexDirection: "column", gap: "10px", borderTop: "1px solid #292929", paddingTop: "16px" }}>
                    <label style={{ display: "flex", alignItems: "flex-start", gap: "9px", padding: "0 2px", color: "#a3a3a3", fontSize: "11px", lineHeight: 1.5, cursor: isJoiningPlayer ? "default" : "pointer" }}>
                      <input
@@ -3410,7 +2680,7 @@ export default function PopPersonCanvas() {
                         <a href="/privacidade" style={{ color: "#c7d2fe", fontWeight: 700 }}>Política de Privacidade</a>.
                      </span>
                    </label>
-                   <button data-testid="button-confirm-player-signup" type="button" onClick={() => void joinPlayer()} disabled={isJoiningPlayer || !playerCategoryId || !playerLocationComplete || !hasAcceptedPlayerTerms} style={{ width: "100%", padding: "11px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", fontWeight: 700, fontSize: "13px", border: "none", cursor: isJoiningPlayer || !hasAcceptedPlayerTerms ? "default" : "pointer", opacity: isJoiningPlayer || !playerLocationComplete || !hasAcceptedPlayerTerms ? 0.6 : 1 }}>{isJoiningPlayer ? "Entrando na disputa…" : "Entrar na disputa"}</button>
+                    <button data-testid="button-confirm-player-signup" type="button" onClick={() => void joinPlayer()} disabled={isJoiningPlayer || !playerLocationComplete || !hasAcceptedPlayerTerms} style={{ width: "100%", padding: "11px", borderRadius: "9999px", backgroundColor: "#f5f5f5", color: "#0a0a0a", fontWeight: 700, fontSize: "13px", border: "none", cursor: isJoiningPlayer || !hasAcceptedPlayerTerms ? "default" : "pointer", opacity: isJoiningPlayer || !playerLocationComplete || !hasAcceptedPlayerTerms ? 0.6 : 1 }}>{isJoiningPlayer ? "Entrando na disputa…" : "Entrar na disputa"}</button>
                 </div>
               </>
             ) : null}
@@ -3451,7 +2721,6 @@ export default function PopPersonCanvas() {
                     <div style={{ minWidth: 0 }}>
                       <span style={{ display: "block", color: "#8c8f96", fontSize: "10px", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase" }}>Perfil</span>
                       <span style={{ display: "block", marginTop: "5px", color: "#f4f4f5", fontSize: "18px", fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedCellData.name}</span>
-                      <span style={{ display: "block", marginTop: "4px", color: "#92959d", fontSize: "12px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedCellData.categoryPath?.map((category) => category.name).join(" / ")}</span>
                     </div>
                     {selectedCellData.xProfileUrl && selectedCellData.xUsername ? (
                       <a

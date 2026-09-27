@@ -12,7 +12,6 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { z } from "zod/v4";
-import { categoriesTable } from "./categories";
 import { locationsTable } from "./locations";
 import { usersTable } from "./users";
 
@@ -22,12 +21,8 @@ export const peopleTable = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     name: text("name").notNull(),
     slug: varchar("slug", { length: 160 }).notNull().unique(),
-    categoryId: uuid("category_id")
-      .notNull()
-      .references(() => categoriesTable.id, {
-        onDelete: "restrict",
-        onUpdate: "cascade",
-      }),
+    // Legacy data is retained for historical rows, but new players do not use categories.
+    categoryId: uuid("category_id"),
     gender: varchar("gender", { length: 1 }),
     color: varchar("color", { length: 32 }).notNull(),
     status: varchar("status", { length: 32 }).notNull().default("titular"),
@@ -51,7 +46,6 @@ export const peopleTable = pgTable(
       using: sql`false`,
       withCheck: sql`false`,
     }),
-    index("people_category_idx").on(table.categoryId),
     index("people_location_idx").on(table.locationId),
     uniqueIndex("people_player_user_idx").on(table.playerUserId),
   ],

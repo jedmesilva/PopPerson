@@ -1,7 +1,6 @@
 import { Router, type IRouter } from "express";
 import {
   CreatePopPersonActionBody,
-  GetPlayerRegistrationResponse,
   GetPopPersonResponse,
   GetPopPersonPaymentStatusResponse,
   GetPopPersonStateResponse,
@@ -10,7 +9,6 @@ import {
 } from "@workspace/api-zod";
 import {
   createPopPersonCheckout,
-  getPlayerRegistration,
   getPopPersonBootstrap,
   getPopPersonState,
   joinPopPersonAsPlayer,
@@ -55,23 +53,6 @@ router.get("/pop-person/payments/:checkoutSessionId", async (req, res): Promise<
   } catch (error) {
     res.status(404).json({
       error: error instanceof Error ? error.message : "Pedido de pagamento não encontrado.",
-    });
-  }
-});
-
-router.get("/pop-person/player/registration", async (req, res): Promise<void> => {
-  const user = res.locals.authenticatedUser;
-  if (!user) {
-    res.status(401).json({ error: "Faça login para entrar na disputa." });
-    return;
-  }
-
-  try {
-    const data = await getPlayerRegistration(user);
-    res.json(GetPlayerRegistrationResponse.parse(data));
-  } catch (error) {
-    res.status(400).json({
-      error: error instanceof Error ? error.message : "Não foi possível carregar o cadastro.",
     });
   }
 });
