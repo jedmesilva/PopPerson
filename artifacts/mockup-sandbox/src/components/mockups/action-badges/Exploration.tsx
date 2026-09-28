@@ -42,7 +42,7 @@ function Cell({ position, name, color, mode = "fan", value = "+12", layout = "ho
       </div>
       <div className="cell-overlays">
         <PositionBadge position={position} />
-        {layout !== "position" && <ActionBadge mode={mode} value={value} />}
+        {layout !== "position" && layout !== "stacked" && <ActionBadge mode={mode} value={value} />}
       </div>
       {layout === "stacked" && (
         <div className="stacked-actions">
@@ -65,7 +65,7 @@ export function Exploration() {
           <span className="eyebrow">InstaPop · microinteração</span>
           <h1>Como mostrar o impacto de uma ação?</h1>
           <p>
-            A posição continua fixa. O valor da ação aparece por pouco tempo e sai sem alterar o mapa.
+            A posição continua fixa no topo. O impacto aparece por pouco tempo abaixo dela, ancorado no lado interno da célula.
           </p>
         </div>
         <div className="legend">
@@ -87,13 +87,13 @@ export function Exploration() {
           <p className="card-note">O ranking permanece visível mesmo sem ação ativa.</p>
         </article>
 
-        <article className="comparison-card recommended">
+        <article className="comparison-card">
           <div className="card-heading">
             <div>
-              <span className="card-kicker">Opção sugerida</span>
-              <h2>Horizontal</h2>
+              <span className="card-kicker">Contraponto</span>
+              <h2>Horizontal à direita</h2>
             </div>
-            <span className="state-chip accent">Recomendada</span>
+            <span className="state-chip">Mais exposta</span>
           </div>
           <Cell
             position={1}
@@ -107,19 +107,23 @@ export function Exploration() {
             <button className={activeMode === "fan" ? "active fan" : ""} onClick={() => setActiveMode("fan")}>Fã +12</button>
             <button className={activeMode === "hate" ? "active hate" : ""} onClick={() => setActiveMode("hate")}>Hater −12</button>
           </div>
-          <p className="card-note">A ação temporária fica ao lado da posição, sem criar uma coluna.</p>
+          <p className="card-note">A ação fica legível, mas avança para fora da extremidade direita e pode se aproximar de outra célula.</p>
         </article>
 
-        <article className="comparison-card">
+        <article className="comparison-card recommended">
           <div className="card-heading">
             <div>
-              <span className="card-kicker">Alternativa</span>
-              <h2>Vertical</h2>
+              <span className="card-kicker">Opção sugerida</span>
+              <h2>Vertical à esquerda</h2>
             </div>
-            <span className="state-chip">Mais alta</span>
+            <span className="state-chip accent">Recomendada</span>
           </div>
-          <Cell position={1} name="Fernanda" color="#ec4899" mode="fan" layout="vertical" />
-          <p className="card-note">É legível, mas aumenta a altura visual acima da célula.</p>
+          <Cell position={1} name="Fernanda" color="#ec4899" mode={activeMode} value={activeValue} layout="vertical" />
+          <div className="mode-switch" role="group" aria-label="Tipo de ação">
+            <button className={activeMode === "fan" ? "active fan" : ""} onClick={() => setActiveMode("fan")}>Fã +12</button>
+            <button className={activeMode === "hate" ? "active hate" : ""} onClick={() => setActiveMode("hate")}>Hater −12</button>
+          </div>
+          <p className="card-note">A posição fica no topo; os impactos entram pela borda esquerda, deixando clara a célula de origem.</p>
         </article>
 
         <article className="comparison-card">
@@ -302,19 +306,24 @@ export function Exploration() {
         .cell-demo.position .cell-overlays { left: calc(50% + 42px); }
         .cell-demo.vertical .cell-overlays {
           top: 7px;
-          left: 50%;
+           left: calc(50% - 59px);
           flex-direction: column;
+           align-items: flex-start;
           gap: 5px;
-          transform: translateX(17px);
+           transform: none;
         }
         .cell-demo.stacked .cell-overlays {
           top: 7px;
-          left: calc(50% + 40px);
+           left: calc(50% - 59px);
+           flex-direction: column;
+           align-items: flex-start;
+           gap: 5px;
+           transform: none;
         }
         .stacked-actions {
           position: absolute;
           top: 42px;
-          left: calc(50% + 40px);
+           left: calc(50% - 59px);
           display: flex;
           flex-direction: column;
           align-items: flex-start;
