@@ -2044,16 +2044,16 @@ export default function PopPersonCanvas() {
       if (Number.isFinite(position) && position >= 1 && screenR > 13) {
         const label = `#${Math.round(position)}`;
         ctx.save();
-        ctx.font = `800 ${Math.max(9, Math.min(11, screenR * 0.16)) / t.scale}px -apple-system, sans-serif`;
+        ctx.font = `800 ${Math.max(11, Math.min(14, screenR * 0.19)) / t.scale}px -apple-system, sans-serif`;
         const textWidth = ctx.measureText(label).width;
-        const badgeWidth = Math.max(20 / t.scale, textWidth + 10 / t.scale);
-        const badgeHeight = 18 / t.scale;
-        const badgeX = c.x + renderRadius * 0.68;
-        const badgeY = c.y - renderRadius * 0.68;
+        const badgeWidth = Math.max(34 / t.scale, textWidth + 14 / t.scale);
+        const badgeHeight = 27 / t.scale;
+        const badgeX = c.x + renderRadius * 0.7;
+        const badgeY = c.y - renderRadius * 0.7;
         const radius = badgeHeight / 2;
-        ctx.fillStyle = "#0a0a0a";
-        ctx.strokeStyle = "#f5f5f5";
-        ctx.lineWidth = 1 / t.scale;
+        ctx.fillStyle = "#262626";
+        ctx.strokeStyle = "#6366f1";
+        ctx.lineWidth = 1.25 / t.scale;
         ctx.beginPath();
         ctx.roundRect(
           badgeX - badgeWidth / 2,
@@ -2064,7 +2064,7 @@ export default function PopPersonCanvas() {
         );
         ctx.fill();
         ctx.stroke();
-        ctx.fillStyle = "#f5f5f5";
+        ctx.fillStyle = "#c7d2fe";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText(label, badgeX, badgeY + 0.5 / t.scale);
