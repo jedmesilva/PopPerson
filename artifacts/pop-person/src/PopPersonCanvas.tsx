@@ -1784,6 +1784,9 @@ export default function PopPersonCanvas() {
   const isActionPriceReady = actionPriceStatus === null;
   const selectedPopularityRank = useMemo(() => {
     if (!selectedCellData) return null;
+    if (Number.isFinite(Number(selectedCellData.position))) {
+      return Number(selectedCellData.position);
+    }
     const ranked = [...leaves].sort((a, b) => Number(b.value) - Number(a.value));
     const index = ranked.findIndex((person) => person.name === selectedCellData.name);
     return index >= 0 ? index + 1 : null;
@@ -2035,6 +2038,36 @@ export default function PopPersonCanvas() {
           label = label.length > 1 ? label + "…" : "";
         }
         if (label) ctx.fillText(label, c.x, c.y);
+        ctx.restore();
+      }
+      const position = Number(node.position);
+      if (Number.isFinite(position) && position >= 1 && screenR > 13) {
+        const label = `#${Math.round(position)}`;
+        ctx.save();
+        ctx.font = `800 ${Math.max(9, Math.min(11, screenR * 0.16)) / t.scale}px -apple-system, sans-serif`;
+        const textWidth = ctx.measureText(label).width;
+        const badgeWidth = Math.max(20 / t.scale, textWidth + 10 / t.scale);
+        const badgeHeight = 18 / t.scale;
+        const badgeX = c.x + renderRadius * 0.68;
+        const badgeY = c.y - renderRadius * 0.68;
+        const radius = badgeHeight / 2;
+        ctx.fillStyle = "#0a0a0a";
+        ctx.strokeStyle = "#f5f5f5";
+        ctx.lineWidth = 1 / t.scale;
+        ctx.beginPath();
+        ctx.roundRect(
+          badgeX - badgeWidth / 2,
+          badgeY - badgeHeight / 2,
+          badgeWidth,
+          badgeHeight,
+          radius,
+        );
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#f5f5f5";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(label, badgeX, badgeY + 0.5 / t.scale);
         ctx.restore();
       }
     });

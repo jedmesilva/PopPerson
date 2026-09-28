@@ -100,6 +100,7 @@ export const getPopPersonResponseConfigLevelsItemDurationMin = 0;
 
 export const getPopPersonResponseStateStateVersionMin = 0;
 
+
 export const getPopPersonResponseStateDatasetItemBasePriceMin = 0;
 
 export const getPopPersonResponseStateDatasetItemTotalFansMin = 0;
@@ -167,6 +168,7 @@ export const GetPopPersonResponse = zod.object({
   "stateVersion": zod.number().min(getPopPersonResponseStateStateVersionMin).describe('Monotonic room version used to reject stale realtime snapshots.'),
   "dataset": zod.array(zod.object({
   "name": zod.string(),
+  "position": zod.number().min(1).describe('Current whole-number popularity position in the map.'),
   "gender": zod.string().nullable().describe('Gender recorded for the person, when known.'),
   "cidade": zod.string(),
   "estado": zod.string(),
@@ -244,6 +246,7 @@ export const JoinPopPersonAsPlayerBody = zod.object({
   "termsAccepted": zod.boolean().describe('Whether the user accepted the InstaPop Terms and Conditions.')
 })
 
+
 export const joinPopPersonAsPlayerResponsePlayerBasePriceMin = 0;
 
 export const joinPopPersonAsPlayerResponsePlayerTotalFansMin = 0;
@@ -258,6 +261,7 @@ export const joinPopPersonAsPlayerResponsePlayerPolarizationMax = 1;
 export const JoinPopPersonAsPlayerResponse = zod.object({
   "player": zod.object({
   "name": zod.string(),
+  "position": zod.number().min(1).describe('Current whole-number popularity position in the map.'),
   "gender": zod.string().nullable().describe('Gender recorded for the person, when known.'),
   "cidade": zod.string(),
   "estado": zod.string(),
@@ -321,6 +325,7 @@ export const LogoutAuthenticatedUserResponse = zod.void()
  */
 export const getPopPersonStateResponseStateVersionMin = 0;
 
+
 export const getPopPersonStateResponseDatasetItemBasePriceMin = 0;
 
 export const getPopPersonStateResponseDatasetItemTotalFansMin = 0;
@@ -358,6 +363,7 @@ export const GetPopPersonStateResponse = zod.object({
   "stateVersion": zod.number().min(getPopPersonStateResponseStateVersionMin).describe('Monotonic room version used to reject stale realtime snapshots.'),
   "dataset": zod.array(zod.object({
   "name": zod.string(),
+  "position": zod.number().min(1).describe('Current whole-number popularity position in the map.'),
   "gender": zod.string().nullable().describe('Gender recorded for the person, when known.'),
   "cidade": zod.string(),
   "estado": zod.string(),

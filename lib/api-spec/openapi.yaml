@@ -341,10 +341,14 @@ components:
           type: number
     PopPerson:
       type: object
-      required: [name, gender, cidade, estado, estadoCodigo, pais, paisCodigo, status, value, color, basePrice, totalFans, totalHaters, polarization, imageUrl, xUsername, xProfileUrl]
+      required: [name, position, gender, cidade, estado, estadoCodigo, pais, paisCodigo, status, value, color, basePrice, totalFans, totalHaters, polarization, imageUrl, xUsername, xProfileUrl]
       properties:
         name:
           type: string
+        position:
+          type: number
+          minimum: 1
+          description: Current whole-number popularity position in the map.
         gender:
           type: ["string", "null"]
           description: Gender recorded for the person, when known.

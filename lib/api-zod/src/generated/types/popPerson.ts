@@ -10,6 +10,11 @@ import type { PopPersonStatus } from './popPersonStatus';
 export interface PopPerson {
   name: string;
   /**
+     * Current whole-number popularity position in the map.
+     * @minimum 1
+     */
+  position: number;
+  /**
      * Gender recorded for the person, when known.
      * @nullable
      */

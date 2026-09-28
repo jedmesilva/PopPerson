@@ -323,7 +323,7 @@ async function getDataset(roomId: string): Promise<PopPerson[]> {
     }
     actionCountsByPersonId.set(row.personId, counts);
   }
-  return rows.map((person) => {
+  const dataset = rows.map((person) => {
     if (person.status !== "titular" && person.status !== "candidato") {
       throw new Error(`Status inválido para "${person.name}": "${person.status}".`);
     }
@@ -338,6 +338,7 @@ async function getDataset(roomId: string): Promise<PopPerson[]> {
     const basePrice = calculatePopularityBasePrice(totalFans, totalHaters);
 
     return {
+      personId: person.personId,
       name: person.name,
       gender: person.gender,
       cidade: person.cidade ?? "",
@@ -345,7 +346,7 @@ async function getDataset(roomId: string): Promise<PopPerson[]> {
       estadoCodigo: person.estadoCodigo ?? "",
       pais: person.pais ?? "",
       paisCodigo: person.paisCodigo ?? "",
-      status: person.status,
+      status: person.status as PopPerson["status"],
       value: toNumber(person.value),
       color: person.color,
       basePrice,
@@ -359,6 +360,15 @@ async function getDataset(roomId: string): Promise<PopPerson[]> {
         : null,
     };
   });
+  const positionByPersonId = new Map(
+    [...dataset]
+      .sort((a, b) => b.value - a.value || a.personId.localeCompare(b.personId))
+      .map((person, index) => [person.personId, index + 1]),
+  );
+  return dataset.map(({ personId, ...person }) => ({
+    ...person,
+    position: positionByPersonId.get(personId) ?? 1,
+  }));
 }
 
 async function getActions(
