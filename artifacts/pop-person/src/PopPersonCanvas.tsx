@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import React, { useId, useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { ArrowLeftRight, ArrowRight, X, Check, ChevronDown, ChevronRight, Locate, Search, ScanFace, Plus, CircleUserRound, Pencil, CalendarDays, LogOut, Mail, MapPin } from "lucide-react";
 import { FaXTwitter } from "react-icons/fa6";
 import { loadStripe } from "@stripe/stripe-js";
@@ -49,6 +49,7 @@ const PENDING_PAYMENT_STORAGE_KEY = "instapop:pending-payment";
 const PENDING_PAYMENT_MAX_AGE_MS = 30 * 60 * 1000;
 const ACTION_FEEDBACK_DURATION_MS = 1000;
 const MAX_VISIBLE_ACTION_FEEDBACKS_PER_CELL = 2;
+const RANK_BUBBLE_BADGE_RATIO = 0.3;
 
 function getPaymentStorages() {
   if (typeof window === "undefined") return [];
@@ -358,6 +359,9 @@ const RANK_UNITS = [
   { value: 1e3, suffix: "k" },
 ];
 
+/**
+ * Abrevia posições grandes sem arredondar.
+ */
 function formatRank(value, decimal = ",") {
   const n = Math.floor(Number(value));
   if (!Number.isFinite(n)) return String(value);
@@ -378,17 +382,6 @@ function formatRank(value, decimal = ",") {
   return String(n);
 }
 
-function getRankBubbleGeometry(centerX, centerY, circleRadius, size, corner) {
-  const badgeRadius = size / 2;
-  const distance = circleRadius + badgeRadius * 0.15;
-  const direction = corner === "top-right" ? 1 : -1;
-  return {
-    x: centerX + direction * distance * Math.SQRT1_2,
-    y: centerY - distance * Math.SQRT1_2,
-    radius: badgeRadius,
-  };
-}
-
 function deterministicUnit(value) {
   let hash = 2166136261;
   for (let index = 0; index < value.length; index += 1) {
@@ -402,6 +395,175 @@ function getRankBubbleCorner(name) {
   return deterministicUnit(`rank:${name}`) >= 0.5 ? "top-right" : "top-left";
 }
 
+function RankBubble({
+  rank = 1,
+  name = "",
+  color = "#ec4899",
+  image = null,
+  size = 140,
+  corner = "top-left",
+  badgeRatio = 0.3,
+  ringRatio = 0.07,
+  neck = 0.055,
+}) {
+  const rankLabel = formatRank(rank);
+  const [imgFailed, setImgFailed] = useState(false);
+  const uid = useId().replace(/:/g, "");
+  const filterId = `goo-${uid}`;
+
+  const radius = size / 2;
+  const badgeDiameter = size * badgeRatio;
+  const badgeRadius = badgeDiameter / 2;
+  const distance = radius + badgeRadius * 0.15;
+  const dx = (corner === "top-left" ? -1 : 1) * distance * Math.SQRT1_2;
+  const dy = -distance * Math.SQRT1_2;
+  const badgeX = radius + dx;
+  const badgeY = radius + dy;
+  const padding = size * 0.25;
+  const box = size + padding * 2;
+  const hasImage = Boolean(image) && !imgFailed;
+  const ring = hasImage ? size * ringRatio : 0;
+  const imageSize = size - ring * 2;
+
+  return (
+    <div
+      style={{
+        position: "relative",
+        width: size,
+        height: size,
+        cursor: "default",
+        fontFamily: "Roboto, system-ui, sans-serif",
+      }}
+    >
+      <svg
+        width={box}
+        height={box}
+        viewBox={`${-padding} ${-padding} ${box} ${box}`}
+        style={{
+          position: "absolute",
+          left: -padding,
+          top: -padding,
+          overflow: "visible",
+          pointerEvents: "none",
+        }}
+      >
+        <defs>
+          <filter
+            id={filterId}
+            filterUnits="userSpaceOnUse"
+            x={-padding}
+            y={-padding}
+            width={box}
+            height={box}
+            colorInterpolationFilters="sRGB"
+          >
+            <feGaussianBlur in="SourceGraphic" stdDeviation={size * neck} result="blur" />
+            <feColorMatrix
+              in="blur"
+              mode="matrix"
+              values={`1 0 0 0 0
+                       0 1 0 0 0
+                       0 0 1 0 0
+                       0 0 0 20 -9`}
+            />
+          </filter>
+        </defs>
+        <g filter={`url(#${filterId})`} fill={color}>
+          <circle cx={radius} cy={radius} r={radius} />
+          <circle cx={badgeX} cy={badgeY} r={badgeRadius} />
+        </g>
+      </svg>
+
+      <div
+        title={name}
+        style={{
+          position: "absolute",
+          left: ring,
+          top: ring,
+          width: imageSize,
+          height: imageSize,
+          borderRadius: "50%",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: hasImage ? "flex-end" : "center",
+        }}
+      >
+        {hasImage && (
+          <>
+            <img
+              src={image}
+              alt={name}
+              onError={() => setImgFailed(true)}
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                display: "block",
+              }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: "linear-gradient(to top, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0) 50%)",
+                pointerEvents: "none",
+              }}
+            />
+          </>
+        )}
+        {name && (
+          <span
+            style={{
+              position: "relative",
+              display: "block",
+              width: "100%",
+              boxSizing: "border-box",
+              padding: `0 ${size * 0.16}px`,
+              marginBottom: hasImage ? size * 0.11 : 0,
+              textAlign: "center",
+              color: "#fff",
+              fontWeight: 700,
+              fontSize: size * 0.13,
+              lineHeight: 1.2,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              textShadow: hasImage ? "0 1px 3px rgba(0,0,0,0.6)" : "none",
+            }}
+          >
+            {name}
+          </span>
+        )}
+      </div>
+
+      <span
+        style={{
+          position: "absolute",
+          left: badgeX - badgeRadius,
+          top: badgeY - badgeRadius,
+          width: badgeDiameter,
+          height: badgeDiameter,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "#fff",
+          fontWeight: 800,
+          fontSize: badgeDiameter * ({ 1: 0.48, 2: 0.4, 3: 0.34 }[rankLabel.length] ?? 0.28),
+          letterSpacing: "-0.02em",
+          lineHeight: 1,
+          pointerEvents: "none",
+        }}
+      >
+        #{rankLabel}
+      </span>
+    </div>
+  );
+}
+
 function formatAccountDate(value) {
   if (!value) return "Data não informada";
   const date = new Date(value);
@@ -411,14 +573,6 @@ function formatAccountDate(value) {
     month: "long",
     year: "numeric",
   }).format(date);
-}
-
-function getStableCellTextSize(screenRadius) {
-  const safeRadius = Number.isFinite(screenRadius) && screenRadius > 0 ? screenRadius : CELL_TEXT_MIN_SCREEN_SIZE;
-  return Math.max(
-    CELL_TEXT_MIN_SCREEN_SIZE,
-    Math.min(CELL_TEXT_MAX_SCREEN_SIZE, safeRadius * CELL_TEXT_RADIUS_RATIO),
-  );
 }
 
 function getTopLeftBadgePositionInCircle(
@@ -466,39 +620,6 @@ function getTopLeftBadgePositionInCircle(
     x: centerX - circleHalfWidth + halfWidth,
     y: centerY + verticalDirection * centerOffset,
   };
-}
-
-function getTopLeftBadgePositionOnEdge(
-  centerX,
-  centerY,
-  circleRadius,
-  badgeWidth,
-  badgeHeight,
-  nearbyNodes,
-  currentName,
-  animatedCircles,
-  scale,
-  inset,
-) {
-  const attachmentRadius = Math.max(0, circleRadius - inset);
-  const diagonalOffset = attachmentRadius * Math.SQRT1_2;
-  const candidate = {
-    x: centerX - diagonalOffset,
-    y: centerY - diagonalOffset,
-  };
-  const badgeBoundingRadius = Math.hypot(badgeWidth, badgeHeight) / 2;
-  const clearance = 3 / scale;
-  const collidesWithAnotherCell = nearbyNodes.some((otherNode) => {
-    if (otherNode.name === currentName) return false;
-    const otherCircle = animatedCircles.get(otherNode.name);
-    if (!otherCircle) return false;
-    const otherRadius = otherNode.isAddCell
-      ? getAddPlayerCellWorldRadius(scale)
-      : otherCircle.r;
-    return Math.hypot(candidate.x - otherCircle.x, candidate.y - otherCircle.y)
-      < badgeBoundingRadius + otherRadius + clearance;
-  });
-  return collidesWithAnotherCell ? null : candidate;
 }
 
 function getActionTotalPrice(basePrice, level) {
@@ -883,6 +1004,8 @@ export default function PopPersonCanvas() {
   const [activeCheckout, setActiveCheckout] = useState(null);
   const canvasRef = useRef(null);
   const boardWrapRef = useRef(null);
+  const rankBubbleLayerRef = useRef(null);
+  const rankBubbleRefs = useRef(new Map());
   const [dataset, setDataset] = useState([]);
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [showConnectModal, setShowConnectModal] = useState(false);
@@ -996,7 +1119,6 @@ export default function PopPersonCanvas() {
   const spawnedEmojiActionIdsRef = useRef(new Set());
   const pendingPlayerFocusRef = useRef(false);
   const playerFocusTimeoutRef = useRef(null);
-  const personImagesRef = useRef(new Map());
   const activeActionIdsRef = useRef([]);
   const latestServerActionsRef = useRef(new Map());
   const visualActionTimelinesRef = useRef(new Map());
@@ -1042,27 +1164,6 @@ export default function PopPersonCanvas() {
       clientPerfAt,
     };
   }, []);
-  useEffect(() => {
-    const currentNames = new Set(dataset.map((person) => person.name));
-    for (const name of personImagesRef.current.keys()) {
-      if (!currentNames.has(name)) personImagesRef.current.delete(name);
-    }
-    dataset.forEach((person) => {
-      const existing = personImagesRef.current.get(person.name);
-      if (!person.imageUrl || existing?.src === person.imageUrl || existing === null) return;
-      const image = new Image();
-      image.onload = () => {
-        // The canvas animation loop continuously redraws, so the loaded image
-        // becomes visible without triggering a React render.
-      };
-      image.onerror = () => {
-        personImagesRef.current.set(person.name, null);
-      };
-      image.src = person.imageUrl;
-      personImagesRef.current.set(person.name, image);
-    });
-  }, [dataset]);
-
   const executeAction = useCallback((serverAction) => {
     if (!serverAction?.id) return;
     if (!activeActionIdsRef.current.includes(serverAction.id)) {
@@ -2133,6 +2234,11 @@ export default function PopPersonCanvas() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, cw, ch);
     const t = transformRef.current;
+    const rankBubbleLayer = rankBubbleLayerRef.current;
+    const visibleRankBubbles = new Set();
+    if (rankBubbleLayer) {
+      rankBubbleLayer.style.transform = `translate(${t.x}px, ${t.y}px) scale(${t.scale})`;
+    }
     ctx.save();
     ctx.translate(t.x, t.y);
     ctx.scale(t.scale, t.scale);
@@ -2168,78 +2274,26 @@ export default function PopPersonCanvas() {
         ctx.restore();
         return;
       }
-      const personImage = personImagesRef.current.get(node.name);
-      if (personImage?.complete && personImage.naturalWidth > 0) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
-        ctx.clip();
-        ctx.drawImage(personImage, c.x - c.r, c.y - c.r, c.r * 2, c.r * 2);
-        ctx.restore();
-      }
       if (selName === node.name) {
         ctx.lineWidth = 2.4 / t.scale;
         ctx.strokeStyle = "#ffffff";
         ctx.stroke();
       }
-      const fontSizeScreen = getStableCellTextSize(screenR);
-      if (screenR > 13) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
-        ctx.clip();
-        ctx.font = `600 ${fontSizeScreen / t.scale}px -apple-system, sans-serif`;
-        ctx.fillStyle = "rgba(255,255,255,0.92)";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        const pad = 3 / t.scale;
-        let label = node.name;
-        const maxW = c.r * 1.7 - pad * 2;
-        if (ctx.measureText(label).width > maxW) {
-          while (label.length > 1 && ctx.measureText(label + "…").width > maxW) label = label.slice(0, -1);
-          label = label.length > 1 ? label + "…" : "";
-        }
-        if (label) ctx.fillText(label, c.x, c.y);
-        ctx.restore();
-      }
       const position = Number(node.position);
       let positionBadgeBottomY = c.y - renderRadius * 0.7 + 13.5 / t.scale;
       if (Number.isFinite(position) && position >= 1 && screenR > 13) {
-        const label = `#${formatRank(position)}`;
-        const rankFontSizeScreen = Math.max(10, Math.min(14, screenR * 0.19));
-        ctx.save();
-        ctx.font = `850 ${rankFontSizeScreen / t.scale}px -apple-system, sans-serif`;
-        const textWidthScreen = ctx.measureText(label).width * t.scale;
-        const badgeSizeScreen = Math.max(
-          28,
-          Math.min(46, textWidthScreen + 12),
-        );
-        const bubble = getRankBubbleGeometry(
-          c.x,
-          c.y,
-          renderRadius,
-          badgeSizeScreen / t.scale,
-          getRankBubbleCorner(node.name),
-        );
+        const badgeRadius = renderRadius * RANK_BUBBLE_BADGE_RATIO;
+        positionBadgeBottomY = c.y
+          - (renderRadius + badgeRadius * 0.15) * Math.SQRT1_2
+          + badgeRadius;
+        const bubble = rankBubbleRefs.current.get(node.name);
         if (bubble) {
-          positionBadgeBottomY = bubble.y + bubble.radius;
-          ctx.fillStyle = node.color;
-          ctx.shadowColor = "rgba(0, 0, 0, 0.25)";
-          ctx.shadowBlur = 6 / t.scale;
-          ctx.beginPath();
-          ctx.arc(bubble.x, bubble.y, bubble.radius, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.shadowColor = "transparent";
-          ctx.shadowBlur = 0;
-          ctx.lineWidth = 1.5 / t.scale;
-          ctx.strokeStyle = "rgba(255, 255, 255, 0.68)";
-          ctx.stroke();
-          ctx.fillStyle = "#ffffff";
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.fillText(label, bubble.x, bubble.y + 0.5 / t.scale);
+          visibleRankBubbles.add(node.name);
+          bubble.style.display = "block";
+          bubble.style.left = `${c.x - Math.max(node.r, 0.001)}px`;
+          bubble.style.top = `${c.y - Math.max(node.r, 0.001)}px`;
+          bubble.style.transform = `scale(${renderRadius / Math.max(node.r, 0.001)})`;
         }
-        ctx.restore();
       }
 
       const now = performance.now();
@@ -2306,6 +2360,11 @@ export default function PopPersonCanvas() {
       }
     });
     ctx.restore();
+    rankBubbleRefs.current.forEach((bubble, name) => {
+      if (!visibleRankBubbles.has(name)) {
+        bubble.style.display = "none";
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -2686,6 +2745,54 @@ export default function PopPersonCanvas() {
           transformRef={transformRef}
           maxInstances={50000}
         />
+        <div
+          ref={rankBubbleLayerRef}
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 2,
+            pointerEvents: "none",
+            transformOrigin: "0 0",
+          }}
+        >
+          {leaves
+            .filter((node) => !node.isAddCell && Number.isFinite(Number(node.position)))
+            .map((node) => {
+              const baseRadius = Math.max(Number(node.r) || 1, 0.001);
+              return (
+                <div
+                  key={`rank-bubble-${node.name}`}
+                  ref={(element) => {
+                    if (element) {
+                      rankBubbleRefs.current.set(node.name, element);
+                    } else {
+                      rankBubbleRefs.current.delete(node.name);
+                    }
+                  }}
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    top: 0,
+                    width: baseRadius * 2,
+                    height: baseRadius * 2,
+                    display: "none",
+                    transformOrigin: "50% 50%",
+                  }}
+                >
+                  <RankBubble
+                    rank={Number(node.position)}
+                    name={node.name}
+                    color={node.color}
+                    image={node.imageUrl}
+                    size={baseRadius * 2}
+                    corner={getRankBubbleCorner(node.name)}
+                    badgeRatio={RANK_BUBBLE_BADGE_RATIO}
+                  />
+                </div>
+              );
+            })}
+        </div>
         {joinPlayerError && (
           <div role="alert" style={{ position: "absolute", left: "50%", bottom: "24px", transform: "translateX(-50%)", zIndex: 5, display: "flex", alignItems: "center", gap: "10px", maxWidth: "calc(100% - 32px)", padding: "10px 12px", borderRadius: "12px", backgroundColor: "rgba(69, 10, 10, 0.94)", border: "1px solid rgba(248, 113, 113, 0.45)", color: "#fecaca", fontSize: "12px", fontWeight: 600, boxShadow: "0 8px 24px rgba(0,0,0,0.35)" }}>
             <span>{joinPlayerError}</span>

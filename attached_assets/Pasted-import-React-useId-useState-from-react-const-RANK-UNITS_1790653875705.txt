@@ -1,0 +1,277 @@
+import React, { useId, useState } from "react";
+
+const RANK_UNITS = [
+  { value: 1e9, suffix: "B" },
+  { value: 1e6, suffix: "M" },
+  { value: 1e3, suffix: "k" },
+];
+
+/**
+ * formatRank
+ * Abrevia posições grandes: 999 → "999", 1.000 → "1k", 1.200 → "1,2k",
+ * 10.000 → "10k", 100.000 → "100k", 1.000.000 → "1M", 1.200.000 → "1,2M".
+ *
+ * Regras:
+ * - Abaixo de 1.000: número inteiro, sem abreviar.
+ * - Abaixo de 10 na unidade (1k–9,9k, 1M–9,9M...): 1 casa decimal, se não for ",0".
+ * - A partir de 10 na unidade (10k, 250k, 12M...): sem casas decimais.
+ * - Sempre TRUNCA, nunca arredonda: a posição #1.999 vira "1,9k", não "2k".
+ *   Assim nunca aparece uma posição melhor do que a real (e "999.999" não vira "1000k").
+ * - `decimal`: "," (pt-BR, padrão) ou "." (en).
+ */
+export function formatRank(value, decimal = ",") {
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n)) return String(value);
+  if (n < 1000) return String(n);
+
+  for (const { value: unit, suffix } of RANK_UNITS) {
+    if (n >= unit) {
+      // Divisão inteira evita erros de ponto flutuante (ex.: 1,2 * 10 = 12.000000001)
+      const tenths = Math.floor(n / (unit / 10)); // valor em décimos da unidade
+      const whole = Math.floor(tenths / 10);
+      const frac = tenths % 10;
+      const text = whole >= 10 || frac === 0 ? String(whole) : `${whole}${decimal}${frac}`;
+      return text + suffix;
+    }
+  }
+  return String(n);
+}
+
+/* Avatar fake (SVG embutido, sem depender de internet) só para testar a demo */
+const makeFakeAvatar = (bg1, bg2, skin, shirt) =>
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300">
+      <defs>
+        <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="${bg1}"/>
+          <stop offset="1" stop-color="${bg2}"/>
+        </linearGradient>
+      </defs>
+      <rect width="300" height="300" fill="url(#g)"/>
+      <ellipse cx="150" cy="300" rx="115" ry="95" fill="${shirt}"/>
+      <rect x="132" y="176" width="36" height="40" rx="14" fill="${skin}"/>
+      <circle cx="150" cy="128" r="58" fill="${skin}"/>
+      <path d="M92 122c0-40 26-66 60-66s58 24 58 62c-14-22-34-32-62-32s-38 10-56 36z" fill="#2b1d16"/>
+    </svg>`
+  );
+
+const FAKE_AVATAR_1 = makeFakeAvatar("#fde68a", "#f97316", "#e8b48f", "#1e293b");
+const FAKE_AVATAR_2 = makeFakeAvatar("#a5f3fc", "#6366f1", "#c98b62", "#be185d");
+
+/**
+ * RankBubble
+ * Célula circular com a posição (#1, #12...) como uma protuberância
+ * fundida ao corpo da célula (efeito "gooey"), no canto superior
+ * esquerdo ou direito.
+ *
+ * Como funciona: a camada de forma (círculo + círculo do badge, mesma cor)
+ * passa por um filtro SVG de blur + threshold de alfa, que cria o "pescoço"
+ * suave entre os dois. Texto e imagem ficam numa camada acima, sem filtro,
+ * então continuam nítidos.
+ */
+export default function RankBubble({
+  rank = 1,
+  name = "Fernanda Albuquerque", // TESTE: trocar por "" quando for para produção
+  color = "#ec4899",
+  image = FAKE_AVATAR_1, // TESTE: trocar por null quando for para produção
+  size = 140,
+  corner = "top-left", // "top-left" | "top-right"
+  badgeRatio = 0.3, // diâmetro do badge relativo ao size
+  ringRatio = 0.07, // espessura do anel quando há imagem
+  neck = 0.055, // suavidade da junção (quanto maior, mais "derretido")
+  onClick,
+}) {
+  const rankLabel = formatRank(rank);
+  const [imgFailed, setImgFailed] = useState(false);
+  const hasImage = Boolean(image) && !imgFailed; // sem imagem (ou erro ao carregar) → só a cor de fundo
+  const uid = useId().replace(/:/g, "");
+  const filterId = `goo-${uid}`;
+
+  const R = size / 2;
+  const badgeD = size * badgeRatio;
+  const r = badgeD / 2;
+
+  // Centro do badge: sobre a borda do círculo, a 45°, levemente para fora.
+  const dist = R + r * 0.15;
+  const dx = (corner === "top-left" ? -1 : 1) * dist * Math.SQRT1_2;
+  const dy = -dist * Math.SQRT1_2;
+  const bx = R + dx;
+  const by = R + dy;
+
+  // Espaço extra para a forma não ser cortada pelo filtro.
+  const pad = size * 0.25;
+  const box = size + pad * 2;
+
+  const ring = hasImage ? size * ringRatio : 0;
+  const imgSize = size - ring * 2;
+
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        position: "relative",
+        width: size,
+        height: size,
+        cursor: onClick ? "pointer" : "default",
+        fontFamily: "Roboto, system-ui, sans-serif",
+      }}
+    >
+      {/* Camada 1: forma (célula + protuberância) com filtro gooey */}
+      <svg
+        width={box}
+        height={box}
+        viewBox={`${-pad} ${-pad} ${box} ${box}`}
+        style={{ position: "absolute", left: -pad, top: -pad, overflow: "visible", pointerEvents: "none" }}
+      >
+        <defs>
+          <filter
+            id={filterId}
+            filterUnits="userSpaceOnUse"
+            x={-pad}
+            y={-pad}
+            width={box}
+            height={box}
+            colorInterpolationFilters="sRGB"
+          >
+            <feGaussianBlur in="SourceGraphic" stdDeviation={size * neck} result="blur" />
+            <feColorMatrix
+              in="blur"
+              mode="matrix"
+              values="1 0 0 0 0
+                      0 1 0 0 0
+                      0 0 1 0 0
+                      0 0 0 20 -9"
+            />
+          </filter>
+        </defs>
+        <g filter={`url(#${filterId})`} fill={color}>
+          <circle cx={R} cy={R} r={R} />
+          <circle cx={bx} cy={by} r={r} />
+        </g>
+      </svg>
+
+      {/* Camada 2: conteúdo da célula — imagem (se houver) + nome sempre */}
+      <div
+        title={name}
+        style={{
+          position: "absolute",
+          left: ring,
+          top: ring,
+          width: imgSize,
+          height: imgSize,
+          borderRadius: "50%",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: hasImage ? "flex-end" : "center",
+        }}
+      >
+        {hasImage && (
+          <>
+            <img
+              src={image}
+              alt={name}
+              onError={() => setImgFailed(true)}
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                display: "block",
+              }}
+            />
+            {/* Degradê na parte de baixo para o nome ficar legível sobre a foto */}
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: "linear-gradient(to top, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0) 50%)",
+                pointerEvents: "none",
+              }}
+            />
+          </>
+        )}
+
+        {name && (
+          <span
+            style={{
+              position: "relative",
+              display: "block",
+              width: "100%",
+              boxSizing: "border-box",
+              padding: `0 ${size * 0.16}px`,
+              marginBottom: hasImage ? size * 0.11 : 0,
+              textAlign: "center",
+              color: "#fff",
+              fontWeight: 700,
+              fontSize: size * 0.13,
+              lineHeight: 1.2,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              textShadow: hasImage ? "0 1px 3px rgba(0,0,0,0.6)" : "none",
+            }}
+          >
+            {name}
+          </span>
+        )}
+      </div>
+
+      {/* Camada 3: número da posição, centralizado na protuberância */}
+      <span
+        style={{
+          position: "absolute",
+          left: bx - r,
+          top: by - r,
+          width: badgeD,
+          height: badgeD,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "#fff",
+          fontWeight: 800,
+          fontSize: badgeD * ({ 1: 0.48, 2: 0.4, 3: 0.34 }[rankLabel.length] ?? 0.28),
+          letterSpacing: "-0.02em",
+          lineHeight: 1,
+          pointerEvents: "none",
+        }}
+      >
+        #{rankLabel}
+      </span>
+    </div>
+  );
+}
+
+/* Demo */
+export function Demo() {
+  return (
+    <div
+      style={{
+        background: "#0a0a0a",
+        minHeight: "100vh",
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 48,
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 48,
+      }}
+    >
+      <RankBubble rank={1} name="Fernanda Albuquerque" color="#ec4899" size={160} image={null} />
+      <RankBubble rank={5} name="Camila Rodrigues" color="#a855f7" size={130} corner="top-right" image={null} />
+      <RankBubble
+        rank={12}
+        name="Jedmar Nascimento"
+        color="#ec4899"
+        size={130}
+        image={FAKE_AVATAR_1}
+      />
+      <RankBubble rank={1200} name="Bruna Lima" color="#a855f7" size={130} image={FAKE_AVATAR_2} />
+      <RankBubble rank={10000} name="Rafael Oliveira Santos" color="#ec4899" size={130} corner="top-right" image={null} />
+      <RankBubble rank={1200000} name="Lucas" color="#a855f7" size={130} image={null} />
+    </div>
+  );
+}
