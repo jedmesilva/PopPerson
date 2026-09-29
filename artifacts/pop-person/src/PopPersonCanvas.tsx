@@ -352,6 +352,56 @@ function formatBRL(value) {
   return `R$ ${value.toFixed(2).replace(".", ",")}`;
 }
 
+const RANK_UNITS = [
+  { value: 1e9, suffix: "B" },
+  { value: 1e6, suffix: "M" },
+  { value: 1e3, suffix: "k" },
+];
+
+function formatRank(value, decimal = ",") {
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n)) return String(value);
+  if (n < 1000) return String(n);
+
+  for (const { value: unit, suffix } of RANK_UNITS) {
+    if (n >= unit) {
+      const tenths = Math.floor(n / (unit / 10));
+      const whole = Math.floor(tenths / 10);
+      const frac = tenths % 10;
+      const text = whole >= 10 || frac === 0
+        ? String(whole)
+        : `${whole}${decimal}${frac}`;
+      return text + suffix;
+    }
+  }
+
+  return String(n);
+}
+
+function getRankBubbleGeometry(centerX, centerY, circleRadius, size, corner) {
+  const badgeRadius = size / 2;
+  const distance = circleRadius + badgeRadius * 0.15;
+  const direction = corner === "top-right" ? 1 : -1;
+  return {
+    x: centerX + direction * distance * Math.SQRT1_2,
+    y: centerY - distance * Math.SQRT1_2,
+    radius: badgeRadius,
+  };
+}
+
+function deterministicUnit(value) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) / 4294967296;
+}
+
+function getRankBubbleCorner(name) {
+  return deterministicUnit(`rank:${name}`) >= 0.5 ? "top-right" : "top-left";
+}
+
 function formatAccountDate(value) {
   if (!value) return "Data não informada";
   const date = new Date(value);
@@ -2153,57 +2203,41 @@ export default function PopPersonCanvas() {
         ctx.restore();
       }
       const position = Number(node.position);
-      let positionBadgeY = c.y - renderRadius * 0.7;
+      let positionBadgeBottomY = c.y - renderRadius * 0.7 + 13.5 / t.scale;
       if (Number.isFinite(position) && position >= 1 && screenR > 13) {
-        const label = `#${Math.round(position)}`;
+        const label = `#${formatRank(position)}`;
+        const rankFontSizeScreen = Math.max(10, Math.min(14, screenR * 0.19));
         ctx.save();
-        ctx.font = `800 ${Math.max(11, Math.min(14, screenR * 0.19)) / t.scale}px -apple-system, sans-serif`;
-        const textWidth = ctx.measureText(label).width;
-        const badgeWidth = Math.max(34 / t.scale, textWidth + 14 / t.scale);
-        const badgeHeight = 27 / t.scale;
-        const badgeInset = 4 / t.scale;
-        const edgeBadgePosition = getTopLeftBadgePositionOnEdge(
+        ctx.font = `850 ${rankFontSizeScreen / t.scale}px -apple-system, sans-serif`;
+        const textWidthScreen = ctx.measureText(label).width * t.scale;
+        const badgeSizeScreen = Math.max(
+          28,
+          Math.min(46, textWidthScreen + 12),
+        );
+        const bubble = getRankBubbleGeometry(
           c.x,
           c.y,
           renderRadius,
-          badgeWidth,
-          badgeHeight,
-          leavesRef.current,
-          node.name,
-          animatedCirclesRef.current,
-          t.scale,
-          badgeInset,
+          badgeSizeScreen / t.scale,
+          getRankBubbleCorner(node.name),
         );
-        const badgePosition = edgeBadgePosition ?? getTopLeftBadgePositionInCircle(
-          c.x,
-          c.y,
-          renderRadius,
-          badgeWidth,
-          badgeHeight,
-          c.y - renderRadius * 0.32,
-          badgeInset,
-        );
-        if (badgePosition) {
-          positionBadgeY = badgePosition.y;
-          const radius = badgeHeight / 2;
-          ctx.fillStyle = "rgba(23, 23, 23, 0.55)";
+        if (bubble) {
+          positionBadgeBottomY = bubble.y + bubble.radius;
+          ctx.fillStyle = node.color;
           ctx.shadowColor = "rgba(0, 0, 0, 0.25)";
           ctx.shadowBlur = 6 / t.scale;
           ctx.beginPath();
-          ctx.roundRect(
-            badgePosition.x - badgeWidth / 2,
-            badgePosition.y - badgeHeight / 2,
-            badgeWidth,
-            badgeHeight,
-            radius,
-          );
+          ctx.arc(bubble.x, bubble.y, bubble.radius, 0, Math.PI * 2);
           ctx.fill();
           ctx.shadowColor = "transparent";
           ctx.shadowBlur = 0;
-          ctx.fillStyle = "#c7d2fe";
+          ctx.lineWidth = 1.5 / t.scale;
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.68)";
+          ctx.stroke();
+          ctx.fillStyle = "#ffffff";
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
-          ctx.fillText(label, badgePosition.x, badgePosition.y + 0.5 / t.scale);
+          ctx.fillText(label, bubble.x, bubble.y + 0.5 / t.scale);
         }
         ctx.restore();
       }
@@ -2224,8 +2258,7 @@ export default function PopPersonCanvas() {
         ctx.save();
         const actionBadgeHeight = 24 / t.scale;
         const actionGap = 5 / t.scale;
-        const positionBadgeHeight = 27 / t.scale;
-        const actionTop = positionBadgeY + positionBadgeHeight / 2 + actionGap;
+        const actionTop = positionBadgeBottomY + actionGap;
         const actionFontSize = Math.max(10, Math.min(13, screenR * 0.16)) / t.scale;
 
         visibleFeedbacks.forEach((feedback, index) => {

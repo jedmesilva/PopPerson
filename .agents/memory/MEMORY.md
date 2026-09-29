@@ -21,3 +21,4 @@
 - [Checkout customizado Stripe](stripe-custom-payment-element.md) — PaymentIntent + PaymentElement evita redirects e mudanças frequentes do Checkout Embedded.
 - [Categorias legadas do InstaPop](legacy-pop-person-categories.md) — a coluna antiga permanece nullable para preservar histórico, mas categorias não fazem parte de contratos nem fluxos ativos.
 - [Badges dentro de círculos](canvas-badge-geometry.md) — a posição horizontal do badge deve usar a interseção do círculo na altura do badge, não apenas o centro menos o raio.
+- [Verificação runtime do canvas](canvas-runtime-checks.md) — o draw precisa ser exercitado no preview porque o typecheck pode não detectar helpers ausentes.
