@@ -371,6 +371,18 @@ function getStableCellTextSize(screenRadius) {
   );
 }
 
+function getLeftBadgeX(centerX, centerY, circleRadius, badgeWidth, badgeHeight, badgeY, inset) {
+  const badgeHalfHeight = badgeHeight / 2;
+  const verticalDistance = Math.min(
+    circleRadius,
+    Math.abs(badgeY - centerY) + badgeHalfHeight,
+  );
+  const circleHalfWidth = Math.sqrt(
+    Math.max(0, circleRadius * circleRadius - verticalDistance * verticalDistance),
+  );
+  return centerX - circleHalfWidth + badgeWidth / 2 + inset;
+}
+
 function getActionTotalPrice(basePrice, level) {
   if (!level) return null;
   const currentPrice = Number(basePrice);
@@ -2073,6 +2085,7 @@ export default function PopPersonCanvas() {
         ctx.restore();
       }
       const position = Number(node.position);
+      let positionBadgeY = c.y - renderRadius * 0.7;
       if (Number.isFinite(position) && position >= 1 && screenR > 13) {
         const label = `#${Math.round(position)}`;
         ctx.save();
@@ -2080,8 +2093,21 @@ export default function PopPersonCanvas() {
         const textWidth = ctx.measureText(label).width;
         const badgeWidth = Math.max(34 / t.scale, textWidth + 14 / t.scale);
         const badgeHeight = 27 / t.scale;
-        const badgeX = c.x - renderRadius + badgeWidth / 2;
-        const badgeY = c.y - renderRadius * 0.7;
+        const badgeInset = 4 / t.scale;
+        const badgeOffset = Math.min(
+          renderRadius * 0.7,
+          Math.max(0, renderRadius - badgeHeight / 2 - badgeInset),
+        );
+        positionBadgeY = c.y - badgeOffset;
+        const badgeX = getLeftBadgeX(
+          c.x,
+          c.y,
+          renderRadius,
+          badgeWidth,
+          badgeHeight,
+          positionBadgeY,
+          badgeInset,
+        );
         const radius = badgeHeight / 2;
         ctx.fillStyle = "#262626";
         ctx.strokeStyle = "#6366f1";
@@ -2120,10 +2146,7 @@ export default function PopPersonCanvas() {
         const actionBadgeHeight = 24 / t.scale;
         const actionGap = 5 / t.scale;
         const positionBadgeHeight = 27 / t.scale;
-        const actionTop = c.y
-          - renderRadius * 0.7
-          + positionBadgeHeight / 2
-          + actionGap;
+        const actionTop = positionBadgeY + positionBadgeHeight / 2 + actionGap;
         const actionFontSize = Math.max(10, Math.min(13, screenR * 0.16)) / t.scale;
 
         visibleFeedbacks.forEach((feedback, index) => {
@@ -2134,8 +2157,16 @@ export default function PopPersonCanvas() {
           ctx.font = `850 ${actionFontSize}px -apple-system, sans-serif`;
           const textWidth = ctx.measureText(label).width;
           const badgeWidth = Math.max(54 / t.scale, textWidth + 16 / t.scale);
-          const badgeX = c.x - renderRadius + badgeWidth / 2;
           const badgeY = actionTop + index * (actionBadgeHeight + actionGap) + actionBadgeHeight / 2;
+          const badgeX = getLeftBadgeX(
+            c.x,
+            c.y,
+            renderRadius,
+            badgeWidth,
+            actionBadgeHeight,
+            badgeY,
+            4 / t.scale,
+          );
           const radius = actionBadgeHeight / 2;
           const actionColor = isFan ? ACTION_MODE_COLORS.defender : ACTION_MODE_COLORS.atacar;
 
