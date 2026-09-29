@@ -2115,7 +2115,7 @@ export default function PopPersonCanvas() {
         ctx.beginPath();
         ctx.roundRect(
           badgeX - badgeWidth / 2,
-          badgeY - badgeHeight / 2,
+          positionBadgeY - badgeHeight / 2,
           badgeWidth,
           badgeHeight,
           radius,
@@ -2125,7 +2125,7 @@ export default function PopPersonCanvas() {
         ctx.fillStyle = "#c7d2fe";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText(label, badgeX, badgeY + 0.5 / t.scale);
+        ctx.fillText(label, badgeX, positionBadgeY + 0.5 / t.scale);
         ctx.restore();
       }
 
