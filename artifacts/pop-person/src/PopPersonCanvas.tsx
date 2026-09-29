@@ -371,16 +371,43 @@ function getStableCellTextSize(screenRadius) {
   );
 }
 
-function getLeftBadgeX(centerX, centerY, circleRadius, badgeWidth, badgeHeight, badgeY, inset) {
-  const badgeHalfHeight = badgeHeight / 2;
-  const verticalDistance = Math.min(
-    circleRadius,
-    Math.abs(badgeY - centerY) + badgeHalfHeight,
+function getBadgePositionInCircle(
+  centerX,
+  centerY,
+  circleRadius,
+  badgeWidth,
+  badgeHeight,
+  preferredY,
+  inset,
+) {
+  const availableRadius = circleRadius - inset;
+  const halfWidth = badgeWidth / 2;
+  const halfHeight = badgeHeight / 2;
+  if (
+    !Number.isFinite(availableRadius)
+    || !Number.isFinite(halfWidth)
+    || !Number.isFinite(halfHeight)
+    || availableRadius <= 0
+    || halfWidth > availableRadius
+  ) {
+    return null;
+  }
+
+  // The rectangle's top corners define the highest safe center position.
+  // This keeps the complete pill inside the live circle instead of only
+  // keeping its center inside.
+  const maxCornerDistance = Math.sqrt(
+    Math.max(0, availableRadius * availableRadius - halfWidth * halfWidth),
   );
-  const circleHalfWidth = Math.sqrt(
-    Math.max(0, circleRadius * circleRadius - verticalDistance * verticalDistance),
-  );
-  return centerX - circleHalfWidth + badgeWidth / 2 + inset;
+  const maxCenterOffset = maxCornerDistance - halfHeight;
+  if (maxCenterOffset < 0) return null;
+
+  const preferredOffset = Math.max(0, centerY - Number(preferredY));
+  const centerOffset = Math.min(preferredOffset, maxCenterOffset);
+  return {
+    x: centerX,
+    y: centerY - centerOffset,
+  };
 }
 
 function getActionTotalPrice(basePrice, level) {
@@ -2094,38 +2121,36 @@ export default function PopPersonCanvas() {
         const badgeWidth = Math.max(34 / t.scale, textWidth + 14 / t.scale);
         const badgeHeight = 27 / t.scale;
         const badgeInset = 4 / t.scale;
-        const badgeOffset = Math.min(
-          renderRadius * 0.7,
-          Math.max(0, renderRadius - badgeHeight / 2 - badgeInset),
-        );
-        positionBadgeY = c.y - badgeOffset;
-        const badgeX = getLeftBadgeX(
+        const badgePosition = getBadgePositionInCircle(
           c.x,
           c.y,
           renderRadius,
           badgeWidth,
           badgeHeight,
-          positionBadgeY,
+          c.y - renderRadius * 0.9,
           badgeInset,
         );
-        const radius = badgeHeight / 2;
-        ctx.fillStyle = "#262626";
-        ctx.strokeStyle = "#6366f1";
-        ctx.lineWidth = 1.25 / t.scale;
-        ctx.beginPath();
-        ctx.roundRect(
-          badgeX - badgeWidth / 2,
-          positionBadgeY - badgeHeight / 2,
-          badgeWidth,
-          badgeHeight,
-          radius,
-        );
-        ctx.fill();
-        ctx.stroke();
-        ctx.fillStyle = "#c7d2fe";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(label, badgeX, positionBadgeY + 0.5 / t.scale);
+        if (badgePosition) {
+          positionBadgeY = badgePosition.y;
+          const radius = badgeHeight / 2;
+          ctx.fillStyle = "#262626";
+          ctx.strokeStyle = "#6366f1";
+          ctx.lineWidth = 1.25 / t.scale;
+          ctx.beginPath();
+          ctx.roundRect(
+            badgePosition.x - badgeWidth / 2,
+            badgePosition.y - badgeHeight / 2,
+            badgeWidth,
+            badgeHeight,
+            radius,
+          );
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = "#c7d2fe";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(label, badgePosition.x, badgePosition.y + 0.5 / t.scale);
+        }
         ctx.restore();
       }
 
@@ -2158,25 +2183,26 @@ export default function PopPersonCanvas() {
           const textWidth = ctx.measureText(label).width;
           const badgeWidth = Math.max(54 / t.scale, textWidth + 16 / t.scale);
           const badgeY = actionTop + index * (actionBadgeHeight + actionGap) + actionBadgeHeight / 2;
-          const badgeX = getLeftBadgeX(
-            c.x,
-            c.y,
-            renderRadius,
-            badgeWidth,
-            actionBadgeHeight,
-            badgeY,
-            4 / t.scale,
-          );
           const radius = actionBadgeHeight / 2;
           const actionColor = isFan ? ACTION_MODE_COLORS.defender : ACTION_MODE_COLORS.atacar;
+           const badgePosition = getBadgePositionInCircle(
+             c.x,
+             c.y,
+             renderRadius,
+             badgeWidth,
+             actionBadgeHeight,
+             badgeY,
+             4 / t.scale,
+           );
+           if (!badgePosition) return;
 
           ctx.fillStyle = "#262626";
           ctx.strokeStyle = actionColor;
           ctx.lineWidth = 1.25 / t.scale;
           ctx.beginPath();
           ctx.roundRect(
-            badgeX - badgeWidth / 2,
-            badgeY - actionBadgeHeight / 2,
+             badgePosition.x - badgeWidth / 2,
+             badgePosition.y - actionBadgeHeight / 2,
             badgeWidth,
             actionBadgeHeight,
             radius,
@@ -2186,7 +2212,7 @@ export default function PopPersonCanvas() {
           ctx.fillStyle = "#f5f5f5";
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
-          ctx.fillText(label, badgeX, badgeY + 0.5 / t.scale);
+           ctx.fillText(label, badgePosition.x, badgePosition.y + 0.5 / t.scale);
         });
         ctx.restore();
       }
