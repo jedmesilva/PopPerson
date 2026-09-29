@@ -395,6 +395,22 @@ function getRankBubbleCorner(name) {
   return deterministicUnit(`rank:${name}`) >= 0.5 ? "top-right" : "top-left";
 }
 
+function getCellCollisionRadius(cell, radius) {
+  const safeRadius = Math.max(0, Number(radius) || 0);
+  if (
+    cell?.isAddCell
+    || !Number.isFinite(Number(cell?.position))
+    || Number(cell.position) < 1
+  ) {
+    return safeRadius;
+  }
+
+  // Reserve the full union of the cell and its rank protuberance.
+  const badgeRadius = safeRadius * RANK_BUBBLE_BADGE_RATIO;
+  const badgeCenterDistance = (safeRadius + badgeRadius * 0.15) * Math.SQRT1_2;
+  return Math.max(safeRadius, badgeCenterDistance + badgeRadius);
+}
+
 function RankBubble({
   rank = 1,
   name = "",
@@ -636,6 +652,7 @@ function tryPackCircles(ordered, baseRadii, scale) {
   const placed = [];
   for (let index = 0; index < ordered.length; index += 1) {
     const r = baseRadii[index] * scale;
+    const collisionRadius = getCellCollisionRadius(ordered[index], r);
     const candidates = [{ x: 0, y: 0 }];
 
     // Candidate points tangent to already placed circles are much more reliable
@@ -643,7 +660,7 @@ function tryPackCircles(ordered, baseRadii, scale) {
     placed.forEach((other, otherIndex) => {
       for (let step = 0; step < 32; step += 1) {
         const angle = otherIndex * 0.73 + (step / 32) * Math.PI * 2;
-        const distance = other.r + r + CIRCLE_GAP;
+        const distance = other.collisionRadius + collisionRadius + CIRCLE_GAP;
         candidates.push({
           x: other.x + Math.cos(angle) * distance,
           y: other.y + Math.sin(angle) * distance,
@@ -668,7 +685,7 @@ function tryPackCircles(ordered, baseRadii, scale) {
       const clear = placed.every(
         (other) =>
           Math.hypot(candidate.x - other.x, candidate.y - other.y) >=
-          r + other.r + CIRCLE_GAP,
+          collisionRadius + other.collisionRadius + CIRCLE_GAP,
       );
       if (!clear) continue;
 
@@ -687,6 +704,7 @@ function tryPackCircles(ordered, baseRadii, scale) {
       x: best.x,
       y: best.y,
       r,
+      collisionRadius,
       color: ordered[index].color,
     });
   }
@@ -714,7 +732,9 @@ function keepCirclesSeparated(circles) {
         let dx = b.x - a.x;
         let dy = b.y - a.y;
         let distance = Math.hypot(dx, dy);
-        const minimumDistance = a.r + b.r + CIRCLE_GAP;
+        const minimumDistance = (a.collisionRadius ?? a.r)
+          + (b.collisionRadius ?? b.r)
+          + CIRCLE_GAP;
         if (distance >= minimumDistance) continue;
 
         if (distance < 0.001) {
@@ -2066,10 +2086,10 @@ export default function PopPersonCanvas() {
       return { scale, x: (cw - 100 * scale) / 2, y: (ch - 100 * scale) / 2 };
     }
 
-    const minX = Math.min(...nodes.map((node) => node.x - node.r));
-    const maxX = Math.max(...nodes.map((node) => node.x + node.r));
-    const minY = Math.min(...nodes.map((node) => node.y - node.r));
-    const maxY = Math.max(...nodes.map((node) => node.y + node.r));
+    const minX = Math.min(...nodes.map((node) => node.x - getCellCollisionRadius(node, node.r)));
+    const maxX = Math.max(...nodes.map((node) => node.x + getCellCollisionRadius(node, node.r)));
+    const minY = Math.min(...nodes.map((node) => node.y - getCellCollisionRadius(node, node.r)));
+    const maxY = Math.max(...nodes.map((node) => node.y + getCellCollisionRadius(node, node.r)));
     const worldWidth = Math.max(1, maxX - minX);
     const worldHeight = Math.max(1, maxY - minY);
     const scale = Math.min((cw - 32) / worldWidth, (ch - 32) / worldHeight);
@@ -2212,6 +2232,7 @@ export default function PopPersonCanvas() {
           x: l.x,
           y: l.y,
           r: radius,
+          collisionRadius: getCellCollisionRadius(l, radius),
         });
         return;
       }
@@ -2221,6 +2242,7 @@ export default function PopPersonCanvas() {
       // finishes. This prevents a post-Checkout snapshot from skipping the
       // paid action's growth animation.
       current.r = radius;
+      current.collisionRadius = getCellCollisionRadius(l, radius);
     });
     for (const key of animatedCirclesRef.current.keys()) if (!names.has(key)) animatedCirclesRef.current.delete(key);
   }, []);
