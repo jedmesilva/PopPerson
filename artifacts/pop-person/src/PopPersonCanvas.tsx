@@ -371,7 +371,7 @@ function getStableCellTextSize(screenRadius) {
   );
 }
 
-function getBadgePositionInCircle(
+function getTopLeftBadgePositionInCircle(
   centerX,
   centerY,
   circleRadius,
@@ -393,21 +393,62 @@ function getBadgePositionInCircle(
     return null;
   }
 
-  // The rectangle's top corners define the highest safe center position.
-  // This keeps the complete pill inside the live circle instead of only
-  // keeping its center inside.
-  const maxCornerDistance = Math.sqrt(
+  // Keep the badge in the upper-left quadrant while deriving its position
+  // from the live circle. The rectangle's top-left and bottom-left corners
+  // must remain inside the circle, not just its center point.
+  const maxVerticalDistance = Math.sqrt(
     Math.max(0, availableRadius * availableRadius - halfWidth * halfWidth),
   );
-  const maxCenterOffset = maxCornerDistance - halfHeight;
+  const maxCenterOffset = maxVerticalDistance - halfHeight;
   if (maxCenterOffset < 0) return null;
 
-  const preferredOffset = Math.max(0, centerY - Number(preferredY));
-  const centerOffset = Math.min(preferredOffset, maxCenterOffset);
+  const preferredOffset = Math.min(
+    Math.abs(Number(preferredY) - centerY),
+    maxCenterOffset,
+  );
+  const verticalDirection = Number(preferredY) < centerY ? -1 : 1;
+  const centerOffset = preferredOffset;
+  const verticalDistance = centerOffset + halfHeight;
+  const circleHalfWidth = Math.sqrt(
+    Math.max(0, availableRadius * availableRadius - verticalDistance * verticalDistance),
+  );
   return {
-    x: centerX,
-    y: centerY - centerOffset,
+    x: centerX - circleHalfWidth + halfWidth,
+    y: centerY + verticalDirection * centerOffset,
   };
+}
+
+function getTopLeftBadgePositionOnEdge(
+  centerX,
+  centerY,
+  circleRadius,
+  badgeWidth,
+  badgeHeight,
+  nearbyNodes,
+  currentName,
+  animatedCircles,
+  scale,
+  inset,
+) {
+  const attachmentRadius = Math.max(0, circleRadius - inset);
+  const diagonalOffset = attachmentRadius * Math.SQRT1_2;
+  const candidate = {
+    x: centerX - diagonalOffset,
+    y: centerY - diagonalOffset,
+  };
+  const badgeBoundingRadius = Math.hypot(badgeWidth, badgeHeight) / 2;
+  const clearance = 3 / scale;
+  const collidesWithAnotherCell = nearbyNodes.some((otherNode) => {
+    if (otherNode.name === currentName) return false;
+    const otherCircle = animatedCircles.get(otherNode.name);
+    if (!otherCircle) return false;
+    const otherRadius = otherNode.isAddCell
+      ? getAddPlayerCellWorldRadius(scale)
+      : otherCircle.r;
+    return Math.hypot(candidate.x - otherCircle.x, candidate.y - otherCircle.y)
+      < badgeBoundingRadius + otherRadius + clearance;
+  });
+  return collidesWithAnotherCell ? null : candidate;
 }
 
 function getActionTotalPrice(basePrice, level) {
@@ -2121,13 +2162,25 @@ export default function PopPersonCanvas() {
         const badgeWidth = Math.max(34 / t.scale, textWidth + 14 / t.scale);
         const badgeHeight = 27 / t.scale;
         const badgeInset = 4 / t.scale;
-        const badgePosition = getBadgePositionInCircle(
+        const edgeBadgePosition = getTopLeftBadgePositionOnEdge(
           c.x,
           c.y,
           renderRadius,
           badgeWidth,
           badgeHeight,
-          c.y - renderRadius * 0.9,
+          leavesRef.current,
+          node.name,
+          animatedCirclesRef.current,
+          t.scale,
+          badgeInset,
+        );
+        const badgePosition = edgeBadgePosition ?? getTopLeftBadgePositionInCircle(
+          c.x,
+          c.y,
+          renderRadius,
+          badgeWidth,
+          badgeHeight,
+          c.y - renderRadius * 0.32,
           badgeInset,
         );
         if (badgePosition) {
@@ -2185,7 +2238,7 @@ export default function PopPersonCanvas() {
           const badgeY = actionTop + index * (actionBadgeHeight + actionGap) + actionBadgeHeight / 2;
           const radius = actionBadgeHeight / 2;
           const actionColor = isFan ? ACTION_MODE_COLORS.defender : ACTION_MODE_COLORS.atacar;
-           const badgePosition = getBadgePositionInCircle(
+           const badgePosition = getTopLeftBadgePositionInCircle(
              c.x,
              c.y,
              renderRadius,
