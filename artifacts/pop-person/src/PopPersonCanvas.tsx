@@ -2186,9 +2186,9 @@ export default function PopPersonCanvas() {
         if (badgePosition) {
           positionBadgeY = badgePosition.y;
           const radius = badgeHeight / 2;
-          ctx.fillStyle = "#262626";
-          ctx.strokeStyle = "#6366f1";
-          ctx.lineWidth = 1.25 / t.scale;
+          ctx.fillStyle = "rgba(23, 23, 23, 0.55)";
+          ctx.shadowColor = "rgba(0, 0, 0, 0.25)";
+          ctx.shadowBlur = 6 / t.scale;
           ctx.beginPath();
           ctx.roundRect(
             badgePosition.x - badgeWidth / 2,
@@ -2198,7 +2198,8 @@ export default function PopPersonCanvas() {
             radius,
           );
           ctx.fill();
-          ctx.stroke();
+          ctx.shadowColor = "transparent";
+          ctx.shadowBlur = 0;
           ctx.fillStyle = "#c7d2fe";
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
@@ -2249,9 +2250,9 @@ export default function PopPersonCanvas() {
            );
            if (!badgePosition) return;
 
-          ctx.fillStyle = "#262626";
-          ctx.strokeStyle = actionColor;
-          ctx.lineWidth = 1.25 / t.scale;
+          ctx.fillStyle = "rgba(23, 23, 23, 0.55)";
+          ctx.shadowColor = "rgba(0, 0, 0, 0.25)";
+          ctx.shadowBlur = 6 / t.scale;
           ctx.beginPath();
           ctx.roundRect(
              badgePosition.x - badgeWidth / 2,
@@ -2261,7 +2262,8 @@ export default function PopPersonCanvas() {
             radius,
           );
           ctx.fill();
-          ctx.stroke();
+          ctx.shadowColor = "transparent";
+          ctx.shadowBlur = 0;
           ctx.fillStyle = "#f5f5f5";
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
