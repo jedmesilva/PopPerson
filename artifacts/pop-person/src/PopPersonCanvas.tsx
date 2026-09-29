@@ -47,6 +47,8 @@ const PENDING_PLAYER_JOIN_STORAGE_KEY = "instapop:pending-player-join";
 const PENDING_PLAYER_JOIN_MAX_AGE_MS = 15 * 60 * 1000;
 const PENDING_PAYMENT_STORAGE_KEY = "instapop:pending-payment";
 const PENDING_PAYMENT_MAX_AGE_MS = 30 * 60 * 1000;
+const ACTION_FEEDBACK_DURATION_MS = 1000;
+const MAX_VISIBLE_ACTION_FEEDBACKS_PER_CELL = 2;
 
 function getPaymentStorages() {
   if (typeof window === "undefined") return [];
@@ -876,6 +878,8 @@ export default function PopPersonCanvas() {
   const lastHitSequenceByActionRef = useRef(new Map());
   const paymentReplayActionIdRef = useRef(null);
   const paymentReplayCleanupTimersRef = useRef(new Map());
+  const actionFeedbacksRef = useRef(new Map());
+  const actionFeedbackSequenceRef = useRef(0);
   const transformRef = useRef({ x: 0, y: 0, scale: 1 });
   const fitTransformRef = useRef({ x: 0, y: 0, scale: 1 });
   const recenterAnimRef = useRef(null);
@@ -1022,6 +1026,32 @@ export default function PopPersonCanvas() {
       durationMs: serverAction.duration,
     });
   }, []);
+  const recordActionFeedback = useCallback((hit) => {
+    const targetName = String(hit?.targetName ?? "");
+    if (!targetName) return;
+    const actionType = hit?.actionType === "fan" ? "fan" : "hate";
+    const rawDelta = Number(hit?.delta);
+    const previousValue = Number(hit?.previousValue);
+    const finalValue = Number(hit?.finalValue);
+    const delta = Number.isFinite(rawDelta)
+      ? rawDelta
+      : Number.isFinite(previousValue) && Number.isFinite(finalValue)
+        ? finalValue - previousValue
+        : 0;
+    const now = performance.now();
+    const current = actionFeedbacksRef.current.get(targetName) ?? [];
+    const recent = current.filter((feedback) => now - feedback.startedAt < ACTION_FEEDBACK_DURATION_MS);
+    const next = [
+      ...recent,
+      {
+        id: `${String(hit?.eventId ?? "hit")}:${actionFeedbackSequenceRef.current += 1}`,
+        actionType,
+        delta,
+        startedAt: now,
+      },
+    ].slice(-MAX_VISIBLE_ACTION_FEEDBACKS_PER_CELL);
+    actionFeedbacksRef.current.set(targetName, next);
+  }, []);
   const handleActionHit = useCallback((hit) => {
     const actionId = hit?.actionId;
     const hitIndex = Number(hit?.hitIndex);
@@ -1036,6 +1066,7 @@ export default function PopPersonCanvas() {
     const sequence = Number(hit?.sequence) || hitIndex;
     if (sequence <= previousSequence) return;
     lastHitSequenceByActionRef.current.set(actionId, sequence);
+    recordActionFeedback(hit);
 
     const targetName = String(hit?.targetName ?? "");
     const hitValue = Number(hit?.finalValue ?? hit?.value);
@@ -1066,7 +1097,7 @@ export default function PopPersonCanvas() {
         }
       : action));
 
-  }, []);
+  }, [recordActionFeedback]);
   const startResolvedAction = useCallback((serverAction, resolvedEvent) => {
     const actionId = serverAction?.id || resolvedEvent?.actionId;
     const eventId = resolvedEvent?.eventId || actionId;
@@ -1284,6 +1315,7 @@ export default function PopPersonCanvas() {
       emojiEffectsRef.current?.clear();
       spawnedEmojiActionIdsRef.current.clear();
       visualActionTimelinesRef.current.clear();
+      actionFeedbacksRef.current.clear();
       latestServerActionsRef.current.clear();
       lastHitSequenceByActionRef.current.clear();
       activeActionIdsRef.current = [];
@@ -2048,7 +2080,7 @@ export default function PopPersonCanvas() {
         const textWidth = ctx.measureText(label).width;
         const badgeWidth = Math.max(34 / t.scale, textWidth + 14 / t.scale);
         const badgeHeight = 27 / t.scale;
-        const badgeX = c.x + renderRadius * 0.7;
+        const badgeX = c.x - renderRadius + badgeWidth / 2;
         const badgeY = c.y - renderRadius * 0.7;
         const radius = badgeHeight / 2;
         ctx.fillStyle = "#262626";
@@ -2068,6 +2100,63 @@ export default function PopPersonCanvas() {
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText(label, badgeX, badgeY + 0.5 / t.scale);
+        ctx.restore();
+      }
+
+      const now = performance.now();
+      const feedbacks = actionFeedbacksRef.current.get(node.name) ?? [];
+      const visibleFeedbacks = feedbacks.filter(
+        (feedback) => now - feedback.startedAt < ACTION_FEEDBACK_DURATION_MS,
+      );
+      if (visibleFeedbacks.length !== feedbacks.length) {
+        if (visibleFeedbacks.length > 0) {
+          actionFeedbacksRef.current.set(node.name, visibleFeedbacks);
+        } else {
+          actionFeedbacksRef.current.delete(node.name);
+        }
+      }
+      if (screenR > 22 && visibleFeedbacks.length > 0) {
+        ctx.save();
+        const actionBadgeHeight = 24 / t.scale;
+        const actionGap = 5 / t.scale;
+        const positionBadgeHeight = 27 / t.scale;
+        const actionTop = c.y
+          - renderRadius * 0.7
+          + positionBadgeHeight / 2
+          + actionGap;
+        const actionFontSize = Math.max(10, Math.min(13, screenR * 0.16)) / t.scale;
+
+        visibleFeedbacks.forEach((feedback, index) => {
+          const amount = Math.round(Math.abs(Number(feedback.delta) || 0));
+          if (amount <= 0) return;
+          const isFan = feedback.actionType === "fan";
+          const label = `${isFan ? "Fã" : "Hater"} ${isFan ? "+" : "−"}${amount}`;
+          ctx.font = `850 ${actionFontSize}px -apple-system, sans-serif`;
+          const textWidth = ctx.measureText(label).width;
+          const badgeWidth = Math.max(54 / t.scale, textWidth + 16 / t.scale);
+          const badgeX = c.x - renderRadius + badgeWidth / 2;
+          const badgeY = actionTop + index * (actionBadgeHeight + actionGap) + actionBadgeHeight / 2;
+          const radius = actionBadgeHeight / 2;
+          const actionColor = isFan ? ACTION_MODE_COLORS.defender : ACTION_MODE_COLORS.atacar;
+
+          ctx.fillStyle = "#262626";
+          ctx.strokeStyle = actionColor;
+          ctx.lineWidth = 1.25 / t.scale;
+          ctx.beginPath();
+          ctx.roundRect(
+            badgeX - badgeWidth / 2,
+            badgeY - actionBadgeHeight / 2,
+            badgeWidth,
+            actionBadgeHeight,
+            radius,
+          );
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = "#f5f5f5";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(label, badgeX, badgeY + 0.5 / t.scale);
+        });
         ctx.restore();
       }
     });
