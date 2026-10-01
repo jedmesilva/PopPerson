@@ -1137,6 +1137,7 @@ export default function PopPersonCanvas() {
   const createActionMutation = useCreatePopPersonAction();
   const [activeCheckout, setActiveCheckout] = useState(null);
   const canvasRef = useRef(null);
+  const actionFeedbackCanvasRef = useRef(null);
   const boardWrapRef = useRef(null);
   const rankBubbleLayerRef = useRef(null);
   const rankBubbleRefs = useRef(new Map());
@@ -2365,12 +2366,17 @@ export default function PopPersonCanvas() {
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !boardWrapRef.current) return;
+    const actionFeedbackCanvas = actionFeedbackCanvasRef.current;
+    if (!canvas || !actionFeedbackCanvas || !boardWrapRef.current) return;
     const ctx = canvas.getContext("2d");
+    const actionFeedbackCtx = actionFeedbackCanvas.getContext("2d");
+    if (!ctx || !actionFeedbackCtx) return;
     const dpr = Math.max(window.devicePixelRatio || 1, 1);
     const { w: cw, h: ch } = cssSize();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, cw, ch);
+    actionFeedbackCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    actionFeedbackCtx.clearRect(0, 0, cw, ch);
     const t = transformRef.current;
     const rankBubbleLayer = rankBubbleLayerRef.current;
     const visibleRankBubbles = new Set();
@@ -2380,6 +2386,9 @@ export default function PopPersonCanvas() {
     ctx.save();
     ctx.translate(t.x, t.y);
     ctx.scale(t.scale, t.scale);
+    actionFeedbackCtx.save();
+    actionFeedbackCtx.translate(t.x, t.y);
+    actionFeedbackCtx.scale(t.scale, t.scale);
     const selName = selectedCellRef.current;
     leavesRef.current.forEach((node) => {
       const c = animatedCirclesRef.current.get(node.name);
@@ -2447,7 +2456,7 @@ export default function PopPersonCanvas() {
         }
       }
       if (screenR > 22 && visibleFeedbacks.length > 0) {
-        ctx.save();
+        actionFeedbackCtx.save();
         const actionBadgeHeight = 24 / t.scale;
         const actionGap = 5 / t.scale;
         const actionTop = positionBadgeBottomY + actionGap;
@@ -2458,45 +2467,46 @@ export default function PopPersonCanvas() {
           if (amount <= 0) return;
           const isFan = feedback.actionType === "fan";
           const label = `${isFan ? "Fã" : "Hater"} ${isFan ? "+" : "−"}${amount}`;
-          ctx.font = `850 ${actionFontSize}px -apple-system, sans-serif`;
-          const textWidth = ctx.measureText(label).width;
+          actionFeedbackCtx.font = `850 ${actionFontSize}px -apple-system, sans-serif`;
+          const textWidth = actionFeedbackCtx.measureText(label).width;
           const badgeWidth = Math.max(54 / t.scale, textWidth + 16 / t.scale);
           const badgeY = actionTop + index * (actionBadgeHeight + actionGap) + actionBadgeHeight / 2;
           const radius = actionBadgeHeight / 2;
           const actionColor = isFan ? ACTION_MODE_COLORS.defender : ACTION_MODE_COLORS.atacar;
-           const badgePosition = getTopLeftBadgePositionInCircle(
-             c.x,
-             c.y,
-             renderRadius,
-             badgeWidth,
-             actionBadgeHeight,
-             badgeY,
-             4 / t.scale,
-           );
-           if (!badgePosition) return;
+          const badgePosition = getTopLeftBadgePositionInCircle(
+            c.x,
+            c.y,
+            renderRadius,
+            badgeWidth,
+            actionBadgeHeight,
+            badgeY,
+            4 / t.scale,
+          );
+          if (!badgePosition) return;
 
-          ctx.fillStyle = "rgba(23, 23, 23, 0.55)";
-          ctx.shadowColor = "rgba(0, 0, 0, 0.25)";
-          ctx.shadowBlur = 6 / t.scale;
-          ctx.beginPath();
-          ctx.roundRect(
+          actionFeedbackCtx.fillStyle = "rgba(23, 23, 23, 0.55)";
+          actionFeedbackCtx.shadowColor = "rgba(0, 0, 0, 0.25)";
+          actionFeedbackCtx.shadowBlur = 6 / t.scale;
+          actionFeedbackCtx.beginPath();
+          actionFeedbackCtx.roundRect(
              badgePosition.x - badgeWidth / 2,
              badgePosition.y - actionBadgeHeight / 2,
             badgeWidth,
             actionBadgeHeight,
             radius,
           );
-          ctx.fill();
-          ctx.shadowColor = "transparent";
-          ctx.shadowBlur = 0;
-          ctx.fillStyle = "#f5f5f5";
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-           ctx.fillText(label, badgePosition.x, badgePosition.y + 0.5 / t.scale);
+          actionFeedbackCtx.fill();
+          actionFeedbackCtx.shadowColor = "transparent";
+          actionFeedbackCtx.shadowBlur = 0;
+          actionFeedbackCtx.fillStyle = "#f5f5f5";
+          actionFeedbackCtx.textAlign = "center";
+          actionFeedbackCtx.textBaseline = "middle";
+          actionFeedbackCtx.fillText(label, badgePosition.x, badgePosition.y + 0.5 / t.scale);
         });
-        ctx.restore();
+        actionFeedbackCtx.restore();
       }
     });
+    actionFeedbackCtx.restore();
     ctx.restore();
     rankBubbleRefs.current.forEach((bubble, name) => {
       if (!visibleRankBubbles.has(name)) {
@@ -2557,6 +2567,7 @@ export default function PopPersonCanvas() {
   useEffect(() => {
     function resize() {
       const canvas = canvasRef.current;
+      const actionFeedbackCanvas = actionFeedbackCanvasRef.current;
       if (!canvas || !boardWrapRef.current) return;
       const dpr = Math.max(window.devicePixelRatio || 1, 1);
       const { w, h } = cssSize();
@@ -2564,6 +2575,12 @@ export default function PopPersonCanvas() {
       canvas.height = h * dpr;
       canvas.style.width = `${w}px`;
       canvas.style.height = `${h}px`;
+      if (actionFeedbackCanvas) {
+        actionFeedbackCanvas.width = w * dpr;
+        actionFeedbackCanvas.height = h * dpr;
+        actionFeedbackCanvas.style.width = `${w}px`;
+        actionFeedbackCanvas.style.height = `${h}px`;
+      }
       fitToView();
     }
     resize();
@@ -2882,6 +2899,19 @@ export default function PopPersonCanvas() {
           targetsRef={emojiTargetsRef}
           transformRef={transformRef}
           maxInstances={50000}
+        />
+        <canvas
+          ref={actionFeedbackCanvasRef}
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            display: "block",
+            zIndex: 3,
+            pointerEvents: "none",
+          }}
         />
         <div
           ref={rankBubbleLayerRef}
