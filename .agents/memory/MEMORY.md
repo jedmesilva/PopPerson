@@ -3,7 +3,7 @@
 - [Autoridade realtime versus exibição](realtime-authority-display.md) — snapshots atualizam a autoridade; hits confirmados controlam a progressão visual durante ações ativas.
 - [Materialização de dependências realtime](realtime-dependency-materialization.md) — lockfile pode estar correto enquanto um pacote novo ainda falta fisicamente no node_modules.
 - [Sequenciamento de eventos de ação](action-event-sequencing.md) — o evento final precisa ocupar uma sequência após o último hit, sem reutilizar números fixos.
-- [Restart após build](workflow-restart-build-order.md) — o processo do workflow mantém o bundle carregado; um build posterior não atualiza o runtime sozinho.
+- [Restart após build](workflow-restart-build-order.md) — reinicie após o build; um processo antigo pode manter o bundle anterior ou continuar ocupando a porta.
 - [Diagnóstico de deployment externo](external-deployment-checks.md) — Railway/Vercel precisam ser validados por endpoints e banco quando os logs de deployment não estão disponíveis no workspace.
 - [Modos de cliente OAuth do X](x-oauth-client-modes.md) — Web App usa Basic Auth sem client_id no corpo; clientes públicos usam client_id no corpo sem segredo.
 - [Persistência de auth X](x-auth-persistence.md) — após importar auth, confirme as tabelas reais no banco; o schema TypeScript pode estar à frente do banco de desenvolvimento.

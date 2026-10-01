@@ -50,6 +50,9 @@ const PENDING_PAYMENT_MAX_AGE_MS = 30 * 60 * 1000;
 const ACTION_FEEDBACK_DURATION_MS = 1000;
 const MAX_VISIBLE_ACTION_FEEDBACKS_PER_CELL = 2;
 const RANK_BUBBLE_BADGE_RATIO = 0.3;
+const RANK_BUBBLE_GOO_BLUR_RATIO = 0.055;
+const RANK_BUBBLE_GOO_COLLISION_MARGIN_SIGMAS = 0.2;
+const MAX_CIRCLE_SEPARATION_ITERATIONS = 64;
 
 function getPaymentStorages() {
   if (typeof window === "undefined") return [];
@@ -405,10 +408,16 @@ function getCellCollisionRadius(cell, radius) {
     return safeRadius;
   }
 
-  // Reserve the full union of the cell and its rank protuberance.
+  // Reserve the full union of the cell and rank badge, plus the visible edge
+  // produced when RankBubble's SVG goo filter blurs and thresholds the shape.
   const badgeRadius = safeRadius * RANK_BUBBLE_BADGE_RATIO;
   const badgeCenterDistance = (safeRadius + badgeRadius * 0.15) * Math.SQRT1_2;
-  return Math.max(safeRadius, badgeCenterDistance + badgeRadius);
+  const shapeRadius = Math.max(safeRadius, badgeCenterDistance + badgeRadius);
+  const filterMargin = safeRadius
+    * 2
+    * RANK_BUBBLE_GOO_BLUR_RATIO
+    * RANK_BUBBLE_GOO_COLLISION_MARGIN_SIGMAS;
+  return shapeRadius + filterMargin;
 }
 
 function RankBubble({
@@ -420,7 +429,7 @@ function RankBubble({
   corner = "top-left",
   badgeRatio = 0.3,
   ringRatio = 0.07,
-  neck = 0.055,
+  neck = RANK_BUBBLE_GOO_BLUR_RATIO,
 }) {
   const rankLabel = formatRank(rank);
   const [imgFailed, setImgFailed] = useState(false);
@@ -722,7 +731,9 @@ function computeLeaves(data) {
 }
 
 function keepCirclesSeparated(circles) {
-  for (let iteration = 0; iteration < 12; iteration += 1) {
+  // A snapshot can move many cells at once. Let dense transitions settle
+  // further than the old 12-pass cap, while exiting immediately when clear.
+  for (let iteration = 0; iteration < MAX_CIRCLE_SEPARATION_ITERATIONS; iteration += 1) {
     let moved = false;
 
     for (let first = 0; first < circles.length; first += 1) {

@@ -1,0 +1,554 @@
+import React, { useState, useEffect, useRef, useCallback } from "react";
+
+/* ============================================================
+ * Mesma estrutura do HTML "Balões":
+ *  - UM <canvas> desenhado a cada frame (nada de DOM por célula)
+ *  - física com velocidade: mola até o raio-alvo + amortecimento
+ *  - colisão: correção de posição ponderada pela massa + impulso
+ *  - estado inicial já "assentado" (roda a física offscreen antes de pintar)
+ * ============================================================ */
+
+const RANK_UNITS = [
+  { value: 1e9, suffix: "B" },
+  { value: 1e6, suffix: "M" },
+  { value: 1e3, suffix: "k" },
+];
+
+/** Abrevia posições grandes (trunca, nunca arredonda): 1.200 → "1,2k" */
+export function formatRank(value, decimal = ",") {
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n)) return String(value);
+  if (n < 1000) return String(n);
+  for (const { value: unit, suffix } of RANK_UNITS) {
+    if (n >= unit) {
+      const tenths = Math.floor(n / (unit / 10));
+      const whole = Math.floor(tenths / 10);
+      const frac = tenths % 10;
+      const text = whole >= 10 || frac === 0 ? String(whole) : `${whole}${decimal}${frac}`;
+      return text + suffix;
+    }
+  }
+  return String(n);
+}
+
+// ===== PHYSICS START ==========================================
+const TAU = Math.PI * 2;
+const SQ = Math.SQRT1_2;
+const BADGE_RATIO = 0.3;
+const RING_RATIO = 0.07;
+const GAP = 3;
+
+const PHYS = {
+  pull: 25,         // rigidez da mola até o raio-alvo
+  damping: 4,       // amortecimento (1/s)
+  fill: 1.4,        // folga de área do raio-alvo (o HTML usa 1.25; aqui há o badge)
+  restitution: 1.6, // 1 + elasticidade (igual ao HTML)
+  substeps: 3,
+  dragGain: 25,     // quão rápido a célula arrastada segue o dedo
+  dragMax: 1500,
+  sleepSpeed: 10,   // px/s (≈0,17 px/frame): abaixo disso o mundo é considerado parado
+  settleDamping: 12, // amortecimento forte só na pré-simulação offscreen
+  settleBudget: 30, // ms máximos gastos na pré-simulação (o resto anima ao vivo)
+};
+
+function sizeForRank(rank) {
+  return Math.max(56, 150 * Math.pow(rank, -0.18));
+}
+
+function createBody(meta, rnd, onLoad) {
+  const size = sizeForRank(meta.rank);
+  const R = size / 2;
+  const r = (size * BADGE_RATIO) / 2;
+  const dist = R + r * 0.15;
+  const sign = rnd() < 0.5 ? -1 : 1; // -1 = canto superior esquerdo
+  const b = {
+    rank: meta.rank, name: meta.name, color: meta.color,
+    size, R, r,
+    bx: sign * dist * SQ, by: -dist * SQ,
+    bound: R + r * 1.15,
+    invMass: 1 / (R * R),
+    target: 0, k: PHYS.pull,
+    x: 0, y: 0, vx: 0, vy: 0, ox: 0, oy: 0,
+    dragging: false, tx: 0, ty: 0,
+    img: null, imgOk: false, label: null, labelFor: null,
+  };
+  if (meta.image && typeof Image !== "undefined") {
+    const im = new Image();
+    im.onload = () => { b.imgOk = true; b.labelFor = null; onLoad && onLoad(); };
+    im.onerror = () => { b.imgOk = false; };
+    im.src = meta.image;
+    b.img = im;
+  }
+  return b;
+}
+
+// Raio-alvo cumulativo por área (maior posição = mais perto do centro).
+// A célula arrastada fica fora da conta, como antes.
+function assignTargets(bodies) {
+  const order = bodies.filter((b) => !b.dragging).sort((a, b) => a.rank - b.rank);
+  let acc = 0, sum = 0;
+  for (const b of order) {
+    b.target = Math.sqrt(PHYS.fill * (acc + (b.R * b.R) / 2));
+    acc += b.R * b.R;
+    sum += b.R;
+  }
+  const avg = sum / (order.length || 1);
+  for (const b of order) b.k = PHYS.pull * (b.R / avg);
+}
+
+// Espiral de girassol no raio-alvo: nasce quase sem sobreposição.
+function place(b, i, rnd) {
+  const ang = i * 2.39996 + rnd() * 0.3;
+  b.x = Math.cos(ang) * b.target;
+  b.y = Math.sin(ang) * b.target;
+  b.vx = b.vy = 0;
+}
+
+function collide(a, b, restitution) {
+  const ia = a.dragging ? 0 : a.invMass;
+  const ib = b.dragging ? 0 : b.invMass;
+  const wsum = ia + ib;
+  if (wsum === 0) return;
+  const wa = ia / wsum, wb = ib / wsum;
+  for (let ca = 0; ca < 2; ca++) {
+    for (let cb = 0; cb < 2; cb++) {
+      const ax = a.x + (ca ? a.bx : 0), ay = a.y + (ca ? a.by : 0), ar = ca ? a.r : a.R;
+      const bx = b.x + (cb ? b.bx : 0), by = b.y + (cb ? b.by : 0), br = cb ? b.r : b.R;
+      const dx = bx - ax, dy = by - ay;
+      const min = ar + br + GAP;
+      const d2 = dx * dx + dy * dy;
+      if (d2 >= min * min) continue;
+      const d = Math.sqrt(d2) || 0.0001;
+      const nx = d2 > 1e-8 ? dx / d : 1, ny = d2 > 1e-8 ? dy / d : 0;
+      const pen = min - d;
+      a.x -= nx * pen * wa; a.y -= ny * pen * wa;
+      b.x += nx * pen * wb; b.y += ny * pen * wb;
+      const rv = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
+      if (rv < 0) {
+        const imp = (-restitution * rv) / wsum;
+        a.vx -= imp * nx * ia; a.vy -= imp * ny * ia;
+        b.vx += imp * nx * ib; b.vy += imp * ny * ib;
+      }
+    }
+  }
+}
+
+// Um passo de física. `sweep` é uma cópia do array ordenada por x
+// (insertion sort: quase ordenada a cada frame, sem alocar nada).
+function step(world, dt) {
+  const { bodies, sweep } = world;
+  const n = bodies.length;
+  const settling = world.settling;
+  const damp = Math.exp(-(settling ? PHYS.settleDamping : PHYS.damping) * dt);
+  const rest = settling ? 1 : PHYS.restitution;
+  let maxB = 0, maxSpeed = 0;
+
+  for (let i = 0; i < n; i++) {
+    const b = bodies[i];
+    if (b.dragging) {
+      b.vx = Math.max(-PHYS.dragMax, Math.min(PHYS.dragMax, (b.tx - b.x) * PHYS.dragGain));
+      b.vy = Math.max(-PHYS.dragMax, Math.min(PHYS.dragMax, (b.ty - b.y) * PHYS.dragGain));
+    } else {
+      const d = Math.hypot(b.x, b.y);
+      if (d > 0.001) {
+        const a = b.k * (d - b.target) * dt;
+        b.vx -= (b.x / d) * a;
+        b.vy -= (b.y / d) * a;
+      }
+      b.vx *= damp; b.vy *= damp;
+    }
+    b.ox = b.x; b.oy = b.y;
+    b.x += b.vx * dt; b.y += b.vy * dt;
+    if (b.bound > maxB) maxB = b.bound;
+  }
+
+  for (let i = 1; i < n; i++) {
+    const b = sweep[i];
+    let j = i - 1;
+    while (j >= 0 && sweep[j].x > b.x) { sweep[j + 1] = sweep[j]; j--; }
+    sweep[j + 1] = b;
+  }
+
+  for (let i = 0; i < n; i++) {
+    const a = sweep[i];
+    const reach = a.bound + maxB + GAP;
+    for (let j = i + 1; j < n; j++) {
+      const b = sweep[j];
+      if (b.x - a.x > reach) break;
+      if (Math.abs(b.y - a.y) > a.bound + b.bound + GAP) continue;
+      collide(a, b, rest);
+    }
+  }
+
+  for (let i = 0; i < n; i++) {
+    const b = bodies[i];
+    if (b.dragging) continue;
+    // deslocamento real no passo (inclui as correções de colisão), em px/s
+    const s = Math.hypot(b.x - b.ox, b.y - b.oy) / dt;
+    if (s > maxSpeed) maxSpeed = s;
+  }
+  return maxSpeed;
+}
+
+// Avança 1 frame (1/60 s) dividido em substeps. Retorna a maior velocidade.
+function frame(world, dt = 1 / 60) {
+  const sub = world.settling ? 1 : PHYS.substeps;
+  let speed = 0;
+  for (let s = 0; s < sub; s++) speed = step(world, dt / sub);
+  return speed;
+}
+
+// Roda a física antes de pintar (inelástica, 1 substep): o primeiro frame
+// já aparece organizado. Se estourar o orçamento de tempo, o resto anima ao vivo.
+function settle(world, budgetMs = PHYS.settleBudget) {
+  const t0 = performance.now();
+  world.settling = true;
+  for (let i = 0; i < 1000; i++) {
+    if (frame(world) < PHYS.sleepSpeed) break;
+    if (performance.now() - t0 > budgetMs) break;
+  }
+  world.settling = false;
+  for (const b of world.bodies) { b.vx = 0; b.vy = 0; }
+}
+// ===== PHYSICS END ============================================
+
+function mulberry32(seed) {
+  let a = seed;
+  return () => {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* ============================================================
+ * Desenho (substitui o antigo RankBubble em DOM)
+ * ============================================================ */
+const FONT = "Roboto, system-ui, sans-serif";
+
+function fitText(ctx, text, maxW) {
+  if (ctx.measureText(text).width <= maxW) return text;
+  let t = text;
+  while (t.length > 1 && ctx.measureText(t + "…").width > maxW) t = t.slice(0, -1);
+  return t + "…";
+}
+
+function drawBubble(ctx, b, debug, scale) {
+  const { x, y, R, r, size } = b;
+  const hasImg = b.img && b.imgOk;
+  const ring = hasImg ? size * RING_RATIO : 0;
+  const bx = x + b.bx, by = y + b.by;
+
+  ctx.save();
+  if (b.dragging) {
+    ctx.translate(x, y); ctx.scale(1.08, 1.08); ctx.translate(-x, -y);
+  }
+
+  // forma: célula + badge, mesma cor
+  ctx.fillStyle = b.color;
+  ctx.beginPath(); ctx.arc(x, y, R, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.arc(bx, by, r, 0, TAU); ctx.fill();
+
+  // imagem recortada em círculo + degradê escuro embaixo
+  if (hasImg) {
+    const ir = R - ring;
+    ctx.save();
+    ctx.beginPath(); ctx.arc(x, y, ir, 0, TAU); ctx.clip();
+    const iw = b.img.naturalWidth || 1, ih = b.img.naturalHeight || 1;
+    const s = Math.max((ir * 2) / iw, (ir * 2) / ih);
+    ctx.drawImage(b.img, x - (iw * s) / 2, y - (ih * s) / 2, iw * s, ih * s);
+    const g = ctx.createLinearGradient(0, y + ir, 0, y);
+    g.addColorStop(0, "rgba(0,0,0,0.65)");
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(x - ir, y, ir * 2, ir);
+    ctx.restore();
+  }
+
+  // nome
+  if (b.name) {
+    const fs = size * 0.13;
+    ctx.font = `700 ${fs}px ${FONT}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    if (b.labelFor !== hasImg) {
+      b.label = fitText(ctx, b.name, size - ring * 2 - size * 0.32);
+      b.labelFor = hasImg;
+    }
+    const ty = hasImg ? y + R - ring - size * 0.11 - fs * 0.6 : y;
+    if (hasImg) {
+      ctx.fillStyle = "rgba(0,0,0,0.5)";
+      ctx.fillText(b.label, x, ty + 1);
+    }
+    ctx.fillStyle = "#fff";
+    ctx.fillText(b.label, x, ty);
+  }
+
+  // posição no badge
+  const rl = formatRank(b.rank);
+  const bf = r * 2 * ({ 1: 0.48, 2: 0.4, 3: 0.34 }[rl.length] ?? 0.28);
+  ctx.font = `800 ${bf}px ${FONT}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#fff";
+  ctx.fillText(`#${rl}`, bx, by + bf * 0.04);
+
+  if (debug) {
+    ctx.strokeStyle = "#22d3ee";
+    ctx.lineWidth = 1.5 / scale;
+    ctx.beginPath(); ctx.arc(x, y, R, 0, TAU); ctx.stroke();
+    ctx.beginPath(); ctx.arc(bx, by, r, 0, TAU); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/* ============================================================
+ * Dados de demonstração
+ * ============================================================ */
+const makeFakeAvatar = (bg1, bg2, skin, shirt) =>
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300">
+      <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="${bg1}"/><stop offset="1" stop-color="${bg2}"/>
+      </linearGradient></defs>
+      <rect width="300" height="300" fill="url(#g)"/>
+      <ellipse cx="150" cy="300" rx="115" ry="95" fill="${shirt}"/>
+      <rect x="132" y="176" width="36" height="40" rx="14" fill="${skin}"/>
+      <circle cx="150" cy="128" r="58" fill="${skin}"/>
+      <path d="M92 122c0-40 26-66 60-66s58 24 58 62c-14-22-34-32-62-32s-38 10-56 36z" fill="#2b1d16"/>
+    </svg>`
+  );
+
+const FIRST = ["Fernanda", "Camila", "Jedmar", "Bruna", "Rafael", "Lucas", "Marina", "Thiago", "Beatriz", "Gustavo", "Larissa", "Diego", "Aline", "Felipe", "Juliana", "Matheus", "Carolina", "Bruno", "Patrícia", "André", "Renata", "Vinícius", "Isabela", "Henrique"];
+const LAST = ["Albuquerque", "Rodrigues", "Nascimento", "Oliveira Santos", "Lima", "Carvalho", "Fernandes", "Mendonça", "Souza", "Pereira", "Barbosa", "Almeida", "Teixeira", "Cavalcanti", "Rocha", "Dias"];
+const COLORS = ["#ec4899", "#a855f7", "#6366f1", "#14b8a6", "#f59e0b"];
+const SKINS = ["#e8b48f", "#c98b62", "#f1c9a5", "#a96f4b", "#8d5a3b"];
+const BGS = [["#fde68a", "#f97316"], ["#a5f3fc", "#6366f1"], ["#fbcfe8", "#a855f7"], ["#bbf7d0", "#0d9488"]];
+
+function metaForRank(rank) {
+  const rnd = mulberry32(rank * 977 + 13);
+  const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
+  const bg = pick(BGS);
+  return {
+    rank,
+    name: `${pick(FIRST)} ${pick(LAST)}`,
+    color: COLORS[(rank - 1) % COLORS.length],
+    image: rank % 3 === 1 ? makeFakeAvatar(bg[0], bg[1], pick(SKINS), pick(COLORS)) : null,
+  };
+}
+
+const btn = (active) => ({
+  background: active ? "#ec4899" : "#1f1f1f",
+  color: "#fff", border: "none", borderRadius: 999, padding: "8px 14px",
+  fontSize: 13, fontWeight: 600, fontFamily: FONT, cursor: "pointer",
+});
+
+/* ============================================================
+ * Componente
+ * ============================================================ */
+export default function RankPhysicsCanvas() {
+  const [total, setTotal] = useState(0);
+  const [debug, setDebug] = useState(false);
+  const [asleep, setAsleep] = useState(false);
+
+  const canvasRef = useRef(null);
+  const worldRef = useRef(null);
+  const viewRef = useRef({ w: 360, h: 600, dpr: 1 });
+  const dragRef = useRef(null);
+  const debugRef = useRef(false);
+  const [dragging, setDragging] = useState(false);
+
+  useEffect(() => { debugRef.current = debug; if (worldRef.current) worldRef.current.dirty = true; }, [debug]);
+
+  const wake = useCallback(() => {
+    const w = worldRef.current;
+    if (!w) return;
+    w.sleeping = false; w.calm = 0; w.dirty = true;
+    setAsleep(false);
+  }, []);
+
+  const makeBodies = (w, from, to) => {
+    const out = [];
+    for (let rank = from; rank <= to; rank++) {
+      out.push(createBody(metaForRank(rank), w.rnd, () => { w.dirty = true; }));
+    }
+    return out;
+  };
+
+  const start = useCallback((n) => {
+    const w = { bodies: [], sweep: [], rnd: mulberry32(7), calm: 0, sleeping: false, dirty: true, scale: 1 };
+    w.bodies = makeBodies(w, 1, n);
+    w.sweep = w.bodies.slice();
+    assignTargets(w.bodies);
+    w.bodies.forEach((b, i) => place(b, i, w.rnd));
+    settle(w);
+    worldRef.current = w;
+    setAsleep(false);
+    setTotal(n);
+  }, []);
+
+  const addCells = useCallback((count) => {
+    const w = worldRef.current;
+    if (!w) return;
+    const from = w.bodies.length + 1;
+    const fresh = makeBodies(w, from, from + count - 1);
+    w.bodies.push(...fresh);
+    w.sweep.push(...fresh);
+    assignTargets(w.bodies);
+    fresh.forEach((b, i) => place(b, from + i, w.rnd));
+    settle(w); // troque por wake() se quiser ver as novas células "entrando"
+    wake();
+    setTotal(w.bodies.length);
+  }, [wake]);
+
+  const toWorld = (clientX, clientY) => {
+    const w = worldRef.current;
+    const rect = canvasRef.current.getBoundingClientRect();
+    return {
+      x: (clientX - rect.left - rect.width / 2) / w.scale,
+      y: (clientY - rect.top - rect.height / 2) / w.scale,
+    };
+  };
+
+  const pickBody = (wx, wy) => {
+    let best = null, bestD = 0;
+    for (const b of worldRef.current.bodies) {
+      const d = Math.min(
+        Math.hypot(wx - b.x, wy - b.y) - b.R,
+        Math.hypot(wx - (b.x + b.bx), wy - (b.y + b.by)) - b.r
+      );
+      if (d < bestD) { bestD = d; best = b; }
+    }
+    return best;
+  };
+
+  const onPointerDown = (e) => {
+    const w = worldRef.current;
+    if (!w || dragRef.current || (e.pointerType === "mouse" && e.button !== 0)) return;
+    const p = toWorld(e.clientX, e.clientY);
+    const body = pickBody(p.x, p.y);
+    if (!body) return;
+    try { canvasRef.current.setPointerCapture(e.pointerId); } catch (_) {}
+    dragRef.current = { body, offX: body.x - p.x, offY: body.y - p.y, cx: e.clientX, cy: e.clientY, pointerId: e.pointerId };
+    body.dragging = true;
+    body.tx = body.x; body.ty = body.y;
+    // desenha a célula arrastada por último (por cima das outras)
+    const i = w.bodies.indexOf(body);
+    w.bodies.splice(i, 1); w.bodies.push(body);
+    assignTargets(w.bodies);
+    wake();
+    setDragging(true);
+  };
+
+  const onPointerMove = (e) => {
+    const d = dragRef.current;
+    if (d && e.pointerId === d.pointerId) { d.cx = e.clientX; d.cy = e.clientY; }
+  };
+
+  const onPointerUp = (e) => {
+    const d = dragRef.current;
+    const w = worldRef.current;
+    if (!d || e.pointerId !== d.pointerId) return;
+    d.body.dragging = false;
+    dragRef.current = null;
+    assignTargets(w.bodies);
+    wake();
+    setDragging(false);
+  };
+
+  // tamanho do canvas (com devicePixelRatio, limitado a 2 como no HTML)
+  useEffect(() => {
+    const cv = canvasRef.current;
+    if (!cv) return;
+    const measure = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const w = cv.clientWidth, h = cv.clientHeight;
+      cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+      viewRef.current = { w, h, dpr };
+      wake();
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(cv);
+    return () => ro.disconnect();
+  }, [wake]);
+
+  useEffect(() => { start(60); }, [start]);
+
+  // loop: física + desenho. Dorme quando tudo para e acorda em qualquer interação.
+  useEffect(() => {
+    const cv = canvasRef.current;
+    const ctx = cv.getContext("2d");
+    let raf, last = 0;
+
+    const tick = (t) => {
+      raf = requestAnimationFrame(tick);
+      const w = worldRef.current;
+      if (!w || (w.sleeping && !w.dirty)) { last = t; return; }
+
+      const dt = Math.min((t - last) / 1000 || 1 / 60, 0.05);
+      last = t;
+
+      let speed = 0;
+      if (!w.sleeping) {
+        const drag = dragRef.current;
+        if (drag) {
+          const p = toWorld(drag.cx, drag.cy);
+          drag.body.tx = p.x + drag.offX;
+          drag.body.ty = p.y + drag.offY;
+        }
+        speed = frame(w, dt);
+        if (!drag && speed < PHYS.sleepSpeed) {
+          if (++w.calm > 20) { w.sleeping = true; setAsleep(true); }
+        } else w.calm = 0;
+      }
+
+      // câmera: enquadra o aglomerado
+      const { w: vw, h: vh, dpr } = viewRef.current;
+      let ex = 1, ey = 1;
+      for (const b of w.bodies) {
+        if (b.dragging) continue;
+        ex = Math.max(ex, Math.abs(b.x) + b.bound);
+        ey = Math.max(ey, Math.abs(b.y) + b.bound);
+      }
+      w.scale = Math.min(1, (vw / 2 / ex) * 0.94, (vh / 2 / ey) * 0.94);
+
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      const s = dpr * w.scale;
+      ctx.setTransform(s, 0, 0, s, (vw / 2) * dpr, (vh / 2) * dpr);
+      for (const b of w.bodies) drawBubble(ctx, b, debugRef.current, w.scale);
+      w.dirty = false;
+    };
+
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  return (
+    <div style={{ background: "#0a0a0a", height: "100vh", display: "flex", flexDirection: "column", fontFamily: FONT }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", padding: 12 }}>
+        {[30, 60, 120].map((n) => (
+          <button key={n} style={btn(false)} onClick={() => start(n)}>{n}</button>
+        ))}
+        <button style={btn(false)} onClick={() => addCells(10)}>+10</button>
+        <button style={btn(debug)} onClick={() => setDebug((d) => !d)}>Colisão</button>
+        <span style={{ color: "#888", fontSize: 12 }}>{total} células · {asleep ? "assentado" : "simulando"}</span>
+      </div>
+      <canvas
+        ref={canvasRef}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        style={{
+          display: "block", flex: 1, minHeight: 0, width: "100%",
+          touchAction: "none", userSelect: "none", WebkitUserSelect: "none",
+          cursor: dragging ? "grabbing" : "grab",
+        }}
+      />
+    </div>
+  );
+}
