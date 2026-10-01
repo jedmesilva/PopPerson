@@ -565,6 +565,9 @@ function RankBubble({
           height: imageSize,
           borderRadius: "50%",
           overflow: "hidden",
+          backgroundColor: hasImage
+            ? "transparent"
+            : `color-mix(in srgb, ${color} 86%, #000 14%)`,
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
