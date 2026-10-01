@@ -503,7 +503,7 @@ function RankBubble({
   const padding = size * 0.25;
   const box = size + padding * 2;
   const hasImage = Boolean(image) && !imgFailed;
-  const ring = hasImage ? size * ringRatio : 0;
+  const ring = size * ringRatio;
   const imageSize = size - ring * 2;
 
   return (
