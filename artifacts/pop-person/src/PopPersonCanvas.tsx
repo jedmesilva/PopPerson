@@ -450,6 +450,32 @@ function getCellCollisionParts(cell, radius) {
   return parts;
 }
 
+function collisionPartsOverlapAt(x, y, collisionRadius, collisionParts, other) {
+  const otherCollisionRadius = other.collisionRadius ?? other.r;
+  if (
+    Math.hypot(x - other.x, y - other.y)
+    >= collisionRadius + otherCollisionRadius + CIRCLE_GAP
+  ) {
+    return false;
+  }
+
+  const otherParts = other.collisionParts
+    ?? [{ offsetX: 0, offsetY: 0, radius: other.r }];
+  for (const part of collisionParts) {
+    for (const otherPart of otherParts) {
+      const dx = x + part.offsetX - other.x - otherPart.offsetX;
+      const dy = y + part.offsetY - other.y - otherPart.offsetY;
+      if (
+        Math.hypot(dx, dy)
+        < part.radius + otherPart.radius + CIRCLE_GAP
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 function RankBubble({
   rank = 1,
   name = "",
@@ -692,18 +718,32 @@ function tryPackCircles(ordered, baseRadii, scale) {
   for (let index = 0; index < ordered.length; index += 1) {
     const r = baseRadii[index] * scale;
     const collisionRadius = getCellCollisionRadius(ordered[index], r);
+    const collisionParts = getCellCollisionParts(ordered[index], r);
     const candidates = [{ x: 0, y: 0 }];
 
-    // Candidate points tangent to already placed circles are much more reliable
-    // than increasing one spiral radius until it happens to find a gap.
+    // Place candidate collision circles tangent to existing collision circles.
+    // The enclosing radius is only a broad-phase bound; using it as a spacing
+    // rule would leave large empty gaps when badges point away from neighbors.
     placed.forEach((other, otherIndex) => {
-      for (let step = 0; step < 32; step += 1) {
-        const angle = otherIndex * 0.73 + (step / 32) * Math.PI * 2;
-        const distance = other.collisionRadius + collisionRadius + CIRCLE_GAP;
-        candidates.push({
-          x: other.x + Math.cos(angle) * distance,
-          y: other.y + Math.sin(angle) * distance,
-        });
+      const otherParts = other.collisionParts;
+      for (let partIndex = 0; partIndex < collisionParts.length; partIndex += 1) {
+        const part = collisionParts[partIndex];
+        for (let otherPartIndex = 0; otherPartIndex < otherParts.length; otherPartIndex += 1) {
+          const otherPart = otherParts[otherPartIndex];
+          const tangentDistance = part.radius + otherPart.radius + CIRCLE_GAP;
+          const tangentBaseX = other.x + otherPart.offsetX - part.offsetX;
+          const tangentBaseY = other.y + otherPart.offsetY - part.offsetY;
+          for (let step = 0; step < 32; step += 1) {
+            const angle = otherIndex * 0.73
+              + partIndex * 0.41
+              - otherPartIndex * 0.29
+              + (step / 32) * Math.PI * 2;
+            candidates.push({
+              x: tangentBaseX + Math.cos(angle) * tangentDistance,
+              y: tangentBaseY + Math.sin(angle) * tangentDistance,
+            });
+          }
+        }
       }
     });
 
@@ -722,9 +762,13 @@ function tryPackCircles(ordered, baseRadii, scale) {
     let bestScore = Number.POSITIVE_INFINITY;
     for (const candidate of candidates) {
       const clear = placed.every(
-        (other) =>
-          Math.hypot(candidate.x - other.x, candidate.y - other.y) >=
-          collisionRadius + other.collisionRadius + CIRCLE_GAP,
+        (other) => !collisionPartsOverlapAt(
+          candidate.x,
+          candidate.y,
+          collisionRadius,
+          collisionParts,
+          other,
+        ),
       );
       if (!clear) continue;
 
@@ -744,6 +788,7 @@ function tryPackCircles(ordered, baseRadii, scale) {
       y: best.y,
       r,
       collisionRadius,
+      collisionParts,
       color: ordered[index].color,
     });
   }
