@@ -398,26 +398,56 @@ function getRankBubbleCorner(name) {
   return deterministicUnit(`rank:${name}`) >= 0.5 ? "top-right" : "top-left";
 }
 
+function hasRankBubble(cell) {
+  return (
+    !cell?.isAddCell
+    && Number.isFinite(Number(cell?.position))
+    && Number(cell.position) >= 1
+  );
+}
+
+function getRankBubbleFilterMargin(radius) {
+  const safeRadius = Math.max(0, Number(radius) || 0);
+  return safeRadius
+    * 2
+    * RANK_BUBBLE_GOO_BLUR_RATIO
+    * RANK_BUBBLE_GOO_COLLISION_MARGIN_SIGMAS;
+}
+
 function getCellCollisionRadius(cell, radius) {
   const safeRadius = Math.max(0, Number(radius) || 0);
-  if (
-    cell?.isAddCell
-    || !Number.isFinite(Number(cell?.position))
-    || Number(cell.position) < 1
-  ) {
-    return safeRadius;
-  }
+  if (!hasRankBubble(cell)) return safeRadius;
 
   // Reserve the full union of the cell and rank badge, plus the visible edge
   // produced when RankBubble's SVG goo filter blurs and thresholds the shape.
   const badgeRadius = safeRadius * RANK_BUBBLE_BADGE_RATIO;
-  const badgeCenterDistance = (safeRadius + badgeRadius * 0.15) * Math.SQRT1_2;
+  // SQRT1_2 belongs to each axis offset; the radial center distance has no
+  // such factor and must conservatively enclose the badge for broad-phase tests.
+  const badgeCenterDistance = safeRadius + badgeRadius * 0.15;
   const shapeRadius = Math.max(safeRadius, badgeCenterDistance + badgeRadius);
-  const filterMargin = safeRadius
-    * 2
-    * RANK_BUBBLE_GOO_BLUR_RATIO
-    * RANK_BUBBLE_GOO_COLLISION_MARGIN_SIGMAS;
-  return shapeRadius + filterMargin;
+  return shapeRadius + getRankBubbleFilterMargin(safeRadius);
+}
+
+function getCellCollisionParts(cell, radius) {
+  const safeRadius = Math.max(0, Number(radius) || 0);
+  const parts = [{
+    offsetX: 0,
+    offsetY: 0,
+    radius: safeRadius,
+  }];
+  if (!hasRankBubble(cell)) return parts;
+
+  const badgeRadius = safeRadius * RANK_BUBBLE_BADGE_RATIO;
+  const badgeDistance = (safeRadius + badgeRadius * 0.15) * Math.SQRT1_2;
+  const cornerSign = getRankBubbleCorner(cell.name) === "top-left" ? -1 : 1;
+  const filterMargin = getRankBubbleFilterMargin(safeRadius);
+  parts[0].radius += filterMargin;
+  parts.push({
+    offsetX: cornerSign * badgeDistance,
+    offsetY: -badgeDistance,
+    radius: badgeRadius + filterMargin,
+  });
+  return parts;
 }
 
 function RankBubble({
@@ -740,29 +770,54 @@ function keepCirclesSeparated(circles) {
       for (let second = first + 1; second < circles.length; second += 1) {
         const a = circles[first];
         const b = circles[second];
-        let dx = b.x - a.x;
-        let dy = b.y - a.y;
-        let distance = Math.hypot(dx, dy);
-        const minimumDistance = (a.collisionRadius ?? a.r)
+        const broadPhaseDistance = (a.collisionRadius ?? a.r)
           + (b.collisionRadius ?? b.r)
           + CIRCLE_GAP;
-        if (distance >= minimumDistance) continue;
+        if (Math.hypot(b.x - a.x, b.y - a.y) >= broadPhaseDistance) continue;
 
-        if (distance < 0.001) {
-          const angle = (first + 1) * 2.3999632297;
-          dx = Math.cos(angle);
-          dy = Math.sin(angle);
-          distance = 1;
+        const partsA = a.collisionParts ?? [{ offsetX: 0, offsetY: 0, radius: a.r }];
+        const partsB = b.collisionParts ?? [{ offsetX: 0, offsetY: 0, radius: b.r }];
+        const inverseMassA = 1 / Math.max(a.r * a.r, 0.001);
+        const inverseMassB = 1 / Math.max(b.r * b.r, 0.001);
+        const inverseMassTotal = inverseMassA + inverseMassB;
+        const weightA = inverseMassA / inverseMassTotal;
+        const weightB = inverseMassB / inverseMassTotal;
+
+        // Each ranked cell has two collision circles. Test body/body,
+        // body/badge, badge/body, and badge/badge as in the supplied example.
+        for (let partAIndex = 0; partAIndex < partsA.length; partAIndex += 1) {
+          const partA = partsA[partAIndex];
+          for (let partBIndex = 0; partBIndex < partsB.length; partBIndex += 1) {
+            const partB = partsB[partBIndex];
+            const ax = a.x + partA.offsetX;
+            const ay = a.y + partA.offsetY;
+            const bx = b.x + partB.offsetX;
+            const by = b.y + partB.offsetY;
+            let dx = bx - ax;
+            let dy = by - ay;
+            let distance = Math.hypot(dx, dy);
+            const minimumDistance = partA.radius + partB.radius + CIRCLE_GAP;
+            if (distance >= minimumDistance) continue;
+
+            if (distance < 0.001) {
+              const angle = (first + 1) * 2.3999632297
+                + partAIndex * 0.61
+                - partBIndex * 0.37;
+              dx = Math.cos(angle);
+              dy = Math.sin(angle);
+              distance = 1;
+            }
+
+            const penetration = minimumDistance - distance;
+            const nx = dx / distance;
+            const ny = dy / distance;
+            a.x -= nx * penetration * weightA;
+            a.y -= ny * penetration * weightA;
+            b.x += nx * penetration * weightB;
+            b.y += ny * penetration * weightB;
+            moved = true;
+          }
         }
-
-        const push = (minimumDistance - distance) / 2;
-        const nx = dx / distance;
-        const ny = dy / distance;
-        a.x -= nx * push;
-        a.y -= ny * push;
-        b.x += nx * push;
-        b.y += ny * push;
-        moved = true;
       }
     }
 
@@ -2244,6 +2299,7 @@ export default function PopPersonCanvas() {
           y: l.y,
           r: radius,
           collisionRadius: getCellCollisionRadius(l, radius),
+          collisionParts: getCellCollisionParts(l, radius),
         });
         return;
       }
@@ -2254,6 +2310,7 @@ export default function PopPersonCanvas() {
       // paid action's growth animation.
       current.r = radius;
       current.collisionRadius = getCellCollisionRadius(l, radius);
+      current.collisionParts = getCellCollisionParts(l, radius);
     });
     for (const key of animatedCirclesRef.current.keys()) if (!names.has(key)) animatedCirclesRef.current.delete(key);
   }, []);
